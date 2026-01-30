@@ -1,286 +1,358 @@
-# ConstellationFS 🌟
+# Agent Backend
 
-A filesystem abstraction for AI agents that provides familiar bash commands instead of custom APIs.
+**A plug-and-play memory and code execution backend for deep AI agents.**
 
-[![npm version](https://badge.fury.io/js/constellationfs.svg)](https://badge.fury.io/js/constellationfs)
+Give your AI agents a single interface to interact with a backend supporting:
+
+- Code execution
+- Persistent storage
+- Isolated sub-environments for multitenancy
+- Sync to remote storage options including S3.
+
+Supports MCP (Model Context Protocol) and direct integration with AI SDKs. Adapters for plug-and-play with leading AI agent SDKs.
+
+[![npm version](https://badge.fury.io/js/agent-backend.svg)](https://badge.fury.io/js/agent-backend)
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-## Why ConstellationFS?
+Deep agents that use long-running, potentially asynchronous or background processes need a reliable way to persist state. Many agents also benefit from shell access for tools like grep and find, plus the ability to execute code for scripting. Agent Backend provides a single interface consistent across local and remote execution, so there's no need to rewrite architecture to support your production environment.
 
-AI models are already trained on millions of filesystem operations. Instead of teaching agents custom APIs, ConstellationFS lets them use the bash commands they already know: `ls`, `grep`, `cat`, `mkdir`, and more.
+**Available backends:**
+- **Filesystem** - Execute code, run commands, manage files
+- **Memory** - Fast in-memory key/value storage. Optional sync to S3.
+- **Database** *(coming soon)* - Structured data and queries
 
-**The filesystem IS the API.**
+Agent Backends run in a sandboxed environment to ensure isolation and security, with options including Docker container and remote VM isolation.
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+  - [Scoped Access](#scoped-access)
+  - [MCP Integration](#mcp-integration)
+  - [Security & Isolation](#security--isolation)
+- [Integration with Agent SDKs](#integration-with-agent-sdks)
+  - [Vercel AI SDK](#vercel-ai-sdk)
+- [Backend Connection Pooling](#backend-connection-pooling)
+- [Server Deployment](#server-deployment)
+- [Advanced Features](#advanced-features)
+- [Examples](#examples)
+- [Error Handling](#error-handling)
+- [TypeScript Support](#typescript-support)
+- [Documentation](#documentation)
+- [Development](#development)
+- [License](#license)
+
+---
 
 ## Quick Start
 
 ```bash
-npm install constellationfs
+npm install agent-backend
 ```
 
-### Basic Setup
+### Memory Backend
 
-**1. Configure the library once:**
+Perfect for agent state, caching, and temporary data:
 
 ```typescript
-import { ConstellationFS } from 'constellationfs'
+import { MemoryBackend } from 'agent-backend'
 
-// Set global configuration (call once at app startup)
-ConstellationFS.setConfig({
-  workspaceRoot: '/constellation-fs'  // Base directory for all workspaces
-})
+const memory = new MemoryBackend()
+
+await memory.write('session/user123/state', JSON.stringify({ step: 2 }))
+const state = await memory.read('session/user123/state')
+const sessions = await memory.list('session/')
 ```
 
-**2. Create a filesystem and get a workspace:**
+### Filesystem Backend - Local
+
+Execute code and manage files locally:
 
 ```typescript
-import { FileSystem } from 'constellationfs'
+import { LocalFilesystemBackend } from 'agent-backend'
 
-// Local filesystem (for development)
-const fs = new FileSystem({
-  type: 'local',
-  userId: 'user-123'
+const fs = new LocalFilesystemBackend({
+  rootDir: '/tmp/agent-workspace'
 })
 
-// OR: Remote filesystem via SSH (for production)
-const fs = new FileSystem({
-  type: 'remote',
-  userId: 'user-123',
-  host: 'your-server.com',
+await fs.exec('git clone https://github.com/user/repo.git .')
+await fs.exec('npm install')
+const output = await fs.exec('npm run build')
+
+await fs.write('config.json', JSON.stringify({ version: '1.0' }))
+const files = await fs.readdir('src')
+```
+
+### Filesystem Backend - Remote
+
+Same API, operations run on a remote server via SSH:
+
+```typescript
+import { RemoteFilesystemBackend } from 'agent-backend'
+
+const fs = new RemoteFilesystemBackend({
+  rootDir: '/var/agent-workspace',
+  host: 'build-server.example.com',
   sshAuth: {
     type: 'password',
-    credentials: {
-      username: 'user',
-      password: 'pass'
-    }
+    credentials: { username: 'agent', password: 'secure-pass' }
   }
 })
 
-// Get a workspace - all operations are isolated to this workspace
-const workspace = await fs.getWorkspace('my-project')
-
-// Execute commands
-await workspace.exec('npm install')
-const files = await workspace.readdir('.')
-await workspace.write('config.json', JSON.stringify({ version: '1.0' }))
+// Same operations, executed remotely
+await fs.exec('python script.py')
 ```
 
-That's it! Three simple steps:
-1. **Configure** - Set workspace root once
-2. **Connect** - Create filesystem (local or remote)
-3. **Work** - Get workspace and execute operations
+---
 
-## Core Concepts
+## Usage
 
-### Workspace Isolation
+### Scoped Access
 
-Each workspace is isolated in its own directory: `/constellation-fs/users/{userId}/{workspaceName}/`
+Create isolated scopes for multi-tenancy:
 
 ```typescript
-const fs = new FileSystem({ type: 'local', userId: 'user-123' })
+const fs = new LocalFilesystemBackend({
+  rootDir: '/var/workspace'
+})
 
-// Creates workspace at: /constellation-fs/users/user-123/project-a/
-const ws1 = await fs.getWorkspace('project-a')
+// Each user gets an isolated scope
+const user1 = fs.scope('users/user1')
+const user2 = fs.scope('users/user2')
 
-// Creates workspace at: /constellation-fs/users/user-123/project-b/
-const ws2 = await fs.getWorkspace('project-b')
+await user1.exec('npm install')  // isolated to users/user1/
+await user2.exec('git init')     // isolated to users/user2/
 
-// Workspaces are completely isolated
-await ws1.exec('git init')  // Only affects project-a
-await ws2.exec('npm init')  // Only affects project-b
+// Scopes can be nested
+const project = user1.scope('projects/my-app')
+await project.exec('npm test')
 ```
 
-### Local vs Remote
+**Scopes provide:**
+- Path convenience (operations are relative)
+- Safety (can't escape the scope)
+- Isolation (OS-level when available)
 
-**Local Backend**: Operations run on the same machine where your code runs.
+### MCP Integration
+
+Use Model Context Protocol for standardized agent integration. Each backend offers the option to create an MCP client to provide the full set of tools for backend access to the agent.
 
 ```typescript
-const fs = new FileSystem({ type: 'local', userId: 'user-123' })
+const fs = new LocalFilesystemBackend({
+  rootDir: '/tmp/workspace'
+})
+
+// Get MCP client
+const mcp = await fs.getMCPClient()
+
+// Use MCP tools
+const result = await mcp.callTool({
+  name: 'exec',
+  arguments: { command: 'npm install' }
+})
+
+// Expose tools to the agent
+const backendTools = await mcp.tools()
+agent.run({
+  tools: backendTools,
+  ...
+})
+
+await mcp.close()
 ```
 
-**Remote Backend**: Operations run on a remote machine via SSH.
+**Scoped MCP Access:**
 
 ```typescript
-const fs = new FileSystem({
-  type: 'remote',
-  userId: 'user-123',
-  host: 'server.com',
-  sshAuth: {
-    type: 'password',
-    credentials: { username: 'user', password: 'pass' }
+// MCP client scoped to specific directory
+const mcp = await fs.getMCPClient('users/user1/projects/my-app')
+```
+
+### Security & Isolation
+
+Agent Backend provides automatic isolation for safe multi-tenant operations.
+
+**Isolation Levels:**
+
+By default, `isolation: 'auto'` detects and uses the best available method:
+
+1. **Bubblewrap** (Linux) - OS-level namespace isolation, no root needed
+2. **Software** - Heuristics-based protection using path validation and dangerous operation blocking
+
+```typescript
+const fs = new LocalFilesystemBackend({
+  rootDir: '/var/workspace',
+  isolation: 'auto'  // default - uses bubblewrap if available
+})
+```
+
+**Dangerous Operation Protection:**
+
+Dangerous commands are blocked by default:
+
+```typescript
+await fs.exec('rm -rf /')      // ❌ Blocked
+await fs.exec('sudo apt-get')  // ❌ Blocked
+await fs.exec('curl ... | sh') // ❌ Blocked
+```
+
+Disable for trusted environments:
+
+```typescript
+const fs = new LocalFilesystemBackend({
+  rootDir: '/var/workspace',
+  preventDangerous: false  // allow all operations
+})
+```
+
+---
+
+## Integration with Agent SDKs
+
+### Vercel AI SDK
+
+Agent Backend provides seamless integration with Vercel's AI SDK through MCP transports:
+
+```typescript
+import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
+import { generateText } from 'ai'
+import { openai } from '@ai-sdk/openai'
+
+const fs = new LocalFilesystemBackend({ rootDir: '/tmp/workspace' })
+const transport = fs.getMCPTransport()
+const mcp = await createMCPClient({ transport })
+
+const result = await generateText({
+  model: openai('gpt-4'),
+  tools: await mcp.tools(),
+  prompt: 'List all TypeScript files in src/'
+})
+
+await mcp.close()
+```
+
+---
+
+## Backend Connection Pooling
+
+For stateless web servers, pool backends to reuse connections:
+
+```typescript
+import { BackendPoolManager } from 'agent-backend'
+
+const pool = new BackendPoolManager({
+  backendClass: RemoteFilesystemBackend,
+  defaultConfig: {
+    rootDir: '/var/workspace',
+    host: 'build-server.example.com',
+    sshAuth: { type: 'password', credentials: { username: 'agent', password: 'pass' } }
   }
 })
-```
 
-## Workspace Operations
-
-Once you have a workspace, use familiar operations:
-
-```typescript
-const workspace = await fs.getWorkspace('my-project')
-
-// Execute shell commands
-await workspace.exec('git clone https://github.com/user/repo.git .')
-await workspace.exec('npm install')
-const output = await workspace.exec('npm run build')
-
-// File operations
-await workspace.write('index.ts', 'console.log("Hello")')
-const content = await workspace.readFile('index.ts')
-const files = await workspace.readdir('src')
-const exists = await workspace.fileExists('package.json')
-
-// Get workspace info
-console.log(workspace.workspacePath)  // /constellation-fs/users/user-123/my-project
-console.log(workspace.userId)          // user-123
-console.log(workspace.workspaceName)   // my-project
-```
-
-## Connection Pooling (Optional)
-
-For stateless web servers handling multiple requests, use `FileSystemPoolManager` to reuse SSH connections and reduce overhead:
-
-```typescript
-import { FileSystemPoolManager } from 'constellationfs'
-
-// Create pool once at startup
-const pool = new FileSystemPoolManager({
-  defaultBackendConfig: {
-    type: 'remote',
-    host: 'server.com',
-    sshAuth: { type: 'password', credentials: { username: 'user', password: 'pass' } }
-  },
-  idleTimeoutMs: 5 * 60 * 1000,    // Clean up idle connections after 5 minutes
-  enablePeriodicCleanup: true       // Automatically cleanup idle connections
-})
-
-// In your request handlers - use callback pattern (recommended)
+// Callback pattern (automatic cleanup)
 app.post('/api/build', async (req, res) => {
-  const { userId, projectId } = req.body
-
-  const output = await pool.withWorkspace(
-    { userId, workspace: `projects/${projectId}` },
-    async (workspace) => {
-      return await workspace.exec('npm run build')
+  const output = await pool.withBackend(
+    { userId: req.user.id },
+    async (backend) => {
+      const projectBackend = backend.scope(`projects/${req.body.projectId}`)
+      return await projectBackend.exec('npm run build')
     }
   )
-  // Connection automatically released after callback
-
   res.json({ output })
 })
 
-// OR: Manual lifecycle management (for complex flows)
-app.post('/api/deploy', async (req, res) => {
-  const { userId, projectId } = req.body
+// Graceful shutdown
+process.on('SIGTERM', () => pool.destroyAll())
+```
 
-  const { workspace, release } = await pool.acquireWorkspace({
-    userId,
-    workspace: `projects/${projectId}`
-  })
+**Use pooling for:**
+- Remote backends (reuse SSH connections)
+- Stateless web servers
+- Long-running services
 
-  try {
-    await workspace.exec('npm run build')
-    await workspace.exec('npm run deploy')
-    res.json({ success: true })
-  } finally {
-    release()  // MUST call this!
+**Skip pooling for:**
+- CLI tools
+- Local-only backends
+- Single-session scripts
+
+---
+
+## Server Deployment
+
+For remote backend deployment, use the `agentbe-server` package:
+
+```bash
+npm install -g agentbe-server
+```
+
+### Start MCP Server
+
+Start backend-specific MCP servers:
+
+```bash
+# Local filesystem server
+agentbe-server --backend local --rootDir /tmp/workspace --isolation bwrap
+
+# Remote filesystem server (connects to SSH host)
+agentbe-server --backend remote --rootDir /var/workspace \
+  --host server.example.com --username agent --password secret
+
+# Memory backend server (no exec tool)
+agentbe-server --backend memory --rootDir /memory
+```
+
+### Docker Remote Backend
+
+Deploy a complete remote backend environment with Docker:
+
+```bash
+# Start Docker-based remote backend service
+agentbe-server start-remote
+
+# Now you can connect from your code:
+const fs = new RemoteFilesystemBackend({
+  rootDir: '/workspace',
+  host: 'localhost',
+  port: 2222,
+  sshAuth: {
+    type: 'password',
+    credentials: { username: 'root', password: 'constellation' }
   }
 })
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  await pool.destroyAll()
-  process.exit(0)
-})
 ```
 
-**When to use the pool:**
-- ✅ Stateless web servers with multiple requests per user
-- ✅ Remote SSH backends (reduces connection overhead)
-- ✅ Long-running services that need automatic cleanup
+**Features:**
+- SSH access on port 2222
+- Pre-configured users and workspaces
+- MCP server integration
+- Docker-based isolation
 
-**When NOT to use the pool:**
-- ❌ CLI tools (single user, single session)
-- ❌ Local backends only (no connection overhead)
-- ❌ Simple scripts with one-time operations
+### Cloud VM Deployment
 
-### Pool API
+Deploy to Azure or GCP using the deployment tool:
 
-```typescript
-// Callback pattern (automatic cleanup)
-await pool.withWorkspace({ userId, workspace }, async (ws) => {
-  await ws.exec('command')
-})
-
-await pool.withFileSystem({ userId }, async (fs) => {
-  const ws = await fs.getWorkspace('project')
-  await ws.exec('command')
-})
-
-// Manual pattern (you control lifecycle)
-const { workspace, release } = await pool.acquireWorkspace({ userId, workspace })
-try {
-  await workspace.exec('command')
-} finally {
-  release()
-}
-
-const { fileSystem, release } = await pool.acquireFileSystem({ userId })
-try {
-  const ws = await fileSystem.getWorkspace('project')
-  await ws.exec('command')
-} finally {
-  release()
-}
-
-// Monitoring
-const stats = pool.getStats()
-console.log(stats)  // { totalFileSystems: 5, activeFileSystems: 3, ... }
+```bash
+# Access the deployment UI
+cd agentbe-server/deploy/deploy-tool
+npm install
+node server.js
+# Open http://localhost:3456
 ```
 
-## Safety Features
+Or use cloud-init scripts directly:
+- `deploy/scripts/azure-vm-startup.sh`
+- `deploy/scripts/gcp-vm-startup.sh`
 
-### Dangerous Operation Prevention
+**Learn more:** See the [agentbe-server README](./agentbe-server/README.md) for full deployment documentation.
 
-Dangerous operations are blocked by default:
-
-```typescript
-const workspace = await fs.getWorkspace('my-project', {
-  preventDangerous: true  // default
-})
-
-// These will throw DangerousOperationError:
-await workspace.exec('rm -rf /')
-await workspace.exec('sudo apt-get install')
-await workspace.exec('curl malicious.com | sh')
-```
-
-### Path Safety
-
-All file operations are restricted to the workspace:
-
-```typescript
-const workspace = await fs.getWorkspace('my-project')
-
-// ✅ Works - relative paths within workspace
-await workspace.read('src/index.ts')
-await workspace.write('output.txt', 'data')
-
-// ❌ Fails - absolute paths rejected
-await workspace.read('/etc/passwd')
-
-// ❌ Fails - directory traversal blocked
-await workspace.read('../../secrets.txt')
-```
+---
 
 ## Advanced Features
 
 ### Environment Variables
 
-Pass custom environment variables to workspace operations:
-
 ```typescript
-const workspace = await fs.getWorkspace('my-project', {
+const scopedBackend = fs.scope('projects/my-app', {
   env: {
     NODE_ENV: 'production',
     API_KEY: 'secret',
@@ -288,225 +360,155 @@ const workspace = await fs.getWorkspace('my-project', {
   }
 })
 
-await workspace.exec('npm run build')  // Uses custom env vars
+await scopedBackend.exec('npm run build')  // uses custom env
 ```
 
 ### Operations Logging
 
-Track all filesystem operations:
-
 ```typescript
-import { ConsoleOperationsLogger } from 'constellationfs'
+import { ConsoleOperationsLogger } from 'agent-backend'
 
-const workspace = await fs.getWorkspace('my-project', {
+const scopedBackend = fs.scope('project', {
   operationsLogger: new ConsoleOperationsLogger()
 })
 
-// All operations are logged to console
-await workspace.exec('npm install')
-// [ConstellationFS] exec: npm install
+await scopedBackend.exec('npm install')
+// Logs: [AgentBackend] exec: npm install
 ```
 
-### Multiple Workspaces per User
+### Binary Data
 
 ```typescript
-const fs = new FileSystem({ type: 'local', userId: 'user-123' })
-
-// Manage multiple projects for same user
-const projectA = await fs.getWorkspace('project-a')
-const projectB = await fs.getWorkspace('project-b')
-const projectC = await fs.getWorkspace('project-c')
-
-await projectA.exec('git pull')
-await projectB.exec('npm test')
-await projectC.exec('docker build .')
+const imageData = await fs.read('logo.png', { encoding: 'buffer' })
+const tarball = await fs.exec('tar -czf - .', { encoding: 'buffer' })
 ```
 
-### Binary Data Support
+### Timeouts
 
 ```typescript
-// Execute commands with binary output
-const tarball = await workspace.exec('tar -czf - .', { encoding: 'buffer' })
-await workspace.write('archive.tar.gz', tarball)
-
-// Read binary files
-const imageData = await workspace.read('logo.png', { encoding: 'buffer' })
+const fs = new RemoteFilesystemBackend({
+  rootDir: '/tmp/workspace',
+  host: 'server.com',
+  sshAuth: { ... },
+  operationTimeoutMs: 300000,  // 5 minutes
+  maxOutputLength: 10 * 1024 * 1024  // 10MB
+})
 ```
 
-## MCP Server Integration
+---
 
-ConstellationFS can run as an MCP (Model Context Protocol) server for AI applications:
+## Examples
 
-```bash
-# Start MCP server
-npx constellationfs mcp-server \
-  --workspaceRoot /constellation-fs \
-  --http \
-  --port 3001 \
-  --authToken your-secret-token
-```
+### Code Execution Sandbox
 
 ```typescript
-import { createConstellationMCPClient } from 'constellationfs'
-
-const client = await createConstellationMCPClient({
-  url: 'http://localhost:3001',
-  authToken: 'your-secret-token',
-  userId: 'user-123',
-  workspace: 'my-project'
+const sandbox = new LocalFilesystemBackend({
+  rootDir: '/tmp/sandbox',
+  isolation: 'auto'
 })
 
-const result = await client.callTool({
-  name: 'exec',
-  arguments: { command: 'npm install' }
+const userCodeBackend = sandbox.scope(`users/${userId}`)
+await userCodeBackend.write('script.js', untrustedCode)
+const result = await userCodeBackend.exec('node script.js')
+```
+
+### Multi-tenant SaaS
+
+```typescript
+// Separate backend per organization
+const org1Backend = new RemoteFilesystemBackend({
+  rootDir: '/var/saas/org1',
+  host: 'org1-server.example.com',
+  sshAuth: { ... }
 })
 
-await client.close()
+const org2Backend = new RemoteFilesystemBackend({
+  rootDir: '/var/saas/org2',
+  host: 'org2-server.example.com',
+  sshAuth: { ... }
+})
+
+// Scoped backends per user within each org
+const org1User1 = org1Backend.scope('users/user1')
+const org1User2 = org1Backend.scope('users/user2')
+
+const org2User1 = org2Backend.scope('users/user1')
+const org2User2 = org2Backend.scope('users/user2')
 ```
+
+### Agent State Management
+
+```typescript
+const state = new MemoryBackend()
+
+await state.write('agents/agent1/current-task', 'building')
+await state.write('agents/agent1/progress', '50%')
+
+const allAgents = await state.list('agents/')
+```
+
+---
 
 ## Error Handling
 
 ```typescript
-import { FileSystemError, DangerousOperationError } from 'constellationfs'
+import { BackendError, DangerousOperationError } from 'agent-backend'
 
 try {
-  await workspace.exec('some-command')
+  await fs.exec('rm -rf /')
 } catch (error) {
   if (error instanceof DangerousOperationError) {
-    console.log('Dangerous operation blocked:', error.command)
-  } else if (error instanceof FileSystemError) {
-    console.log('Operation failed:', error.message)
+    console.log('Blocked:', error.operation)
+  } else if (error instanceof BackendError) {
+    console.log('Error:', error.message)
   }
 }
 ```
+
+---
 
 ## TypeScript Support
 
-Full TypeScript support with comprehensive type definitions:
+Full type definitions included:
 
 ```typescript
 import type {
-  BackendConfig,
-  LocalBackendConfig,
-  RemoteBackendConfig,
-  Workspace,
-  WorkspaceConfig,
-  FileSystemBackend
-} from 'constellationfs'
+  LocalFilesystemBackend,
+  RemoteFilesystemBackend,
+  MemoryBackend,
+  ScopedBackend
+} from 'agent-backend'
 
-const config: RemoteBackendConfig = {
-  type: 'remote',
-  userId: 'user-123',
-  host: 'server.com',
-  sshAuth: {
-    type: 'password',
-    credentials: { username: 'user', password: 'pass' }
-  }
-}
-
-const fs = new FileSystem(config)
-const workspace: Workspace = await fs.getWorkspace('my-project')
-```
-
-## Examples
-
-### Express.js Web Server
-
-```typescript
-import express from 'express'
-import { FileSystemPoolManager } from 'constellationfs'
-
-const pool = new FileSystemPoolManager({
-  defaultBackendConfig: {
-    type: 'remote',
-    host: process.env.REMOTE_HOST,
-    sshAuth: {
-      type: 'password',
-      credentials: {
-        username: process.env.SSH_USER,
-        password: process.env.SSH_PASS
-      }
-    }
-  }
+const fs: LocalFilesystemBackend = new LocalFilesystemBackend({
+  rootDir: '/tmp/workspace'
 })
 
-const app = express()
-
-app.post('/projects/:projectId/build', async (req, res) => {
-  const userId = req.user.id
-  const { projectId } = req.params
-
-  try {
-    const output = await pool.withWorkspace(
-      { userId, workspace: `projects/${projectId}` },
-      async (workspace) => {
-        return await workspace.exec('npm run build')
-      }
-    )
-    res.json({ success: true, output })
-  } catch (error) {
-    res.status(500).json({ error: error.message })
-  }
-})
-
-process.on('SIGTERM', async () => {
-  await pool.destroyAll()
-  process.exit(0)
-})
-
-app.listen(3000)
+const scopedBackend: ScopedBackend<LocalFilesystemBackend> = fs.scope('project')
 ```
 
-### CLI Tool
+---
 
-```typescript
-import { FileSystem } from 'constellationfs'
+## Documentation
 
-const fs = new FileSystem({ type: 'local', userId: 'cli-user' })
-const workspace = await fs.getWorkspace('my-project')
+- [API Reference](docs/api-reference.md)
+- [Configuration Options](docs/configuration.md)
+- [Security & Isolation](docs/security.md)
+- [MCP Integration](docs/mcp.md)
+- [Migration from ConstellationFS](docs/migration.md)
 
-// Clone repository
-await workspace.exec('git clone https://github.com/user/repo.git .')
-
-// Install dependencies
-await workspace.exec('npm install')
-
-// Run build
-const output = await workspace.exec('npm run build')
-console.log(output)
-
-// Cleanup when done
-await fs.destroy()
-```
+---
 
 ## Development
 
 ```bash
-# Clone repository
-git clone https://github.com/constellation-fs/constellation-fs.git
-cd constellation-fs/constellation-typescript
-
-# Install dependencies
+git clone https://github.com/agent-backend/agent-backend.git
+cd agent-backend
 npm install
-
-# Run tests
 npm test
-
-# Build
 npm run build
-
-# Type check
-npm run typecheck
-
-# Lint
-npm run lint
 ```
 
-## Philosophy
-
-The best AI tools feel invisible. By leveraging the filesystem metaphor that every developer and AI model already understands, ConstellationFS eliminates the learning curve and lets agents work with tools they already know.
-
-Just like Docker standardized containers, ConstellationFS aims to standardize filesystem access for AI agents.
+---
 
 ## License
 
@@ -514,4 +516,4 @@ MIT - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**ConstellationFS**: Where AI agents feel at home. 🏠
+**Agent Backend**: The right backend for every agent task.

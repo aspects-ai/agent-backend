@@ -1,13 +1,13 @@
-# ConstellationFS Remote Backend Service
+# Agent Backend Remote Service
 # Docker Compose configuration for easy deployment
 
 services:
   remote-backend:
     build:
-      context: ..
-      dockerfile: remote/Dockerfile.runtime
-    image: constellationfs/remote-backend:latest
-    container_name: constellation-remote-backend
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.runtime
+    image: agentbe/remote-backend:latest
+    container_name: agentbe-remote-backend
     ports:
       - "2222:22"   # SSH port mapping
       - "3001:3001" # MCP server port

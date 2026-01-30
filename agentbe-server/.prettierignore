@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+
+# Logs
+*.log
+logs/
+
+# Documentation that might have specific formatting
+CHANGELOG.md

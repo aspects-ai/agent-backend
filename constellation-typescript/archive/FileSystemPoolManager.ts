@@ -1,3 +1,28 @@
+/**
+ * @deprecated Use BackendPoolManager with Backend interface instead.
+ * This class uses the old FileSystem/Workspace API and will be removed in the next major version.
+ *
+ * @example Migration
+ * ```typescript
+ * // Old (FileSystemPoolManager):
+ * const pool = new FileSystemPoolManager()
+ * const { fs, release } = await pool.acquire({ userId: 'user1' })
+ * const workspace = await fs.getWorkspace('project')
+ * await workspace.execute('npm run build')
+ * release()
+ *
+ * // New (BackendPoolManager):
+ * const pool = new BackendPoolManager({
+ *   backendClass: LocalFilesystemBackend,
+ *   defaultConfig: { rootDir: '/app/workspace' }
+ * })
+ * await pool.withBackend({ key: 'user1' }, async (backend) => {
+ *   const scope = backend.scope('projects/proj1')
+ *   await scope.exec('npm run build')
+ * })
+ * ```
+ */
+
 import type { FileSystem } from './FileSystem.js'
 import type { Workspace, WorkspaceConfig } from './workspace/Workspace.js'
 import { getLogger } from './utils/logger.js'
@@ -6,6 +31,7 @@ import { BackendFactory } from './backends/BackendFactory.js'
 
 /**
  * Options for acquiring a filesystem from the pool
+ * @deprecated Use BackendPoolManager instead
  */
 export interface AcquireOptions {
   /**

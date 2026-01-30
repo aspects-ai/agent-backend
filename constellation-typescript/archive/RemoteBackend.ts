@@ -11,7 +11,7 @@ import { getPlatformGuidance } from '../utils/nativeLibrary.js'
 import { RemoteWorkspaceUtils } from '../utils/RemoteWorkspaceUtils.js'
 import { RemoteWorkspace } from '../workspace/RemoteWorkspace.js'
 import type { Workspace, WorkspaceConfig } from '../workspace/Workspace.js'
-import type { FileSystemBackend, RemoteBackendConfig } from './types.js'
+import type { FileSystemBackend, RemoteBackendConfig } from './index.js'
 
 /** Default timeout for filesystem operations in milliseconds (120 seconds) */
 const DEFAULT_OPERATION_TIMEOUT_MS = 120_000

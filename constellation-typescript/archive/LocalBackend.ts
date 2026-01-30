@@ -8,8 +8,8 @@ import { LocalWorkspaceUtils } from '../utils/LocalWorkspaceUtils.js'
 import { getLogger } from '../utils/logger.js'
 import { LocalWorkspace } from '../workspace/LocalWorkspace.js'
 import type { Workspace, WorkspaceConfig } from '../workspace/Workspace.js'
-import type { FileSystemBackend, LocalBackendConfig } from './types.js'
-import { validateLocalBackendConfig } from './types.js'
+import type { FileSystemBackend, LocalBackendConfig } from './index.js'
+import { validateLocalBackendConfig } from './index.js'
 
 /**
  * Local filesystem backend implementation

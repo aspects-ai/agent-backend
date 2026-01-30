@@ -5,17 +5,10 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": {
-    "constellationfs": "./bin/constellationfs",
-    "constellation-fs-mcp": "./bin/constellation-fs-mcp.js"
-  },
   "files": [
     "dist",
     "native",
     "scripts",
-    "cli",
-    "bin",
-    "remote",
     "src"
   ],
   "scripts": {

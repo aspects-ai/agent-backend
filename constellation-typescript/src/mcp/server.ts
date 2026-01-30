@@ -1,15 +1,26 @@
+/**
+ * TODO Phase 8: This file will be moved to agentbe-server package
+ * Currently kept for backward compatibility with existing CLI
+ * Contains old FileSystem/Workspace imports that are archived
+ */
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { randomUUID } from 'crypto'
 import express, { type NextFunction, type Request, type Response } from 'express'
+// @ts-expect-error - Archived files, will be fixed in Phase 8 migration
 import { ConstellationFS } from '../config/Config.js'
+// @ts-expect-error - Archived files, will be fixed in Phase 8 migration
 import { FileSystem } from '../FileSystem.js'
+// @ts-expect-error - Archived files, will be fixed in Phase 8 migration
 import type { Workspace } from '../workspace/Workspace.js'
+import type { Backend } from '../backends/index.js'
 import { registerTools } from './tools.js'
 
 // ─────────────────────────────────────────────────────────────────
-// ConstellationFS MCP Server
+// ConstellationFS MCP Server (Legacy CLI)
+// TODO Phase 8: Move to agentbe-server package
 // ─────────────────────────────────────────────────────────────────
 //
 // This server exposes ConstellationFS tools via the Model Context Protocol (MCP).
@@ -207,7 +218,57 @@ async function destroySession(sessionId: string): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Main Entry Point
+// Programmatic API for Backend Interface
+// ─────────────────────────────────────────────────────────────────
+
+export interface MCPServerOptions {
+  name?: string
+  version?: string
+}
+
+/**
+ * Start an MCP server with a backend factory
+ * Simplified API for use with the new Backend interface
+ *
+ * @example
+ * ```typescript
+ * import { startMCPServer } from './mcp/server.js'
+ * import { LocalFilesystemBackend, BackendPoolManager } from './index.js'
+ *
+ * // Simple usage with direct backend
+ * const server = await startMCPServer(async (sessionId) => {
+ *   return new LocalFilesystemBackend({ rootDir: `/sessions/${sessionId}` })
+ * })
+ *
+ * // Or with connection pooling
+ * const pool = new BackendPoolManager({
+ *   backendClass: RemoteFilesystemBackend,
+ *   defaultConfig: { ... }
+ * })
+ *
+ * const server = await startMCPServer(async (sessionId) => {
+ *   const { backend } = await pool.acquireBackend({ key: sessionId })
+ *   return backend
+ * })
+ * ```
+ */
+export async function startMCPServer(
+  getBackend: (sessionId: string) => Promise<Backend> | Backend,
+  options?: MCPServerOptions
+): Promise<McpServer> {
+  const server = new McpServer({
+    name: options?.name ?? 'constellationfs',
+    version: options?.version ?? '1.0.0',
+  })
+
+  // Register tools with backend factory
+  registerTools(server, getBackend)
+
+  return server
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Main Entry Point (CLI)
 // ─────────────────────────────────────────────────────────────────
 
 export async function main(args: string[]) {
@@ -229,6 +290,7 @@ export async function main(args: string[]) {
     // HTTP Mode: Multi-session, workspace from headers
     // ─────────────────────────────────────────────────────────────
 
+    // @ts-expect-error - Old CLI uses Workspace API, will be removed in Phase 6
     registerTools(mcpServer, (sessionId) => {
       if (!sessionId) throw new Error('Session ID required')
       return getSessionContext(sessionId).workspace
@@ -331,6 +393,7 @@ export async function main(args: string[]) {
 
     console.error(`[constellation-fs-mcp] Workspace initialized: ${workspace.workspacePath}`)
 
+    // @ts-expect-error - Old CLI uses Workspace API, will be removed in Phase 6
     registerTools(mcpServer, () => workspace)
 
     const transport = new StdioServerTransport()

@@ -1,4 +1,23 @@
 {
+  "name": "agent-backend-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agent Backend monorepo - client library and server infrastructure",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "dev": "pnpm -r --parallel dev"
+  },
+  "workspaces": [
+    "constellation-typescript",
+    "agentbe-server"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
   "dependencies": {
     "diff": "^8.0.2"
   }

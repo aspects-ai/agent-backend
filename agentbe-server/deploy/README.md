@@ -1,21 +1,37 @@
-# ConstellationFS Remote Backend
+# Agent Backend Remote Service
 
-This directory contains the Docker configuration for the ConstellationFS remote backend service - a deployable POSIX filesystem accessible via SSH and MCP (Model Context Protocol).
+This directory contains the Docker configuration for the Agent Backend remote service - a deployable POSIX filesystem accessible via SSH and MCP (Model Context Protocol).
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
+### Using CLI (Recommended)
 
 ```bash
-cd remote/
+# Install agentbe-server
+npm install -g agentbe-server
+
+# Start remote backend service
+agentbe-server start-remote
+
+# Stop remote backend service
+agentbe-server stop-remote
+
+# Rebuild and restart
+agentbe-server start-remote --build
+```
+
+### Using Docker Compose
+
+```bash
+cd deploy/docker/
 docker-compose up -d
 ```
 
 ### Using Docker Run
 
 ```bash
-# Build the image (from constellation-typescript directory)
-docker build -f remote/Dockerfile.runtime -t constellationfs/remote-backend .
+# Build the image (from agentbe-server directory)
+docker build -f deploy/docker/Dockerfile.runtime -t agentbe/remote-backend .
 
 # Run the container
 docker run -d \
@@ -23,8 +39,8 @@ docker run -d \
   -p 3001:3001 \
   -v $(pwd)/workspace:/workspace \
   -e MCP_AUTH_TOKEN=your-secure-token \
-  --name constellation-remote-backend \
-  constellationfs/remote-backend
+  --name agentbe-remote-backend \
+  agentbe/remote-backend
 ```
 
 ## Configuration

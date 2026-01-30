@@ -6,23 +6,18 @@ export default defineConfig({
   plugins: [
     dts({
       include: ['src/**/*'],
-      exclude: [
-        '**/*.test.ts',
-        'tests/**/*',
-        // TODO Phase 8: Exclude files with archived dependencies
-        'src/mcp/server.ts',
-        'src/mcp/local-client.ts'
-      ]
+      exclude: ['**/*.test.ts', 'tests/**/*']
     })
   ],
   build: {
     lib: {
       entry: {
         index: path.resolve(__dirname, 'src/index.ts'),
-        'mcp/index': path.resolve(__dirname, 'src/mcp/index.ts'),
-        // TODO Phase 8: mcp/server.ts will move to agentbe-server package
-        // Temporarily excluded from build due to archived dependencies
-        // 'mcp/server': path.resolve(__dirname, 'src/mcp/server.ts'),
+        'mcp/servers/LocalFilesystemMCPServer': path.resolve(__dirname, 'src/mcp/servers/LocalFilesystemMCPServer.ts'),
+        'mcp/servers/RemoteFilesystemMCPServer': path.resolve(__dirname, 'src/mcp/servers/RemoteFilesystemMCPServer.ts'),
+        'mcp/servers/MemoryMCPServer': path.resolve(__dirname, 'src/mcp/servers/MemoryMCPServer.ts'),
+        // TODO: Add CLI entry point when mcp/cli/server.ts is created
+        // 'mcp/cli/server': path.resolve(__dirname, 'src/mcp/cli/server.ts'),
       },
       formats: ['es', 'cjs']
     },
@@ -30,13 +25,12 @@ export default defineConfig({
     rollupOptions: {
       external: [
         'fs', 'fs/promises', 'path', 'child_process', 'os', 'url', 'crypto',
-        'ssh2', 'node-fuse-bindings', 'util', 'events',
+        'constellationfs',
         '@modelcontextprotocol/sdk/server/mcp.js',
         '@modelcontextprotocol/sdk/server/stdio.js',
         '@modelcontextprotocol/sdk/server/streamableHttp.js',
         '@modelcontextprotocol/sdk/client/index.js',
         '@modelcontextprotocol/sdk/client/stdio.js',
-        '@modelcontextprotocol/sdk/client/streamableHttp.js',
         'express', 'zod', 'minimatch'
       ],
       output: {

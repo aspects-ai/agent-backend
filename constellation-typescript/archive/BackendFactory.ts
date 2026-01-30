@@ -1,7 +1,7 @@
 import { BACKEND_TYPES, type BackendType, ERROR_CODES } from '../constants.js'
 import { FileSystemError } from '../types.js'
-import type { BackendConfig, FileSystemBackend } from './types.js'
-import { BackendConfigSchema } from './types.js'
+import type { BackendConfig, FileSystemBackend } from './index.js'
+import { BackendConfigSchema } from './index.js'
 import { LocalBackend } from './LocalBackend.js'
 import { RemoteBackend } from './RemoteBackend.js'
 

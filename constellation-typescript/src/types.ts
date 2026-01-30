@@ -1,9 +1,31 @@
-export { BackendConfigSchema, validateLocalBackendConfig } from './backends/types.js'
+// Re-export from backends module
+export { BackendType } from './backends/index.js'
+export type {
+  Backend,
+  FileBasedBackend,
+  FileSystemBackend,
+  ScopedBackend,
+  ScopedFileBasedBackend
+} from './backends/index.js'
+
+export {
+  BackendConfigSchema,
+  validateLocalBackendConfig,
+  validateLocalFilesystemBackendConfig,
+  validateRemoteFilesystemBackendConfig,
+  validateMemoryBackendConfig
+} from './backends/index.js'
 export type {
   BackendConfig,
-  FileSystemBackend, LocalBackendConfig,
-  RemoteBackendConfig
-} from './backends/types.js'
+  LocalBackendConfig,
+  RemoteBackendConfig,
+  LocalFilesystemBackendConfig,
+  RemoteFilesystemBackendConfig,
+  MemoryBackendConfig,
+  ScopeConfig,
+  ExecOptions,
+  ReadOptions
+} from './backends/index.js'
 
 /**
  * File metadata information returned by detailed directory listings
@@ -70,18 +92,24 @@ export interface FileSystemInterface {
 
 }
 
-export class FileSystemError extends Error {
+/**
+ * Base error class for all backend operations
+ */
+export class BackendError extends Error {
   constructor(
     message: string,
     public readonly code: string,
-    public readonly command?: string,
+    public readonly operation?: string,
   ) {
     super(message)
-    this.name = 'FileSystemError'
+    this.name = 'BackendError'
   }
 }
 
-export class DangerousOperationError extends FileSystemError {
+/**
+ * Error thrown when a dangerous operation is blocked
+ */
+export class DangerousOperationError extends BackendError {
   constructor(command: string) {
     super(
       `Dangerous operation blocked: ${command}`,
@@ -91,3 +119,34 @@ export class DangerousOperationError extends FileSystemError {
     this.name = 'DangerousOperationError'
   }
 }
+
+/**
+ * Error thrown when an operation is not implemented for a backend type
+ */
+export class NotImplementedError extends BackendError {
+  constructor(operation: string, backendType: string) {
+    super(
+      `Operation '${operation}' not implemented for ${backendType} backend`,
+      'NOT_IMPLEMENTED',
+      operation,
+    )
+    this.name = 'NotImplementedError'
+  }
+}
+
+/**
+ * Error thrown when a path attempts to escape the scope boundary
+ */
+export class PathEscapeError extends BackendError {
+  constructor(path: string) {
+    super(
+      `Path escapes scope boundary: ${path}`,
+      'PATH_ESCAPE_ATTEMPT',
+      path,
+    )
+    this.name = 'PathEscapeError'
+  }
+}
+
+// Legacy alias for backward compatibility during migration
+export const FileSystemError = BackendError

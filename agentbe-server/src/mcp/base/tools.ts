@@ -2,9 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { minimatch } from 'minimatch'
 import * as path from 'path'
 import { z } from 'zod'
-import type { Backend, FileBasedBackend } from '../backends/index.js'
-import { BackendType } from '../backends/index.js'
-import { NotImplementedError } from '../types.js'
+import type { Backend, FileBasedBackend } from 'constellationfs'
 
 type BackendGetter = (sessionId?: string) => Promise<Backend> | Backend
 
@@ -146,10 +144,10 @@ function getMimeType(filePath: string): string {
 
 /**
  * Register all filesystem tools on an MCP server.
- * Compatible with official @modelcontextprotocol/server-filesystem plus exec extension.
- * Filters tools based on backend capabilities (e.g., no exec for MemoryBackend).
+ * Compatible with official @modelcontextprotocol/server-filesystem.
+ * Does NOT include exec tool - use registerExecTool() separately for backends that support it.
  */
-export function registerTools(server: McpServer, getBackend: BackendGetter): void {
+export function registerFilesystemTools(server: McpServer, getBackend: BackendGetter): void {
 
   // ─────────────────────────────────────────────────────────────────
   // READ OPERATIONS
@@ -652,11 +650,14 @@ export function registerTools(server: McpServer, getBackend: BackendGetter): voi
       }
     }
   )
+}
 
-  // ─────────────────────────────────────────────────────────────────
-  // CONSTELLATIONFS EXTENSIONS
-  // ─────────────────────────────────────────────────────────────────
-
+/**
+ * Register exec tool on an MCP server.
+ * Should only be called for backends that support command execution (FileBasedBackend).
+ * Do NOT call this for MemoryBackend.
+ */
+export function registerExecTool(server: McpServer, getBackend: BackendGetter): void {
   server.registerTool(
     'exec',
     {
@@ -668,15 +669,8 @@ export function registerTools(server: McpServer, getBackend: BackendGetter): voi
       },
     },
     async ({ command, env }, { sessionId }) => {
-      const backend = await getBackend(sessionId)
-
-      // Check if backend supports exec
-      if (backend.type === BackendType.MEMORY) {
-        throw new NotImplementedError('exec', 'memory')
-      }
-
-      const fileBackend = backend as FileBasedBackend
-      const result = await fileBackend.exec(command, env != null ? { env } : undefined)
+      const backend = await getBackend(sessionId) as FileBasedBackend
+      const result = await backend.exec(command, env != null ? { env } : undefined)
       return {
         content: [{ type: 'text', text: result as string }]
       }

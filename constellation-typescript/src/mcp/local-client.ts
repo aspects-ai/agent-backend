@@ -1,5 +1,11 @@
+/**
+ * TODO Phase 8: This file uses old ConstellationFS config
+ * Will be updated or moved to agentbe-server package
+ */
+
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+// @ts-expect-error - Archived file, will be fixed in Phase 8
 import { ConstellationFS } from '../config/Config.js'
 
 export interface LocalConstellationMCPClientOptions {

@@ -1,0 +1,3 @@
+packages:
+  - 'constellation-typescript'
+  - 'agentbe-server'

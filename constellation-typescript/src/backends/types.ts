@@ -1,114 +1,224 @@
-import { z } from 'zod'
-import { AUTH_TYPES, DEFAULTS, SHELL_TYPES } from '../constants.js'
-import type { Workspace, WorkspaceConfig } from '../workspace/Workspace.js'
+import type { Stats } from 'fs'
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { ScopeConfig, ExecOptions, ReadOptions } from './config.js'
 
 /**
- * Base configuration schema shared by all backends
+ * Backend type identifier
  */
-const BaseBackendConfigSchema = z.object({
-  userId: z.string().min(1, 'userId is required for all backends'),
-  preventDangerous: z.boolean().default(DEFAULTS.PREVENT_DANGEROUS),
-  onDangerousOperation: z
-    .function({
-      input: [z.string()],
-      output: z.void(),
-    })
-    .optional(),
-  maxOutputLength: z.number().positive().optional(),
-})
-
-/**
- * Backend-specific configuration schemas
- */
-const LocalBackendConfigSchema = BaseBackendConfigSchema.extend({
-  type: z.literal('local').default('local'),
-  shell: z.enum(SHELL_TYPES).default(DEFAULTS.SHELL),
-  validateUtils: z.boolean().default(DEFAULTS.VALIDATE_UTILS),
-})
-
-const RemoteBackendConfigSchema = BaseBackendConfigSchema.extend({
-  type: z.literal('remote'),
-  host: z.string().min(1, 'host is required for remote backend'),
-  /** SSH authentication credentials */
-  sshAuth: z.object({
-    type: z.enum(AUTH_TYPES),
-    credentials: z.record(z.string(), z.unknown()),
-  }),
-  /** SSH port (default: 2222) */
-  sshPort: z.number().positive().optional(),
-  /** MCP authentication token */
-  mcpAuth: z.object({
-    token: z.string(),
-  }).optional(),
-  /** MCP server port (default: 3001) */
-  mcpPort: z.number().positive().optional(),
-  /** Timeout for filesystem operations in milliseconds (default: 120000ms / 2 minutes) */
-  operationTimeoutMs: z.number().positive().optional(),
-  /** SSH keep-alive interval in milliseconds (default: 30000ms / 30 seconds) */
-  keepaliveIntervalMs: z.number().positive().optional(),
-  /** Number of missed keep-alives before considering connection dead (default: 3) */
-  keepaliveCountMax: z.number().positive().optional(),
-})
-
-export const BackendConfigSchema = z.discriminatedUnion('type', [
-  LocalBackendConfigSchema,
-  RemoteBackendConfigSchema,
-])
-
-export type BackendConfig = z.infer<typeof BackendConfigSchema>
-export type LocalBackendConfig = z.infer<typeof LocalBackendConfigSchema>
-export type RemoteBackendConfig = z.infer<typeof RemoteBackendConfigSchema>
-
-/**
- * Validation helper for LocalBackendConfig
- */
-export function validateLocalBackendConfig(config: LocalBackendConfig): void {
-  if (!config.userId) {
-    throw new Error('userId is required for local backend')
-  }
+export enum BackendType {
+  LOCAL_FILESYSTEM = 'local-filesystem',
+  REMOTE_FILESYSTEM = 'remote-filesystem',
+  MEMORY = 'memory',
+  DATABASE = 'database',
+  API = 'api'
 }
 
 /**
- * Backend interface that all filesystem implementations must satisfy
- * Provides workspace lifecycle management for different execution environments
- *
- * Backends are responsible for creating and managing workspaces, not for
- * individual file operations. Each workspace implementation handles its own
- * file operations and command execution appropriate to its environment.
- *
- * Backends are keyed by userId and can manage multiple workspaces for that user
+ * Base interface for all backend types
+ * Generic enough to support filesystems, databases, APIs, etc.
  */
-export interface FileSystemBackend {
+export interface Backend {
   /** Backend type identifier */
-  readonly type: 'local' | 'remote' | 'docker'
+  readonly type: BackendType
 
-  /** User identifier this backend is associated with */
-  readonly userId: string
-
-  /** The configuration options for this backend */
-  readonly options: BackendConfig
-
-  /** Whether backend connection was successfully established */
+  /** Whether backend connection is established */
   readonly connected: boolean
 
   /**
-   * Get or create a workspace for this user
-   * @param workspaceName - Optional workspace name (defaults to 'default')
-   * @param config - Optional workspace configuration including custom environment variables
-   * @returns Promise resolving to a Workspace instance
-   * @throws {FileSystemError} When workspace cannot be created
+   * Get MCP client for this backend
    */
-  getWorkspace(workspaceName?: string, config?: WorkspaceConfig): Promise<Workspace>
+  getMCPClient(): Promise<Client>
 
   /**
-   * List all workspaces for this user
-   * @returns Promise resolving to array of workspace names
-   */
-  listWorkspaces(): Promise<string[]>
-
-  /**
-   * Clean up backend resources
-   * @returns Promise that resolves when cleanup is complete
+   * Cleanup resources
    */
   destroy(): Promise<void>
 }
+
+/**
+ * Interface for backends that support file-based operations
+ * Extends base Backend with filesystem operations and command execution
+ *
+ * Note: MemoryBackend implements this interface for consistency,
+ * but exec() throws NotImplementedError
+ */
+export interface FileBasedBackend extends Backend {
+  /** Root directory or namespace for file-based operations */
+  readonly rootDir: string
+
+  /**
+   * Get MCP client for this backend (overrides base to add scopePath)
+   * @param scopePath - Optional path to scope MCP client to
+   */
+  getMCPClient(scopePath?: string): Promise<Client>
+
+  /**
+   * Create a scoped backend restricted to a subdirectory
+   * @param path - Relative path to scope to
+   * @param config - Optional scope configuration
+   */
+  scope(path: string, config?: ScopeConfig): ScopedBackend<this>
+
+  /**
+   * List all scopes (subdirectories from root)
+   */
+  listScopes(): Promise<string[]>
+
+  /**
+   * Execute a shell command
+   * @param command - The shell command to execute
+   * @param options - Execution options
+   * @throws {NotImplementedError} If backend doesn't support execution (e.g., MemoryBackend)
+   */
+  exec(command: string, options?: ExecOptions): Promise<string | Buffer>
+
+  /**
+   * Read file contents
+   * @param path - Relative path to file
+   * @param options - Read options including encoding
+   */
+  read(path: string, options?: ReadOptions): Promise<string | Buffer>
+
+  /**
+   * Write content to file
+   * @param path - Relative path to file
+   * @param content - Content to write
+   */
+  write(path: string, content: string | Buffer): Promise<void>
+
+  /**
+   * List directory contents
+   * @param path - Relative path to directory
+   */
+  readdir(path: string): Promise<string[]>
+
+  /**
+   * Create directory
+   * @param path - Relative path to directory
+   * @param options - Options including recursive flag
+   */
+  mkdir(path: string, options?: { recursive?: boolean }): Promise<void>
+
+  /**
+   * Create empty file
+   * @param path - Relative path to file
+   */
+  touch(path: string): Promise<void>
+
+  /**
+   * Check if path exists
+   * @param path - Relative path to check
+   */
+  exists(path: string): Promise<boolean>
+
+  /**
+   * Get file/directory stats
+   * @param path - Relative path
+   */
+  stat(path: string): Promise<Stats>
+}
+
+/**
+ * Scoped backend wraps a backend with path restriction
+ * Operations are relative to the scope path
+ */
+export interface ScopedBackend<T extends FileBasedBackend> {
+  /** Backend type identifier */
+  readonly type: BackendType
+
+  /** Whether backend connection is established */
+  readonly connected: boolean
+
+  /** Root directory or namespace for file-based operations */
+  readonly rootDir: string
+
+  /** Parent backend this scope was created from */
+  readonly parent: T
+
+  /** Relative path of this scope from parent */
+  readonly scopePath: string
+
+  /**
+   * Get MCP client for this scoped backend
+   * @param scopePath - Optional additional path to scope MCP client to
+   */
+  getMCPClient(scopePath?: string): Promise<Client>
+
+  /**
+   * Create a nested scoped backend
+   * @param path - Relative path to scope to
+   * @param config - Optional scope configuration
+   */
+  scope(path: string, config?: ScopeConfig): ScopedBackend<T>
+
+  /**
+   * List all scopes (subdirectories from root)
+   */
+  listScopes(): Promise<string[]>
+
+  /**
+   * Execute a shell command
+   * @param command - The shell command to execute
+   * @param options - Execution options
+   * @throws {NotImplementedError} If backend doesn't support execution (e.g., MemoryBackend)
+   */
+  exec(command: string, options?: ExecOptions): Promise<string | Buffer>
+
+  /**
+   * Read file contents
+   * @param path - Relative path to file
+   * @param options - Read options including encoding
+   */
+  read(path: string, options?: ReadOptions): Promise<string | Buffer>
+
+  /**
+   * Write content to file
+   * @param path - Relative path to file
+   * @param content - Content to write
+   */
+  write(path: string, content: string | Buffer): Promise<void>
+
+  /**
+   * List directory contents
+   * @param path - Relative path to directory
+   */
+  readdir(path: string): Promise<string[]>
+
+  /**
+   * Create directory
+   * @param path - Relative path to directory
+   * @param options - Options including recursive flag
+   */
+  mkdir(path: string, options?: { recursive?: boolean }): Promise<void>
+
+  /**
+   * Create empty file
+   * @param path - Relative path to file
+   */
+  touch(path: string): Promise<void>
+
+  /**
+   * Check if path exists
+   * @param path - Relative path to check
+   */
+  exists(path: string): Promise<boolean>
+
+  /**
+   * Get file/directory stats
+   * @param path - Relative path
+   */
+  stat(path: string): Promise<Stats>
+}
+
+/**
+ * Scoped backend for file-based backends
+ * Note: ScopedBackend already includes all FileBasedBackend operations
+ * This type alias is provided for clarity
+ */
+export type ScopedFileBasedBackend<T extends FileBasedBackend> = ScopedBackend<T>
+
+// ============================================================================
+// Legacy Exports (for backward compatibility during migration)
+// ============================================================================
+
+export type FileSystemBackend = Backend
