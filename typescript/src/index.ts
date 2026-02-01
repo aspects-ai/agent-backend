@@ -64,7 +64,7 @@ export {
 
 export type {
     LoggingMode,
-    OperationLogEntry, OperationType, OperationsLogger
+    OperationLogEntry, OperationsLogger, OperationType
 } from './logging/index.js'
 
 // ============================================================================
@@ -95,17 +95,3 @@ export {
 //   type CreateLocalMCPClientOptions,
 //   type LocalAgentBeMCPClientOptions
 // } from './mcp/local-client.js'
-
-// ============================================================================
-// Platform Detection & Utilities
-// ============================================================================
-
-export {
-    detectPlatformCapabilities,
-    findNativeLibrary,
-    getPlatformGuidance,
-    getRemoteBackendLibrary,
-    validateNativeLibrary,
-    type PlatformCapabilities
-} from './utils/nativeLibrary.js'
-

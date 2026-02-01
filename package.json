@@ -1,5 +1,5 @@
 {
-  "name": "agent-backend",
+  "name": "@agent-backend/monorepo",
   "version": "1.0.0",
   "private": true,
   "description": "Agent Backend - client library and server infrastructure",
@@ -13,10 +13,6 @@
     "typecheck": "pnpm -r typecheck",
     "dev": "pnpm -r --parallel dev"
   },
-  "workspaces": [
-    "agentbe-typescript",
-    "remote"
-  ],
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"

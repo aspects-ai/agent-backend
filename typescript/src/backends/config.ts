@@ -125,7 +125,7 @@ const LocalFilesystemBackendConfigSchema = z.object({
   rootDir: z.string().min(1),
   isolation: z.enum(['auto', 'bwrap', 'software', 'none']).optional(),
   preventDangerous: z.boolean().optional(),
-  onDangerousOperation: z.function().optional(),
+  onDangerousOperation: z.custom<(operation: string) => void>().optional(),
   maxOutputLength: z.number().positive().optional(),
   shell: z.enum(['bash', 'sh', 'auto']).optional(),
   validateUtils: z.boolean().optional(),
@@ -144,7 +144,7 @@ const RemoteFilesystemBackendConfigSchema = z.object({
   }),
   isolation: z.enum(['auto', 'bwrap', 'software', 'none']).optional(),
   preventDangerous: z.boolean().optional(),
-  onDangerousOperation: z.function().optional(),
+  onDangerousOperation: z.custom<(operation: string) => void>().optional(),
   maxOutputLength: z.number().positive().optional(),
   sshPort: z.number().positive().optional(),
   mcpAuth: z.object({
@@ -200,6 +200,6 @@ export const BackendConfigSchema = z.discriminatedUnion('type', [
   RemoteFilesystemBackendConfigSchema.extend({ type: z.literal('remote') }),
 ])
 
-export function validateLocalBackendConfig(config: LocalBackendConfig): void {
+export function validateLocalBackendConfig(_config: LocalBackendConfig): void {
   // Legacy validation - no-op for now
 }

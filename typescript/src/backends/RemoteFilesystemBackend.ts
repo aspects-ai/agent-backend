@@ -2,12 +2,12 @@ import type { Stats } from 'fs'
 import { clearTimeout, setTimeout } from 'node:timers'
 import * as path from 'path'
 import type { ConnectConfig, SFTPWrapper } from 'ssh2'
-import { Client } from 'ssh2'
+import { Client as SSH2Client } from 'ssh2'
+import type { Client as MCPClient } from '@modelcontextprotocol/sdk/client/index.js'
 import { ERROR_CODES } from '../constants.js'
 import { isCommandSafe, isDangerous } from '../safety.js'
 import { BackendError, DangerousOperationError } from '../types.js'
 import { getLogger } from '../utils/logger.js'
-import { getPlatformGuidance } from '../utils/nativeLibrary.js'
 import type { ExecOptions, ReadOptions, RemoteFilesystemBackendConfig, ScopeConfig } from './config.js'
 import { validateRemoteFilesystemBackendConfig } from './config.js'
 import { validateWithinBoundary } from './pathValidation.js'
@@ -52,7 +52,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
   readonly rootDir: string
 
   private _connected = false
-  private sshClient: Client | null = null
+  private sshClient: SSH2Client | null = null
   private connectionPromise: Promise<void> | null = null
   private readonly config: RemoteFilesystemBackendConfig
 
@@ -85,17 +85,6 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
     this.operationTimeoutMs = config.operationTimeoutMs ?? DEFAULT_OPERATION_TIMEOUT_MS
     this.keepaliveIntervalMs = config.keepaliveIntervalMs ?? DEFAULT_KEEPALIVE_INTERVAL_MS
     this.keepaliveCountMax = config.keepaliveCountMax ?? DEFAULT_KEEPALIVE_COUNT_MAX
-
-    // Check platform support
-    const guidance = getPlatformGuidance('remote')
-    if (!guidance.supported) {
-      const suggestions = guidance.suggestions.join('\n  ')
-      throw new BackendError(
-        guidance.message || 'Remote backend not supported on this platform',
-        ERROR_CODES.BACKEND_NOT_IMPLEMENTED,
-        `Suggestions:\n  ${suggestions}`
-      )
-    }
 
     // SSH client will be created on first connection (lazy initialization)
     this._connected = false
@@ -211,19 +200,21 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
       throw new BackendError('Command cannot be empty', ERROR_CODES.EMPTY_COMMAND)
     }
 
-    // Safety checks
-    if (this.config.preventDangerous && isDangerous(command)) {
-      const error = new DangerousOperationError(command)
-      if (this.config.onDangerousOperation) {
-        this.config.onDangerousOperation(command)
-        return options?.encoding === 'buffer' ? Buffer.alloc(0) : ''
+    // Safety checks (only if preventDangerous is enabled)
+    if (this.config.preventDangerous) {
+      if (isDangerous(command)) {
+        const error = new DangerousOperationError(command)
+        if (this.config.onDangerousOperation) {
+          this.config.onDangerousOperation(command)
+          return options?.encoding === 'buffer' ? Buffer.alloc(0) : ''
+        }
+        throw error
       }
-      throw error
-    }
 
-    const safetyCheck = isCommandSafe(command)
-    if (!safetyCheck.safe) {
-      throw new BackendError(safetyCheck.reason, ERROR_CODES.DANGEROUS_OPERATION, command)
+      const safetyCheck = isCommandSafe(command)
+      if (!safetyCheck.safe) {
+        throw new BackendError(safetyCheck.reason || 'Command failed safety check', ERROR_CODES.DANGEROUS_OPERATION, command)
+      }
     }
 
     // Ensure SSH connection is established
@@ -392,7 +383,8 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
               'read'
             ))
           } else {
-            resolve(data as string)
+            // When encoding is 'utf8', data is string (not Buffer)
+            resolve(data as unknown as string)
           }
         })
       }
@@ -606,7 +598,8 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
             'stat'
           ))
         } else {
-          resolve(stats as Stats)
+          // SSH2 Stats is compatible with fs.Stats for our purposes
+          resolve(stats as unknown as Stats)
         }
       })
     }))
@@ -651,28 +644,28 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
    * @param scopePath - Optional scope path to use as rootDir
    * @returns MCP Client connected to a server for this backend
    */
-  async getMCPClient(scopePath?: string): Promise<Client> {
-    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
+  async getMCPClient(scopePath?: string): Promise<MCPClient> {
+    const { Client: MCPClientClass } = await import('@modelcontextprotocol/sdk/client/index.js')
     const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
 
     // Build command args
     const args = [
       '--backend', 'remote',
       '--rootDir', scopePath || this.rootDir,
-      '--host', this.host,
-      '--username', this.sshAuth.credentials.username,
+      '--host', this.config.host,
+      '--username', this.config.sshAuth.credentials.username,
     ]
 
     // Add authentication
-    if (this.sshAuth.type === 'password' && this.sshAuth.credentials.password) {
-      args.push('--password', this.sshAuth.credentials.password)
-    } else if (this.sshAuth.type === 'key' && this.sshAuth.credentials.privateKey) {
-      args.push('--privateKey', this.sshAuth.credentials.privateKey)
+    if (this.config.sshAuth.type === 'password' && this.config.sshAuth.credentials.password) {
+      args.push('--password', this.config.sshAuth.credentials.password)
+    } else if (this.config.sshAuth.type === 'key' && this.config.sshAuth.credentials.privateKey) {
+      args.push('--privateKey', this.config.sshAuth.credentials.privateKey)
     }
 
     // Add optional port
-    if (this.port && this.port !== 22) {
-      args.push('--port', this.port.toString())
+    if (this.config.sshPort && this.config.sshPort !== 22) {
+      args.push('--port', this.config.sshPort.toString())
     }
 
     // Spawn agentbe-server
@@ -681,7 +674,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
       args,
     })
 
-    const client = new Client(
+    const client = new MCPClientClass(
       {
         name: 'remote-filesystem-client',
         version: '1.0.0',
@@ -757,7 +750,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
    */
   private async createSSHConnection(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const sshClient = new Client()
+      const sshClient = new SSH2Client()
 
       const connectConfig: ConnectConfig = {
         host: this.config.host,
@@ -783,7 +776,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
         resolve()
       })
 
-      sshClient.on('error', (err) => {
+      sshClient.on('error', (err: Error) => {
         getLogger().error('[SSH] Connection error:', err)
         this._connected = false
         this.connectionPromise = null

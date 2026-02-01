@@ -181,7 +181,7 @@ export class LocalFilesystemBackend implements FileBasedBackend {
 
       const safetyCheck = isCommandSafe(command)
       if (!safetyCheck.safe) {
-        throw new BackendError(safetyCheck.reason, 'UNSAFE_COMMAND', command)
+        throw new BackendError(safetyCheck.reason || 'Command failed safety check', 'UNSAFE_COMMAND', command)
       }
     }
 
