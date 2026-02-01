@@ -4,7 +4,7 @@ This directory contains example applications that demonstrate how to use AgentBa
 
 ## Available Examples
 
-### 🌐 web-demo
+### 🌐 NextJS
 A Next.js web application demonstrating both local and remote backend usage.
 
 **Features:**
@@ -15,7 +15,7 @@ A Next.js web application demonstrating both local and remote backend usage.
 
 **Quick Start:**
 ```bash
-cd web-demo/
+cd NextJS/
 npm install
 npm run dev
 ```
@@ -31,7 +31,7 @@ cd ../
 npx agent-backend build-native --output ./build/
 
 # Run with remote backend (Linux only)
-cd ../examples/web-demo/
+cd ../examples/NextJS/
 REMOTE_VM_HOST=root@localhost:2222 \
 LD_PRELOAD=../../typescript/build/libintercept.so \
 npm run dev

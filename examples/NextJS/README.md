@@ -36,14 +36,14 @@ For testing remote backend functionality on macOS/Windows:
    ```
 
 This starts:
-- **web-demo** on `localhost:3000` (Linux container with LD_PRELOAD support)
+- **NextJS** on `localhost:3000` (Linux container with LD_PRELOAD support)
 - **agent-backend-remote** backend on `localhost:2222` (SSH service)
 
 The web demo runs with LD_PRELOAD intercepting commands and routing them to the SSH backend.
 
 ### Deploy to Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/agent-backend/agent-backend/tree/main/examples/web-demo)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/agent-backend/agent-backend/tree/main/examples/NextJS)
 
 1. **One-click deploy** using the button above
 2. **Set environment variable**: Add your `ANTHROPIC_API_KEY` in Vercel dashboard
@@ -168,7 +168,7 @@ for await (const message of query({
 ### Project Structure
 
 ```
-examples/web-demo/
+examples/NextJS/
 ├── app/
 │   ├── api/
 │   │   ├── message/route.ts    # AI message processing

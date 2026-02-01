@@ -10,8 +10,8 @@ WORKDIR /app
 # Production consumers would use published npm package instead
 COPY typescript /agent-backend-local
 
-# Copy web-demo source code (including pre-built native library)
-COPY examples/web-demo .
+# Copy demo source code (including pre-built native library)
+COPY examples/NextJS .
 
 # Fix the AgentBackend dependency path for Docker build
 RUN sed -i 's|"agent-backend": "file:../../typescript/"|"agent-backend": "file:/agent-backend-local"|g' package.json

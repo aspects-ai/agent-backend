@@ -100,18 +100,18 @@ The MCP server provides a standardized interface for AI applications to interact
    # Returns: {"status":"ok","sessions":0}
    ```
 
-3. Configure web-demo to use remote MCP:
+3. Configure example app to use remote MCP:
    ```bash
-   # In examples/web-demo/.env.local
+   # In examples/NextJS/.env.local
    USE_MCP=true
    REMOTE_MCP_URL=http://localhost:3001
    REMOTE_MCP_AUTH_TOKEN=your-secure-auth-token
    OPENROUTER_API_KEY=your-openrouter-key
    ```
 
-4. Start the web-demo:
+4. Start the example app:
    ```bash
-   cd examples/web-demo
+   cd examples/NextJS
    npm run dev
    ```
 

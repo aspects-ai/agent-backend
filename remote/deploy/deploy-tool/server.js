@@ -694,7 +694,7 @@ async function deployAzure({
   log(``);
   log(`MCP Auth Token: ${mcpAuthToken}`);
   log(``);
-  log(`For web-demo, set these environment variables:`);
+  log(`For NextJS, set these environment variables:`);
   log(`  REMOTE_MCP_URL=http://${publicIp}:${mcpPort}`);
   log(`  REMOTE_MCP_AUTH_TOKEN=${mcpAuthToken}`);
   log(``);
@@ -842,7 +842,7 @@ async function deployGCP({
   log(`  gcloud compute firewall-rules create allow-agentbe-mcp \\`);
   log(`    --allow tcp:${mcpPort} --target-tags agentbe-mcp --project ${project}`);
   log(``);
-  log(`For web-demo, set these environment variables:`);
+  log(`For NextJS, set these environment variables:`);
   log(`  REMOTE_MCP_URL=http://${externalIp}:${mcpPort}`);
   log(`  REMOTE_MCP_AUTH_TOKEN=${mcpAuthToken}`);
   log(``);

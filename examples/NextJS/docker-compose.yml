@@ -1,10 +1,10 @@
 version: '3.8'
 
 services:
-  web-demo:
+  NextJS:
     build:
       context: ../..
-      dockerfile: examples/web-demo/Dockerfile
+      dockerfile: examples/NextJS/Dockerfile
     ports:
       - "3000:3000"
     environment:
@@ -13,7 +13,7 @@ services:
       - REMOTE_VM_PASSWORD=agents
       - LD_PRELOAD=/app/dist-native/libintercept.so
       - AGENTBE_DEBUG=1
-      - AGENTBE_APP_ID=web-demo-abc123
+      - AGENTBE_APP_ID=agentbe
       - NEXT_PUBLIC_AGENTBE_TYPE=remote
     networks:
       - agent-be-net
