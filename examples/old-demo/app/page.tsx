@@ -38,7 +38,7 @@ export default function Home() {
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>("files");
   // Get backend type from environment (set at build time)
-  const backendType = (process.env.NEXT_PUBLIC_AGENTBE_TYPE as 'local' | 'remote') || 'local';
+  const backendType = (process.env.NEXT_PUBLIC_AGENTBE_BACKEND_TYPE as 'local' | 'remote') || 'local';
   const [showTabs, setShowTabs] = useState(true);
   const [sandboxFileCount, setSandboxFileCount] = useState(0);
   const [sandboxForceRestart, setSandboxForceRestart] = useState(false);

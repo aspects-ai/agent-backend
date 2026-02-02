@@ -69,7 +69,7 @@ Browser → Next.js API → Routing Logic → Backends
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `AGENTBE_WORKSPACE_ROOT` | ✅ Yes | - | Workspace root directory |
-| `NEXT_PUBLIC_AGENTBE_TYPE` | No | `local` | `local` or `remote` |
+| `NEXT_PUBLIC_AGENTBE_BACKEND_TYPE` | No | `local` | `local` or `remote` |
 | `USE_MCP` | No | `false` | Routing: Codebuff or Vercel AI |
 | `NEXT_PUBLIC_CODEBUFF_API_KEY` | If USE_MCP=false | - | Codebuff API key |
 | `OPENROUTER_API_KEY` | If USE_MCP=true | - | OpenRouter API key |

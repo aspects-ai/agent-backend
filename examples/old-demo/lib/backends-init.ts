@@ -26,7 +26,7 @@ export function isMCPMode(): boolean {
  * enabling use of fs.getMCPTransport() for Vercel AI SDK integration.
  */
 export function createFileSystem(sessionId: string): FileSystem {
-  const backendType = (process.env.NEXT_PUBLIC_AGENTBE_TYPE as 'local' | 'remote') || 'local'
+  const backendType = (process.env.NEXT_PUBLIC_AGENTBE_BACKEND_TYPE as 'local' | 'remote') || 'local'
 
   if (backendType === 'remote') {
     const remoteHost = process.env.REMOTE_VM_HOST

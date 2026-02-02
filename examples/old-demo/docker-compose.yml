@@ -14,7 +14,7 @@ services:
       - LD_PRELOAD=/app/dist-native/libintercept.so
       - AGENTBE_DEBUG=1
       - AGENTBE_APP_ID=agentbe
-      - NEXT_PUBLIC_AGENTBE_TYPE=remote
+      - NEXT_PUBLIC_AGENTBE_BACKEND_TYPE=remote
     networks:
       - agent-be-net
     depends_on:

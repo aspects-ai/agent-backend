@@ -1,10 +1,8 @@
-import { CodebuffClient } from "@codebuff/sdk";
 import type { FileSystem } from "agent-backend";
 import { stepCountIs, streamText } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { createFileSystem, initAgentBackend, isMCPMode } from "../../../lib/backends-init";
-import { getCodebuffClient } from "../../../lib/codebuff-init";
 import { broadcastToStream } from "../../../lib/streams";
 import { createMCPToolsClient, getModel, SYSTEM_PROMPT, type MCPToolsClient } from "../../../lib/vercel-ai-init";
 
@@ -88,9 +86,6 @@ export async function POST(request: NextRequest) {
     if (isMCPMode()) {
       console.log("[API] Using Vercel AI SDK + MCP mode");
       processWithVercelAI(message, sessionId, previousMessages || []);
-    } else {
-      console.log("[API] Using Codebuff SDK + direct mode");
-      processWithCodebuff(fs, message, sessionId, previousRunState);
     }
 
     console.log("[API] Returning stream ID:", streamId);
@@ -229,121 +224,5 @@ async function processWithVercelAI(
     if (mcpClient) {
       await mcpClient.close();
     }
-  }
-}
-
-// ============================================================================
-// Codebuff SDK + Direct Code Path
-// ============================================================================
-
-async function processWithCodebuff(
-  fs: FileSystem,
-  message: string,
-  sessionId: string,
-  previousRunState?: any,
-) {
-  console.log("[CODEBUFF] Starting processing for session:", sessionId);
-
-  try {
-    const workspace = await fs.getWorkspace('default');
-    console.log("[CODEBUFF] Workspace path:", workspace.workspacePath);
-
-    // Get Codebuff client
-    const apiKey = process.env.NEXT_PUBLIC_CODEBUFF_API_KEY;
-    if (!apiKey) {
-      throw new Error("NEXT_PUBLIC_CODEBUFF_API_KEY environment variable is required");
-    }
-
-    const client: CodebuffClient = await getCodebuffClient(fs, apiKey);
-    console.log("[CODEBUFF] Client created successfully");
-
-    const agentId = "base";
-    const agentName = "Base Agent";
-
-    // Start streaming response
-    broadcastToStream(sessionId, {
-      type: "message_start",
-      role: "assistant",
-      agentName,
-      agentId,
-    });
-
-    console.log("[CODEBUFF] Running agent with message:", message.substring(0, 100) + "...");
-
-    const result = await client.run({
-      agent: agentId,
-      prompt: message,
-      ...(previousRunState && { previousRun: previousRunState }),
-      handleEvent: (event: any) => {
-        console.log("[CODEBUFF] Event received:", event.type);
-
-        // Forward subagent lifecycle events directly
-        if (event.type === "subagent_start" || event.type === "subagent_finish") {
-          broadcastToStream(sessionId, {
-            type: event.type,
-            agentName: event.displayName,
-            agentId: event.agentId,
-          });
-        }
-
-        if (event.type === "assistant_message_delta") {
-          const text = event.delta;
-          const chunkSize = 30;
-          for (let i = 0; i < text.length; i += chunkSize) {
-            const chunk = text.slice(i, i + chunkSize);
-            broadcastToStream(sessionId, {
-              type: "assistant_delta",
-              text: chunk,
-            });
-          }
-        } else if (event.type === "tool_call") {
-          console.log("[CODEBUFF] Tool call:", event.toolName, event.params);
-          broadcastToStream(sessionId, {
-            type: "tool_use",
-            id: uuidv4(),
-            toolName: event.toolName,
-            params: event.params || {},
-          });
-        } else if (event.type === "tool_result") {
-          console.log("[CODEBUFF] Tool result for:", event.toolName);
-          broadcastToStream(sessionId, {
-            type: "tool_result",
-            id: uuidv4(),
-            toolName: event.toolName,
-            output: event.output,
-          });
-        } else if (event.type === "text") {
-          console.log("[CODEBUFF] Text message:", event.text?.substring(0, 50));
-          broadcastToStream(sessionId, {
-            type: "assistant_message",
-            id: uuidv4(),
-            text: event.text,
-          });
-        }
-      },
-    });
-
-    console.log("[CODEBUFF] Agent execution completed successfully");
-
-    // Send the run state back to client for next message
-    broadcastToStream(sessionId, {
-      type: "run_state_update",
-      runState: result,
-    });
-
-    // End message and signal completion
-    broadcastToStream(sessionId, {
-      type: "message_end",
-      id: uuidv4(),
-      role: "assistant",
-    });
-    broadcastToStream(sessionId, { type: "done" });
-
-  } catch (error) {
-    console.error("[CODEBUFF] Processing error:", error);
-    broadcastToStream(sessionId, {
-      type: "error",
-      message: error instanceof Error ? error.message : "Unknown error",
-    });
   }
 }
