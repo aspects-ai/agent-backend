@@ -53,7 +53,7 @@ graph TB
             MCP_Server["<b>MCP Server</b><br/>HTTP :3001"]
             SSH["<b>SSH Daemon</b><br/>child process :22"]
         end
-        FS[("<b>Filesystem</b><br/>/workspace")]
+        FS[("<b>Filesystem</b><br/>/var/workspace")]
     end
 
     App -.->|uses| Backend
@@ -251,7 +251,7 @@ graph TB
                 MCP_Server["<b>MCP Server</b><br/>port 3001"]
                 SSH_Server["<b>SSH Daemon</b><br/>port 22"]
             end
-            FS[("<b>Filesystem</b><br/>/workspace")]
+            FS[("<b>Filesystem</b><br/>/var/workspace")]
         end
     end
 
@@ -291,7 +291,7 @@ sequenceDiagram
     participant FS as Filesystem (remote)
 
     Note over App,FS: Initialization (on remote host)
-    App->>Daemon: Start on remote: agent-backend daemon --rootDir /workspace
+    App->>Daemon: Start on remote: agent-backend daemon --rootDir /var/workspace
     Daemon-->>Daemon: SSH Server listening on :22
     Daemon-->>Daemon: MCP Server listening on :3001
 
@@ -306,7 +306,7 @@ sequenceDiagram
 
     Note over App,FS: Direct Backend Operations (via SSH/SFTP)
     App->>RFB: write('config.json', '{...}')
-    RFB->>SSH: SFTP writeFile('/workspace/config.json')
+    RFB->>SSH: SFTP writeFile('/var/workspace/config.json')
     SSH->>Daemon: SFTP protocol
     Daemon->>FS: Write file
     FS-->>Daemon: Success
@@ -315,7 +315,7 @@ sequenceDiagram
     RFB-->>App: Success
 
     App->>RFB: read('config.json')
-    RFB->>SSH: SFTP readFile('/workspace/config.json')
+    RFB->>SSH: SFTP readFile('/var/workspace/config.json')
     SSH->>Daemon: SFTP protocol
     Daemon->>FS: Read file
     FS-->>Daemon: File contents
@@ -346,7 +346,7 @@ sequenceDiagram
     Note over App,MCP: Pass tools to AI agent or invoke manually
     App->>MCP: callTool({name: 'exec', arguments: {command: 'npm test'}})
     MCP->>Daemon: POST /mcp - MCP tool call<br/>Authorization: Bearer token
-    Daemon->>FS: spawn('npm test') in /workspace
+    Daemon->>FS: spawn('npm test') in /var/workspace
     FS-->>Daemon: stdout/stderr/exitCode
     Daemon-->>MCP: MCP tool result {content: [...]}
     MCP-->>App: Tool result
@@ -357,7 +357,7 @@ sequenceDiagram
 **Remote server (Docker):**
 ```bash
 # Start Docker container with full daemon
-agent-backend start-remote --build
+agent-backend start-docker --build
 
 # Or manually:
 docker run -d \
@@ -376,7 +376,7 @@ const backend = new RemoteFilesystemBackend({
   host: 'build-server.com',
   sshPort: 2222,
   mcpPort: 3001,
-  rootDir: '/workspace',
+  rootDir: '/var/workspace',
   sshAuth: {
     type: 'password',
     credentials: {
@@ -435,15 +435,15 @@ graph TB
     end
 
     subgraph library["📦 agent-backend Library"]
-        Backend["<b>Backend Instance</b><br/>rootDir: /workspace"]
+        Backend["<b>Backend Instance</b><br/>rootDir: /var/workspace"]
         Scope1["<b>Scoped Backend</b><br/>users/alice"]
         Scope2["<b>Scoped Backend</b><br/>users/bob"]
     end
 
     subgraph fsLayer["💾 Filesystem"]
-        Root["<b>/workspace</b>"]
-        Alice["<b>/workspace/users/alice</b>"]
-        Bob["<b>/workspace/users/bob</b>"]
+        Root["<b>/var/workspace</b>"]
+        Alice["<b>/var/workspace/users/alice</b>"]
+        Bob["<b>/var/workspace/users/bob</b>"]
     end
 
     App -.-> Backend
@@ -474,120 +474,24 @@ graph TB
 ```typescript
 // Base backend
 const backend = new LocalFilesystemBackend({
-  rootDir: '/workspace'
+  rootDir: '/tmp/workspace'
 })
 
 // Create isolated scopes per user
 const aliceBackend = backend.scope('users/alice')
 const bobBackend = backend.scope('users/bob')
 
-// Alice can only access /workspace/users/alice
+// Alice can only access /tmp/workspace/users/alice
 await aliceBackend.write('private.txt', 'Alice data')
-await aliceBackend.exec('npm install')  // Runs in /workspace/users/alice
+await aliceBackend.exec('npm install')  // Runs in /tmp/workspace/users/alice
 
-// Bob can only access /workspace/users/bob
+// Bob can only access /tmp/workspace/users/bob
 await bobBackend.write('private.txt', 'Bob data')
-await bobBackend.exec('npm install')  // Runs in /workspace/users/bob
+await bobBackend.exec('npm install')  // Runs in /tmp/workspace/users/bob
 
 // Path escape attempts are blocked
 await aliceBackend.write('../bob/steal.txt', 'data')  // Throws PathEscapeError
 ```
-
----
-
-## Security Layers
-
-### 1. Path Validation
-
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'fontSize':'16px', 'fontFamily':'system-ui, -apple-system, sans-serif'}}}%%
-graph LR
-    Request["<b>File Operation</b><br/><i>from your app</i>"]
-    Validate{"<b>Path Validation</b><br/><i>agent-backend</i>"}
-    Normalize["<b>Normalize</b><br/>Treat as relative<br/>to rootDir"]
-    Allow["✅ <b>Allow</b>"]
-    Block1["❌ <b>Block</b><br/>PathEscapeError"]
-
-    Request ==> Validate
-    Validate -->|"✓ Valid path"| Allow
-    Validate -->|"✗ Escapes scope"| Block1
-    Validate -->|"~ Absolute path"| Normalize
-    Normalize --> Allow
-
-    classDef userCode fill:#f8f9fa,stroke:#495057,stroke-width:2px,color:#212529
-    classDef agentBackend fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
-    classDef agentBackendLight fill:#64B5F6,stroke:#2E5C8A,stroke-width:2px,color:#fff
-    classDef success fill:#C8E6C9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
-    classDef error fill:#FFCDD2,stroke:#C62828,stroke-width:2px,color:#B71C1C
-
-    class Request userCode
-    class Validate agentBackend
-    class Normalize agentBackendLight
-    class Allow success
-    class Block1 error
-```
-
-**Protections:**
-- `..` traversal blocked if escapes scope
-- Absolute paths treated as relative to rootDir
-- Symlink following can be disabled
-
-### 2. Command Safety
-
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'fontSize':'16px', 'fontFamily':'system-ui, -apple-system, sans-serif'}}}%%
-graph LR
-    Command["<b>exec() Request</b><br/><i>from your app</i>"]
-    Safety{"<b>Safety Check</b><br/><i>agent-backend</i>"}
-    Isolation{"<b>Isolation Mode</b><br/><i>agent-backend</i>"}
-    Block["❌ <b>Block</b><br/>DangerousOperationError"]
-    Bwrap["<b>bwrap</b><br/>Linux Namespace"]
-    Software["<b>software</b><br/>Heuristics"]
-    Direct["<b>none</b><br/>Direct Exec"]
-    Execute["✅ <b>Execute</b>"]
-
-    Command ==> Safety
-    Safety -->|"✓ Safe"| Isolation
-    Safety -->|"✗ Dangerous"| Block
-
-    Isolation -->|bwrap| Bwrap
-    Isolation -->|software| Software
-    Isolation -->|none| Direct
-
-    Bwrap --> Execute
-    Software --> Execute
-    Direct --> Execute
-
-    classDef userCode fill:#f8f9fa,stroke:#495057,stroke-width:2px,color:#212529
-    classDef agentBackend fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
-    classDef agentBackendLight fill:#64B5F6,stroke:#2E5C8A,stroke-width:2px,color:#fff
-    classDef daemon fill:#607D8B,stroke:#455A64,stroke-width:2px,color:#fff
-    classDef success fill:#C8E6C9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
-    classDef error fill:#FFCDD2,stroke:#C62828,stroke-width:2px,color:#B71C1C
-
-    class Command userCode
-    class Safety,Isolation agentBackend
-    class Bwrap,Software,Direct daemon
-    class Execute success
-    class Block error
-```
-
-**Dangerous patterns blocked:**
-- `rm -rf /`, `dd of=/dev/sda`
-- `sudo`, `su`, privilege escalation
-- Shell injection: `;`, `&&`, `||`, backticks
-- Remote execution: `curl | sh`, `eval`
-
-### 3. Authentication
-
-**Local Development:**
-- Optional: MCP bearer token (HTTP mode)
-- Stdio mode: No authentication needed
-
-**Production (Remote):**
-- Required: SSH authentication (password or key)
-- Required: MCP bearer token
-- Recommended: Firewall rules, VPN
 
 ---
 

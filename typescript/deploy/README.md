@@ -1,345 +1,307 @@
-# agent-backend - Agent Backend Daemon Deployment
+# agentbe-daemon Deployment
 
-Deploy agentbe-daemon (agent backend daemon) to a remote server using Docker.
+Deploy agentbe-daemon to serve a filesystem remotely via SSH (direct operations) and MCP over HTTP (tool execution).
 
-agentbe-daemon serves a local filesystem remotely via MCP over HTTP.
+## For Library Consumers
 
-The deployment provides:
-- SSH access for direct filesystem operations (via sshd)
-- HTTP MCP endpoint for tool execution (via agentbe-daemon)
-- Isolated workspace environment
+If you're using `agent-backend` as an npm package, use the CLI to manage Docker containers.
 
-## Quick Start
-
-### Using CLI (Recommended)
+### Quick Start
 
 ```bash
-# Install agent-backend
+# Install agent-backend globally
 npm install -g agent-backend
 
-# Start remote backend service
-agent-backend start-remote
+# Start agentbe-daemon in Docker
+agent-backend start-docker
 
-# Stop remote backend service
-agent-backend stop-remote
+# Stop the container
+agent-backend stop-docker
 
-# Rebuild and restart
-agent-backend start-remote --build
+# Rebuild and restart (after updates)
+agent-backend start-docker --build
 ```
 
-### Using Docker Compose
+This starts a Docker container with:
+- **SSH daemon** on port 2222 (for direct file operations)
+- **MCP server** on port 3001 (for tool execution)
+- **Default credentials**: `root:agents`
 
-```bash
-cd deploy/docker/
-docker-compose up -d
-```
+### Connect from Your Application
 
-### Using Docker Run
-
-```bash
-# Build the image (from agent-backend directory)
-docker build -f deploy/docker/Dockerfile.runtime -t agentbe/remote-backend .
-
-# Run the container
-docker run -d \
-  -p 2222:22 \
-  -p 3001:3001 \
-  -v $(pwd)/workspace:/workspace \
-  -e MCP_AUTH_TOKEN=your-secure-token \
-  --name agentbe-remote-backend \
-  agentbe/remote-backend
-```
-
-## Daemon Command
-
-The `agent-backend daemon` command runs both MCP and SSH services in a single process:
-
-```bash
-agent-backend daemon --rootDir <path> [OPTIONS]
-```
-
-**Required:**
-- `--rootDir <path>` - Root directory to serve
-
-**Optional - MCP Server:**
-- `--mcp-port <port>` - HTTP port (default: 3001)
-- `--mcp-auth-token <token>` - Bearer token for authentication
-- `--isolation <mode>` - Command isolation: auto|bwrap|software|none
-- `--shell <shell>` - Shell to use: bash|sh|auto
-
-**Optional - SSH:**
-- `--ssh-users <users>` - Comma-separated user:pass pairs (default: root:agents)
-- `--ssh-public-key <key>` - SSH public key for authorized_keys
-- `--ssh-authorized-keys <path>` - File with authorized keys
-
-**Note:** Daemon command requires Linux and root privileges.
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SSH_USERS` | Comma-separated list of `username:password` pairs | `root:agents` |
-| `SSH_PUBLIC_KEY` | SSH public key for key-based authentication | None |
-| `WORKSPACE_ROOT` | Root directory for workspaces | `/workspace` |
-| `ENABLE_LOGGING` | Enable verbose SSH logging | `false` |
-| `MCP_PORT` | Port for MCP server | `3001` |
-| `MCP_AUTH_TOKEN` | Auth token for MCP server (required to enable MCP) | None |
-
-### Example Configurations
-
-#### Multi-user Setup
-```yaml
-environment:
-  - SSH_USERS=alice:password123,bob:password456
-```
-
-#### SSH Key Authentication
-```yaml
-environment:
-  - SSH_PUBLIC_KEY=ssh-rsa AAAAB3NzaC1yc2E...your-key-here
-volumes:
-  - ~/.ssh/id_rsa.pub:/keys/id_rsa.pub:ro
-```
-
-#### MCP Server Setup
-```yaml
-environment:
-  - MCP_PORT=3001
-  - MCP_AUTH_TOKEN=your-secure-auth-token
-ports:
-  - "3001:3001"
-```
-
-## Usage with AgentBackend
-
-### Using MCP (Recommended for AI Applications)
-
-The MCP server provides a standardized interface for AI applications to interact with the filesystem.
-
-1. Start the remote backend with MCP enabled:
-   ```bash
-   cd remote/
-   # Edit docker-compose.yml to set MCP_AUTH_TOKEN
-   docker-compose up -d
-   ```
-
-2. Test the MCP server:
-   ```bash
-   curl http://localhost:3001/health
-   # Returns: {"status":"ok","sessions":0}
-   ```
-
-3. Configure example app to use remote MCP:
-   ```bash
-   # In examples/NextJS/.env.local
-   USE_MCP=true
-   REMOTE_MCP_URL=http://localhost:3001
-   REMOTE_MCP_AUTH_TOKEN=your-secure-auth-token
-   OPENROUTER_API_KEY=your-openrouter-key
-   ```
-
-4. Start the example app:
-   ```bash
-   cd examples/NextJS
-   npm run dev
-   ```
-
-## Deployment Architecture
-
-The unified daemon runs on a remote machine (typically in Docker) and serves
-its local filesystem to remote clients.
-
-```
-Machine A (Client):
-  └── RemoteFilesystemBackend
-      ├── SSH → Machine B:2222 (direct filesystem ops)
-      └── MCP client → Machine B:3001 (tool execution)
-
-Machine B (Docker Container):
-  └── agentbe-daemon (unified process, PID 1)
-      ├── MCP HTTP Server - port 3001
-      │   └── Serves /workspace via MCP/HTTP
-      └── SSH Daemon - port 22
-          └── Direct filesystem access
-```
-
-**Key points:**
-- Single `agent-backend daemon` process manages both services
-- MCP and SSH access the **same filesystem** (/workspace)
-- Graceful shutdown of both services on container stop
-- Fail-fast if SSH daemon crashes
-
-### Remote Backend Usage
-
-Use RemoteFilesystemBackend in your application:
-
-```javascript
+```typescript
 import { RemoteFilesystemBackend } from 'agent-backend'
 
-const remote = new RemoteFilesystemBackend({
-  rootDir: '/workspace',
+const backend = new RemoteFilesystemBackend({
+  rootDir: '/var/workspace',
   host: 'localhost',
   sshPort: 2222,
   mcpPort: 3001,
   sshAuth: {
     type: 'password',
-    credentials: {
-      username: 'root',
-      password: 'agents'
-    }
+    credentials: { username: 'root', password: 'agents' }
   },
-  mcpAuthToken: 'your-secure-token'
+  mcpAuthToken: 'your-secure-token'  // if configured
 })
 
-await remote.connect()
-await remote.exec('npm install')
-await remote.write('config.json', '{}')
-const files = await remote.readdir('src')
-     }
-   })
-   
-   await fs.exec('ls -la')  // Executes on remote backend
-   ```
+await backend.connect()
+await backend.exec('npm install')
+await backend.write('config.json', '{}')
+```
 
-### Cloud Deployment (Azure/GCP)
-
-Use the deploy tool for one-click VM deployment:
+### Test the Container
 
 ```bash
-# From root directory
-./deploy-tool.sh
-# Opens http://localhost:3456 with deployment UI
+# Check MCP health
+curl http://localhost:3001/health
+
+# SSH into the container
+ssh root@localhost -p 2222
+# Password: agents
 ```
 
-Or run manually:
+---
+
+## For Developers
+
+If you're developing agent-backend itself, use the Makefile and mprocs for a better workflow.
+
+### Development Setup
 
 ```bash
-cd remote/deploy-tool
-npm install
-node server.js
+# From monorepo root - install all dependencies
+make install
+
+# Start local development (TypeScript watch + NextJS)
+make dev
+
+# Start with Docker-based remote testing
+make dev-remote
 ```
 
-The deploy tool:
-- Creates a VM with Docker pre-installed
-- Pulls `ghcr.io/aspects-ai/agent-backend-remote:latest`
-- Configures SSH (port 2222) and MCP (port 3001)
-- Auto-generates MCP auth token if not provided
+### Docker Commands
 
-**After deployment, configure your host app:**
 ```bash
-# Environment variables for your application
-REMOTE_MCP_URL=http://<vm-ip>:3001
-REMOTE_MCP_AUTH_TOKEN=<token-from-deploy-output>
+# Build the Docker image
+make docker-build
+
+# Clean up Docker resources
+make docker-clean
 ```
 
-**Connect via MCP from host application:**
-```typescript
-import { createAgentBeMCPClient } from 'agent-backend'
+### How `make dev-remote` Works
 
-const mcpClient = await createAgentBeMCPClient({
-  url: process.env.REMOTE_MCP_URL,
-  authToken: process.env.REMOTE_MCP_AUTH_TOKEN,
-  userId: sessionId,
-  workspace: 'default',
-})
+Runs `REMOTE=1 mprocs` which starts:
+1. **typescript-watch** - Rebuilds TypeScript on changes
+2. **agentbe-daemon** - Docker container with MCP + SSH
+3. **nextjs** - NextJS dev server
 
-// Call tools directly
-const result = await mcpClient.callTool({
-  name: 'exec',
-  arguments: { command: 'ls -la' }
-})
+The mprocs TUI lets you monitor all processes, view logs, and restart individual services. Configure the NextJS app via the Settings UI to connect to the daemon.
 
-await mcpClient.close()
-```
+### Manual Docker Testing
 
-**SSH access (for debugging):**
 ```bash
-ssh <user>@<vm-ip> -p 2222
+# Build image
+cd typescript/deploy/docker
+docker build -f Dockerfile.runtime -t agentbe-daemon:latest ../../..
+
+# Run container
+docker run -d \
+  --name agentbe-daemon \
+  -p 2222:22 \
+  -p 3001:3001 \
+  -v $(pwd)/tmp/workspace:/var/workspace \
+  -e MCP_AUTH_TOKEN=dev-token \
+  agentbe-daemon:latest
+
+# View logs
+docker logs -f agentbe-daemon
+
+# Stop and remove
+docker stop agentbe-daemon && docker rm agentbe-daemon
 ```
 
-## Security Considerations
+---
 
-### For Development
-- Default credentials are `root:agents`
-- Use only in isolated development environments
-- Consider using SSH keys instead of passwords
+## Daemon Command Reference
 
-### For Production
-- **Always change default passwords**
-- Use SSH key authentication when possible
-- Configure proper firewall rules
-- Use secure networks and VPNs
-- Regularly update the container image
+The `agent-backend daemon` command runs MCP and optionally SSH services:
 
-### Recommended Production Setup
+```bash
+agent-backend daemon --rootDir <path> [OPTIONS]
+```
+
+### Required
+- `--rootDir <path>` - Root directory to serve
+
+### Optional - Mode
+- `--local-only` - Stdio MCP only, no SSH (works on macOS/Windows)
+
+### Optional - MCP Server
+- `--mcp-port <port>` - HTTP port (default: 3001)
+- `--mcp-auth-token <token>` - Bearer token for authentication
+- `--isolation <mode>` - Command isolation: auto|bwrap|software|none
+- `--shell <shell>` - Shell to use: bash|sh|auto
+
+### Optional - SSH (full mode only)
+- `--ssh-users <users>` - Comma-separated user:pass pairs (default: root:agents)
+- `--ssh-public-key <key>` - SSH public key for authorized_keys
+- `--ssh-authorized-keys <path>` - File with authorized keys
+
+**Note:** Full daemon mode (with SSH) requires Linux and root privileges.
+
+---
+
+## Docker Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SSH_USERS` | Comma-separated `user:password` pairs | `root:agents` |
+| `SSH_PUBLIC_KEY` | SSH public key for key auth | None |
+| `WORKSPACE_ROOT` | Root directory for workspaces | `/var/workspace` |
+| `MCP_PORT` | MCP server port | `3001` |
+| `MCP_AUTH_TOKEN` | Bearer token for MCP auth | None |
+
+### Docker Compose
+
 ```yaml
+# docker-compose.yml
 services:
-  remote-backend:
-    image: agent-backend/remote-backend:latest
+  agentbe-daemon:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.runtime
     ports:
-      - "127.0.0.1:22:22"  # Bind to localhost only
+      - "2222:22"
+      - "3001:3001"
     volumes:
-      - /data/secure-workspace:/workspace
-      - /etc/ssh/agents_be_key.pub:/keys/id_rsa.pub:ro
+      - ./var/workspace:/var/workspace
     environment:
-      - SSH_USERS=agent-backend:very-secure-password-here
-      - ENABLE_LOGGING=true
+      - SSH_USERS=dev:devpassword
+      - MCP_AUTH_TOKEN=your-secure-token
+```
+
+---
+
+## Architecture
+
+```
+Client Machine:
+  └── RemoteFilesystemBackend
+      ├── SSH client → Remote:2222 (file ops: read, write, exec)
+      └── MCP client → Remote:3001 (tool execution)
+
+Remote Machine (Docker):
+  └── agentbe-daemon (PID 1)
+      ├── MCP HTTP Server (:3001)
+      │   └── Serves /var/workspace via MCP protocol
+      └── SSH Daemon (:22 → host:2222)
+          └── Direct filesystem access
+```
+
+Both services access the **same filesystem** (`/var/workspace`).
+
+---
+
+## Cloud Deployment
+
+### Using Deploy Tool
+
+```bash
+# From monorepo root
+make start-deploy-ui
+# Opens http://localhost:3456
+```
+
+The deploy tool creates a VM with Docker and configures agentbe-daemon automatically.
+
+### Manual Cloud Setup
+
+1. Provision a Linux VM (Ubuntu recommended)
+2. Install Docker
+3. Pull and run the image:
+
+```bash
+docker pull ghcr.io/aspects-ai/agent-backend-remote:latest
+
+docker run -d \
+  --name agentbe-daemon \
+  -p 2222:22 \
+  -p 3001:3001 \
+  -v /var/workspace:/var/workspace \
+  -e SSH_USERS=agent:secure-password \
+  -e MCP_AUTH_TOKEN=production-token \
+  --restart unless-stopped \
+  ghcr.io/aspects-ai/agent-backend-remote:latest
+```
+
+---
+
+## Security
+
+### Development
+- Default credentials: `root:agents`
+- Only use in isolated environments
+
+### Production
+- **Change default passwords**
+- Use SSH key authentication
+- Set `MCP_AUTH_TOKEN` for MCP authentication
+- Bind ports to localhost if using a reverse proxy
+- Configure firewall rules
+
+```yaml
+# Production example
+services:
+  agentbe-daemon:
+    image: ghcr.io/aspects-ai/agent-backend-remote:latest
+    ports:
+      - "127.0.0.1:2222:22"  # Localhost only
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - /data/workspace:/var/workspace
+      - /etc/ssh/authorized_keys:/keys/authorized_keys:ro
+    environment:
+      - SSH_USERS=agent:very-secure-password
+      - MCP_AUTH_TOKEN=production-secret-token
     restart: unless-stopped
 ```
 
+---
+
 ## Troubleshooting
 
-### Connection Issues
+### Container Not Starting
+
 ```bash
-# Check if container is running
-docker ps | grep agent-backend-remote
+# Check if running
+docker ps | grep agentbe
 
-# Check container logs
-docker logs agent-backend-remote
+# View logs
+docker logs agentbe-daemon
 
-# Test SSH connection
-ssh root@localhost -p 2222
+# Check daemon process inside container
+docker exec agentbe-daemon ps aux
+```
+
+### Connection Issues
+
+```bash
+# Test MCP
+curl http://localhost:3001/health
+
+# Test SSH
+ssh -v root@localhost -p 2222
 ```
 
 ### Permission Issues
+
 ```bash
 # Check workspace permissions
-docker exec agent-backend-remote ls -la /workspace
+docker exec agentbe-daemon ls -la /var/workspace
 
-# Fix permissions if needed
-docker exec agent-backend-remote chown -R root:root /workspace
-```
-
-### Log Analysis
-```bash
-# Follow logs in real-time
-docker logs -f agentbe-remote-backend
-
-# Check daemon process
-docker exec agentbe-remote-backend ps aux
-# Should show agent-backend as PID 1, sshd as child
-
-# Check MCP health
-curl http://localhost:3001/health
-```
-
-## Building and Publishing
-
-Images are automatically published to GitHub Container Registry on push to `production` branch.
-
-### Manual Build
-```bash
-docker build -f remote/Dockerfile.runtime -t ghcr.io/aspects-ai/agent-backend-remote:latest .
-```
-
-### Manual Push
-```bash
-docker push ghcr.io/aspects-ai/agent-backend-remote:latest
-```
-
-### Pull Image
-```bash
-docker pull ghcr.io/aspects-ai/agent-backend-remote:latest
+# Fix if needed
+docker exec agentbe-daemon chown -R root:root /var/workspace
 ```

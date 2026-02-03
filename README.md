@@ -279,68 +279,58 @@ process.on('SIGTERM', () => pool.destroyAll())
 
 ## Server Deployment
 
-For remote backend deployment, use the `remote` package:
+### Docker (Recommended)
+
+Start agentbe-daemon in Docker with a single command:
 
 ```bash
-npm install -g remote
+# Install agent-backend CLI
+npm install -g agent-backend
+
+# Start Docker container with agentbe-daemon
+agent-backend start-docker
+
+# Stop the container
+agent-backend stop-docker
 ```
 
-### Start MCP Server
+This starts a container with:
+- **SSH daemon** on port 2222 (for direct file operations)
+- **MCP server** on port 3001 (for tool execution)
+- **Default credentials**: `root:agents`
 
-Start MCP server:
+Connect from your application:
 
-```bash
-# Basic configuration, no auth
-agent-backend --rootDir /tmp/workspace
+```typescript
+import { RemoteFilesystemBackend } from 'agent-backend'
 
-# SSH + MCP Auth
-agent-backend --rootDir /var/workspace \
-  --host server.example.com --username agent --password secret
-```
-
-### Docker Remote Backend
-
-Deploy a complete remote backend environment with Docker:
-
-```bash
-# Start Docker-based remote backend service
-agent-backend start-remote
-
-# Now you can connect from your code:
-const fs = new RemoteFilesystemBackend({
-  rootDir: '/workspace',
+const backend = new RemoteFilesystemBackend({
+  rootDir: '/var/workspace',
   host: 'localhost',
-  port: 2222,
+  sshPort: 2222,
+  mcpPort: 3001,
   sshAuth: {
     type: 'password',
     credentials: { username: 'root', password: 'agents' }
   }
 })
+
+await backend.connect()
+await backend.exec('npm install')
 ```
 
-**Features:**
-- SSH access on port 2222
-- Pre-configured users and workspaces
-- MCP server integration
-- Docker-based isolation
+### Local-Only Mode
 
-### Cloud VM Deployment
-
-Deploy to Azure or GCP using the deployment tool:
+For local development without Docker (works on macOS/Windows):
 
 ```bash
-# Access the deployment UI
-cd agent-backend/deploy/deploy-tool
-npm install
-node server.js
-# Open http://localhost:3456
+# Start agentbe-daemon in local-only mode (stdio MCP, no SSH)
+agent-backend daemon --rootDir /tmp/workspace --local-only
 ```
 
-Or use cloud-init scripts directly:
-- `deploy/scripts/azure-vm-startup.sh`
-- `deploy/scripts/gcp-vm-startup.sh`
+### Cloud Deployment
 
-**Learn more:** See the [agent-backend README](./agent-backend/README.md) for full deployment documentation.
+See [typescript/deploy/README.md](./typescript/deploy/README.md) for cloud VM deployment options.
 
 ---
 
@@ -589,7 +579,7 @@ Then run `make dev` - Python app starts automatically.
 ### Docker Commands
 
 ```bash
-make docker-build   # Build agent-backend Docker image
+make docker-build   # Build agentbe-daemon Docker image
 make docker-clean   # Remove containers and images
 ```
 
@@ -597,9 +587,8 @@ Manual testing:
 ```bash
 docker run --rm -it \
   -p 3001:3001 -p 2222:22 \
-  -v "$(pwd)/tmp/remote-workspace:/workspace" \
-  agent-backend:latest \
-  agent-backend --rootDir /workspace
+  -v "$(pwd)/tmp/remote-workspace:/var/workspace" \
+  agentbe-daemon:latest
 
 # Test: ssh -p 2222 root@localhost (password: agents)
 # Test: curl http://localhost:3001/health
@@ -626,19 +615,19 @@ lsof -ti:3001 | xargs kill -9    # MCP server
 3. Restart nextjs-dev (press `r` in mprocs)
 
 **Remote mode not working**
-1. Verify Docker image: `docker images | grep agent-backend`
-2. Check container: `docker ps | grep agent-backend-remote`
+1. Verify Docker image: `docker images | grep agentbe-daemon`
+2. Check container: `docker ps | grep agentbe-daemon`
 3. Test MCP: `curl http://localhost:3001/health`
-4. View logs: `docker logs agent-backend-remote`
+4. View logs: `docker logs agentbe-daemon`
 
 ---
 
-### Configuration Files
+### Configuration
 
-**mprocs.yaml** - Local development (TypeScript + NextJS)
-**mprocs.remote.yaml** - Remote testing (+ Docker container)
+**mprocs.yaml** - All dev processes (edit to add new services)
+**.env** - Daemon configuration (copy from `.env.example`)
 
-Customize by editing these YAML files to add processes, change commands, or set dependencies.
+Use `REMOTE=1 mprocs` or `make dev-remote` to enable the Docker daemon.
 
 ---
 

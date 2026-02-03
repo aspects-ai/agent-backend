@@ -31,7 +31,7 @@ pnpm run build && node bin/agent-backend.js daemon --rootDir /tmp/workspace --lo
 agent-backend daemon --rootDir /tmp/workspace --local-only --mcp-port 3456
 
 # Full daemon mode (Linux only, requires root)
-agent-backend daemon --rootDir /workspace --mcp-auth-token <token>
+agent-backend daemon --rootDir /var/workspace --mcp-auth-token <token>
 ```
 
 ### Package Info

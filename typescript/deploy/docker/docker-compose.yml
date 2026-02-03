@@ -1,58 +1,35 @@
-# Agent Backend Remote Service
-# Docker Compose configuration for easy deployment
+# agentbe-daemon Docker Compose
+#
+# Usage (from this directory):
+#   cp ../../../.env.example ../../../.env  # First time only
+#   docker-compose up -d
+#   docker-compose logs -f
+#   docker-compose down
+#
+# Or use `make dev-remote` from monorepo root (recommended for development)
+#
+# CLI defaults if not set in .env: MCP_PORT=3001, SSH_USERS=root:agents
 
 services:
-  remote-backend:
+  agentbe-daemon:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.runtime
-    image: agentbe/remote-backend:latest
-    container_name: agentbe-remote-backend
+    image: agentbe-daemon:latest
+    container_name: agentbe-daemon
     ports:
-      - "2222:22" # SSH port mapping
-      - "3001:3001" # MCP server port
+      - "2222:22" # SSH
+      - "3001:3001" # MCP
     volumes:
-      - ./workspace:/workspace # Persistent workspace
-      # - ./keys:/keys:ro        # SSH keys (uncomment if needed)
-    environment:
-      # Multi-user configuration (comma-separated)
-      - SSH_USERS=dev:devpassword,admin:adminpassword
-
-      # Workspace configuration
-      - WORKSPACE_ROOT=/workspace
-      - ENABLE_LOGGING=true
-
-      # MCP server configuration
-      - MCP_PORT=3001
-      - MCP_AUTH_TOKEN=your-secure-auth-token # Change this!
-      # SSH key configuration (optional)
-      # - SSH_PUBLIC_KEY=ssh-rsa AAAAB3N...your-key-here
-
-    devices:
-      - /dev/fuse:/dev/fuse
-
-    cap_add:
-      - SYS_ADMIN
-
-    security_opt:
-      - apparmor:unconfined
-
+      - ./var/workspace:/var/workspace
+      # Uncomment for SSH key auth:
+      # - ./keys:/keys:ro
+    env_file:
+      - ../../../.env
     restart: unless-stopped
-
-    # Health check
     healthcheck:
-      test: [ "CMD", "service", "ssh", "status" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
-
-# Optional: Create a development network
-networks:
-  agentbe:
-    driver: bridge
-
-# Optional: Named volume for workspace persistence
-volumes:
-  workspace:
-    driver: local
+      start_period: 10s

@@ -1,49 +1,56 @@
 #!/bin/bash
 
-# AgentBackend Remote Backend Entrypoint
-# Starts agentbe-daemon with integrated MCP + SSH management
+# agentbe-daemon Docker Entrypoint
+# Translates environment variables to CLI arguments
+#
+# Environment variables (all optional, CLI has defaults):
+#   WORKSPACE_ROOT    - Root directory to serve (default: /var/agentbe)
+#   MCP_PORT          - MCP server port
+#   MCP_AUTH_TOKEN    - Bearer token for MCP authentication
+#   SSH_USERS         - Comma-separated user:pass pairs
+#   SSH_PUBLIC_KEY    - SSH public key to add to authorized_keys
+#
+# Can also mount /keys/authorized_keys for SSH key auth
 
 set -e
 
-echo "🌟 Starting AgentBackend Remote Backend..."
-
-# Read environment variables with defaults
-WORKSPACE_ROOT="${WORKSPACE_ROOT:-/workspace}"
-MCP_PORT="${MCP_PORT:-3001}"
-MCP_AUTH_TOKEN="${MCP_AUTH_TOKEN:-}"
-SSH_USERS="${SSH_USERS:-root:agents}"
+# Only WORKSPACE_ROOT needs a default since rootDir is required by CLI
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-/var/agentbe}"
 
 # Create workspace directory
 mkdir -p "$WORKSPACE_ROOT"
 chmod 755 "$WORKSPACE_ROOT"
 
-echo "🚀 Starting agentbe-daemon (MCP + SSH)..."
-echo "   Workspace: $WORKSPACE_ROOT"
-echo "   MCP Port: $MCP_PORT"
-echo "   SSH Users: $SSH_USERS"
-echo ""
+echo "Starting agentbe-daemon..."
+echo "  Workspace: $WORKSPACE_ROOT"
 
-# Build command arguments
-DAEMON_ARGS=(
-  --rootDir "$WORKSPACE_ROOT"
-  --mcp-port "$MCP_PORT"
-  --ssh-users "$SSH_USERS"
-)
+# Build command arguments - only add flags if env vars are set
+DAEMON_ARGS=(--rootDir "$WORKSPACE_ROOT")
 
-# Add auth token if provided
+if [ -n "$MCP_PORT" ]; then
+  DAEMON_ARGS+=(--mcp-port "$MCP_PORT")
+  echo "  MCP Port: $MCP_PORT"
+fi
+
 if [ -n "$MCP_AUTH_TOKEN" ]; then
   DAEMON_ARGS+=(--mcp-auth-token "$MCP_AUTH_TOKEN")
+  echo "  MCP Auth: enabled"
 fi
 
-# Add SSH public key if provided
+if [ -n "$SSH_USERS" ]; then
+  DAEMON_ARGS+=(--ssh-users "$SSH_USERS")
+  echo "  SSH Users: $SSH_USERS"
+fi
+
 if [ -n "$SSH_PUBLIC_KEY" ]; then
   DAEMON_ARGS+=(--ssh-public-key "$SSH_PUBLIC_KEY")
+  echo "  SSH Key: provided via env"
 fi
 
-# Add SSH authorized_keys file if mounted
 if [ -f /keys/authorized_keys ]; then
   DAEMON_ARGS+=(--ssh-authorized-keys /keys/authorized_keys)
+  echo "  SSH Keys: /keys/authorized_keys"
 fi
 
-# Run unified daemon (handles all user setup + starts both services)
+echo ""
 exec agent-backend daemon "${DAEMON_ARGS[@]}"

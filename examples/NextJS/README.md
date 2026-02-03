@@ -31,19 +31,16 @@ cp .env.example .env.local
 Edit `.env.local`:
 
 ```bash
-# Required
-AGENTBE_WORKSPACE_ROOT=/tmp/agentbe-workspace
+# Required - AI provider API key
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
-
-# Backend type (local or remote)
-NEXT_PUBLIC_BACKEND_TYPE=local
-
-# Optional (only if NEXT_PUBLIC_BACKEND_TYPE=remote)
-REMOTE_VM_HOST=example.com
-REMOTE_VM_USER=agent
-REMOTE_VM_PASSWORD=secret
-REMOTE_MCP_URL=http://example.com:3001
 ```
+
+**Note:** The app's **Settings UI** (gear icon in header) configures how the *client* connects to a backend:
+- Backend type (local vs remote)
+- For local: workspace directory, isolation mode
+- For remote: host, ports, SSH credentials, MCP auth token
+
+This is *client configuration* only. If using a remote daemon, the daemon itself is configured separately via CLI args or Docker environment variables (see [deploy README](../../typescript/deploy/README.md)).
 
 ### 3. Create Workspace Directory
 
@@ -71,36 +68,38 @@ cd examples/NextJS && pnpm run dev & # NextJS dev server
 
 ### Remote Setup (Optional)
 
-If you want to use a remote backend with an MCP server running on a remote host:
+If you want to use a remote backend with agentbe-daemon running on a remote host:
 
-**On the remote host:**
+**On the remote host (start Docker container):**
 
 ```bash
-# Start MCP server on remote machine
-agent-backend \
-  --backend local \
-  --rootDir /workspace \
-  --http-port 3001
+# Start agentbe-daemon in Docker
+agent-backend start-docker --build
 ```
+
+This starts a Docker container with:
+- SSH daemon on port 2222
+- MCP server on port 3001
+- Default credentials: `root:agents`
 
 **On your local machine:**
 
-Configure `examples/NextJS/.env.local` for remote:
+1. Start the NextJS app: `make dev` (from monorepo root)
+2. Click the **Settings icon** (gear) in the app header
+3. Switch backend type to **Remote**
+4. Configure connection details:
+   - Host: `localhost` (or remote IP)
+   - SSH Port: `2222`
+   - MCP Port: `3001`
+   - Username: `root`
+   - Password: `agents`
+   - MCP Auth Token: (if configured)
+5. Click **Save & Restart**
+
+**Alternative:** For remote testing with mprocs:
 
 ```bash
-AGENTBE_WORKSPACE_ROOT=/workspace
-NEXT_PUBLIC_BACKEND_TYPE=remote
-REMOTE_VM_HOST=remote-server.com
-REMOTE_VM_USER=agent
-REMOTE_VM_PASSWORD=secret
-REMOTE_MCP_URL=http://remote-server.com:3001
-OPENROUTER_API_KEY=sk-or-v1-your-key-here
-```
-
-Then run from monorepo root:
-
-```bash
-make dev-remote  # Uses mprocs with remote backend config
+make dev-remote  # Starts Docker container + NextJS configured for remote
 ```
 
 ## Architecture
@@ -157,7 +156,7 @@ agent-backend daemon --rootDir .agentbe-workspace/ \
   --mcp-auth-token <token>
 
 # SSH daemon (sshd) should also be running
-# Both access the same filesystem: /workspace
+# Both access the same filesystem: /var/workspace
 ```
 
 **In NextJS App** (via UI settings):
@@ -355,17 +354,13 @@ examples/NextJS/
 
 ## Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `AGENTBE_WORKSPACE_ROOT` | ✅ Yes | - | Workspace directory path |
-| `OPENROUTER_API_KEY` | ✅ Yes | - | OpenRouter API key for AI |
-| `NEXT_PUBLIC_BACKEND_TYPE` | ❌ No | `local` | Backend type: `local` or `remote` |
-| `REMOTE_VM_HOST` | If remote | - | SSH hostname for remote backend |
-| `REMOTE_VM_USER` | If remote | - | SSH username |
-| `REMOTE_VM_PASSWORD` | If remote | - | SSH password (or use `REMOTE_VM_PRIVATE_KEY`) |
-| `REMOTE_VM_PRIVATE_KEY` | If remote | - | Path to SSH private key file |
-| `REMOTE_MCP_URL` | If remote | - | MCP server URL on remote host (e.g., `http://remote-server.com:3001`) |
-| `REMOTE_MCP_AUTH_TOKEN` | ❌ No | - | Optional authentication token for remote MCP server |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENROUTER_API_KEY` | ✅ Yes | OpenRouter API key for AI |
+
+**Client configuration** (how the app connects to a backend) is managed via the **Settings UI** in the app header. This includes backend type, workspace directory, and remote connection details. Configuration is stored in-memory and resets on server restart.
+
+**Daemon configuration** (if using remote mode) is separate - see [deploy README](../../typescript/deploy/README.md) for daemon CLI args and Docker environment variables.
 
 ## Troubleshooting
 

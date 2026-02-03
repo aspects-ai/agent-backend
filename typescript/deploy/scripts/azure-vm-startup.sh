@@ -29,8 +29,8 @@ echo "[3/5] Pulling AgentBackend remote backend image..."
 docker pull ghcr.io/aspects-ai/agent-backend-remote:latest
 
 # Create workspace directory
-mkdir -p /workspace
-chmod 755 /workspace
+mkdir -p /var/workspace
+chmod 755 /var/workspace
 
 # Run the container
 echo "[4/5] Starting AgentBackend container..."
@@ -39,7 +39,7 @@ docker run -d \
   --name agent-backend-remote \
   -p 2222:22 \
   -p ${MCP_PORT}:${MCP_PORT} \
-  -v /workspace:/workspace \
+  -v /var/workspace:/var/workspace \
   -e MCP_AUTH_TOKEN="${MCP_AUTH_TOKEN}" \
   -e MCP_PORT="${MCP_PORT}" \
   -e SSH_USERS="${SSH_USERS}" \

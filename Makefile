@@ -127,7 +127,7 @@ dev: ## Start all dev processes with interactive TUI (local mode)
 	}
 	mprocs
 
-dev-remote: ## Start dev with Docker-based daemon simulation
+dev-remote: ## Start dev with Docker-based daemon
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \
 		exit 1; \
@@ -137,14 +137,12 @@ dev-remote: ## Start dev with Docker-based daemon simulation
 		echo "Install: https://docs.docker.com/get-docker/"; \
 		exit 1; \
 	}
-	@echo "Creating remote workspace directory..."
 	@mkdir -p tmp/remote-workspace
 	@if ! docker images | grep -q "agentbe-daemon.*latest"; then \
 		echo "Docker image not found. Building agentbe-daemon:latest..."; \
 		$(MAKE) docker-build; \
 	fi
-	@echo "Starting backend daemon testing mode..."
-	mprocs -c mprocs.remote.yaml
+	REMOTE=1 mprocs
 
 clean: ## Clean build artifacts and dependencies
 	@echo "Cleaning TypeScript packages..."

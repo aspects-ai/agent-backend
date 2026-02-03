@@ -57,8 +57,8 @@ ARG AGENTBE_VERSION=latest
 RUN npm i -g agent-backend@${AGENTBE_VERSION}
 
 # Create workspace directory
-RUN mkdir -p /workspace
-WORKDIR /workspace
+RUN mkdir -p /var/workspace
+WORKDIR /var/workspace
 
 # Set up SSH configuration
 RUN mkdir /var/run/sshd && \
@@ -102,8 +102,8 @@ COPY deploy/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Set workspace permissions
-RUN chmod 755 /workspace && \
-    chown -R root:root /workspace
+RUN chmod 755 /var/workspace && \
+    chown -R root:root /var/workspace
 
 # Expose SSH port and MCP server port
 EXPOSE 22 3001

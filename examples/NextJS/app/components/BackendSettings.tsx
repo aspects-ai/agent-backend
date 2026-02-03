@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Settings, X, Server, Wifi } from 'lucide-react'
-import type { BackendConfig } from '@/lib/backend-config'
+import { DEFAULT_LOCAL_CONFIG, DEFAULT_REMOTE_CONFIG, type BackendConfig } from '@/lib/backend-config'
+import { Eye, EyeOff, Server, Settings, Wifi, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 export default function BackendSettings() {
   const [isOpen, setIsOpen] = useState(false)
   const [config, setConfig] = useState<BackendConfig | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     if (isOpen && !config) {
@@ -95,11 +96,10 @@ export default function BackendSettings() {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => setConfig({ ...config, type: 'local' })}
-                  className={`p-4 rounded-lg border-2 transition-colors ${
-                    config.type === 'local'
-                      ? 'border-primary-600 bg-primary-600/10'
-                      : 'border-border-subtle hover:border-border-default'
-                  }`}
+                  className={`p-4 rounded-lg border-2 transition-colors ${config.type === 'local'
+                    ? 'border-primary-600 bg-primary-600/10'
+                    : 'border-border-subtle hover:border-border-default'
+                    }`}
                 >
                   <Server className="w-6 h-6 mx-auto mb-2 text-text-primary" />
                   <div className="text-sm font-medium text-text-primary">Local</div>
@@ -112,29 +112,16 @@ export default function BackendSettings() {
                       setConfig({
                         ...config,
                         type: 'remote',
-                        remote: {
-                          host: 'localhost',
-                          sshAuth: {
-                            type: 'password',
-                            credentials: {
-                              username: 'agentbe',
-                              password: 'deepagents',
-                            },
-                          },
-                          sshPort: 2222,
-                          mcpPort: 3001,
-                          rootDir: '/workspace',
-                        },
+                        remote: DEFAULT_REMOTE_CONFIG,
                       })
                     } else {
                       setConfig({ ...config, type: 'remote' })
                     }
                   }}
-                  className={`p-4 rounded-lg border-2 transition-colors ${
-                    config.type === 'remote'
-                      ? 'border-primary-600 bg-primary-600/10'
-                      : 'border-border-subtle hover:border-border-default'
-                  }`}
+                  className={`p-4 rounded-lg border-2 transition-colors ${config.type === 'remote'
+                    ? 'border-primary-600 bg-primary-600/10'
+                    : 'border-border-subtle hover:border-border-default'
+                    }`}
                 >
                   <Wifi className="w-6 h-6 mx-auto mb-2 text-text-primary" />
                   <div className="text-sm font-medium text-text-primary">Remote</div>
@@ -276,7 +263,7 @@ export default function BackendSettings() {
                       })
                     }
                     className="w-full px-3 py-2 bg-bg-elevated border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-primary-600"
-                    placeholder="agentbe"
+                    placeholder="root"
                   />
                 </div>
 
@@ -284,27 +271,40 @@ export default function BackendSettings() {
                   <label className="block text-sm font-medium text-text-secondary mb-2">
                     Password
                   </label>
-                  <input
-                    type="password"
-                    value={config.remote?.sshAuth.credentials.password || ''}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        remote: {
-                          ...config.remote!,
-                          sshAuth: {
-                            type: 'password',
-                            credentials: {
-                              ...config.remote!.sshAuth.credentials,
-                              password: e.target.value,
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={config.remote?.sshAuth.credentials.password || ''}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          remote: {
+                            ...config.remote!,
+                            sshAuth: {
+                              type: 'password',
+                              credentials: {
+                                ...config.remote!.sshAuth.credentials,
+                                password: e.target.value,
+                              },
                             },
                           },
-                        },
-                      })
-                    }
-                    className="w-full px-3 py-2 bg-bg-elevated border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-primary-600"
-                    placeholder="deepagents"
-                  />
+                        })
+                      }
+                      className="w-full px-3 py-2 pr-10 bg-bg-elevated border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-primary-600"
+                      placeholder="agents"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-tertiary hover:text-text-secondary transition-colors"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <div>
@@ -321,7 +321,7 @@ export default function BackendSettings() {
                       })
                     }
                     className="w-full px-3 py-2 bg-bg-elevated border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-primary-600"
-                    placeholder="/workspace"
+                    placeholder="/var/workspace"
                   />
                 </div>
               </div>

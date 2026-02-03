@@ -1,5 +1,19 @@
-# mprocs configuration for local development
-# Usage: mprocs (or make dev)
+# Agent Backend Development
+#
+# Usage:
+#   make dev          - Local development (TypeScript + NextJS)
+#   make dev-remote   - Remote testing (+ Docker daemon)
+#
+# Or directly:
+#   mprocs            - Local mode
+#   REMOTE=1 mprocs   - With Docker daemon
+#
+# TUI shortcuts:
+#   Tab/Shift+Tab - cycle processes
+#   Space - start/stop process
+#   r - restart
+#   f - focus (full screen)
+#   q - quit
 
 procs:
   typescript-watch:
@@ -9,22 +23,30 @@ procs:
     env:
       FORCE_COLOR: "1"
 
-  nextjs-dev:
+  # Docker daemon for remote backend testing
+  # Only runs when REMOTE=1 is set
+  agentbe-daemon:
+    shell: |
+      [ -z "$REMOTE" ] && echo "Skipped (set REMOTE=1 to enable)" && exit 0
+      ENV_FILE=".env.example"
+      [ -f ".env" ] && ENV_FILE=".env"
+      docker run --rm \
+        --name agentbe-daemon \
+        -p 3001:3001 \
+        -p 2222:22 \
+        -v "$(pwd)/tmp/remote-workspace:/var/workspace" \
+        --env-file "$ENV_FILE" \
+        agentbe-daemon:latest
+    stop: "SIGTERM"
+    env:
+      FORCE_COLOR: "1"
+
+  nextjs:
     cmd: ["pnpm", "run", "dev"]
     cwd: "examples/NextJS"
     stop: "SIGTERM"
     env:
       FORCE_COLOR: "1"
-      NEXT_PUBLIC_BACKEND_TYPE: "local"
-    # Wait a bit for TypeScript to compile before starting Next.js
     depends_on:
       typescript-watch:
         condition: "running"
-
-  # Uncomment to run Python example (when available)
-  # python-app:
-  #   cmd: ["python", "-m", "uvicorn", "main:app", "--reload", "--port", "8000"]
-  #   cwd: "examples/python-app"
-  #   stop: "SIGTERM"
-  #   env:
-  #     FORCE_COLOR: "1"

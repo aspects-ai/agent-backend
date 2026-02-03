@@ -5,8 +5,8 @@
  *
  * Commands:
  * 1. Start MCP servers for different backend types (default command)
- * 2. start-remote: Start Docker-based remote backend service
- * 3. stop-remote: Stop Docker-based remote backend service
+ * 2. start-docker: Start Docker-based agentbe-daemon service
+ * 3. stop-docker: Stop Docker-based agentbe-daemon service
  */
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -37,13 +37,13 @@ async function main() {
     return
   }
 
-  if (command === 'start-remote') {
-    await handleStartRemote(args.slice(1))
+  if (command === 'start-docker') {
+    await handleStartDocker(args.slice(1))
     return
   }
 
-  if (command === 'stop-remote') {
-    await handleStopRemote()
+  if (command === 'stop-docker') {
+    await handleStopDocker()
     return
   }
 
@@ -107,7 +107,7 @@ async function handleDaemon(args) {
     console.error('❌ Error: Full daemon mode (with SSH) requires Linux')
     console.error('   Options:')
     console.error('   1. Use --local-only flag for local stdio mode')
-    console.error('   2. Use Docker: agent-backend start-remote')
+    console.error('   2. Use Docker: agent-backend start-docker')
     process.exit(1)
   }
 
@@ -485,7 +485,6 @@ function parseArgs(args) {
       case '-h':
         printHelp()
         process.exit(0)
-        break
 
       default:
         if (arg.startsWith('--')) {
@@ -621,7 +620,7 @@ async function startHttpServer(mcpServer, config) {
 // Docker Remote Backend Management
 // ─────────────────────────────────────────────────────────────────
 
-async function handleStartRemote(args) {
+async function handleStartDocker(args) {
   const shouldBuild = args.includes('--build')
 
   console.log('🚀 Starting Agent Backend remote service...')
@@ -695,7 +694,7 @@ async function handleStartRemote(args) {
   }
 }
 
-async function handleStopRemote() {
+async function handleStopDocker() {
   console.log('🛑 Stopping Agent Backend remote service...')
 
   try {
@@ -806,8 +805,8 @@ USAGE:
 
 COMMANDS:
   daemon                 Start agentbe-daemon (MCP + SSH server)
-  start-remote [--build] Start Docker container with daemon
-  stop-remote            Stop Docker container
+  start-docker [--build] Start Docker container with agentbe-daemon
+  stop-docker            Stop Docker container
   help                   Show this help message
 
 DAEMON COMMAND:
@@ -838,14 +837,14 @@ DAEMON COMMAND:
     --ssh-public-key <key> SSH public key to add to authorized_keys
     --ssh-authorized-keys <path>  Path to authorized_keys file to copy
 
-REMOTE MANAGEMENT:
-  agent-backend start-remote [--build]
+DOCKER MANAGEMENT:
+  agent-backend start-docker [--build]
 
   Starts Docker container with agentbe-daemon + SSH.
   Options:
     --build                Force rebuild the Docker image
 
-  agent-backend stop-remote
+  agent-backend stop-docker
 
   Stops Docker container.
 
@@ -859,18 +858,18 @@ EXAMPLES:
     --mcp-auth-token secret123
 
   # Full daemon with defaults (Linux only: root:agents, port 3001)
-  agent-backend daemon --rootDir /workspace
+  agent-backend daemon --rootDir /var/workspace
 
   # Full daemon with custom users (Linux only)
-  agent-backend daemon --rootDir /workspace \\
+  agent-backend daemon --rootDir /var/workspace \\
     --ssh-users "alice:secret,bob:password"
 
   # Full daemon with pubkey auth (Linux only)
-  agent-backend daemon --rootDir /workspace \\
+  agent-backend daemon --rootDir /var/workspace \\
     --ssh-public-key "ssh-rsa AAAAB3... user@host"
 
   # Start Docker container (includes full daemon with SSH)
-  agent-backend start-remote --build
+  agent-backend start-docker --build
 
 NOTES:
   - Use --local-only for local development (stdio mode, works on any platform)

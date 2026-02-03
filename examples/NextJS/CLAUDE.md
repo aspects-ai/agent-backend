@@ -98,39 +98,46 @@ NextJS App → RemoteFilesystemBackend
   ├── SSH client → Remote:2222 (sshd)
   │   └── Direct filesystem operations (exec, read, write)
   └── MCP client → Remote:3001 (HTTP)
-      └── agentbe-daemon serves /workspace via HTTP MCP
+      └── agentbe-daemon serves /var/workspace via HTTP MCP
 
 Remote machine runs TWO daemons:
   1. sshd (SSH daemon) - port 2222
   2. agentbe-daemon (agent backend daemon) - port 3001
-     Command: agent-backend --rootDir /workspace --mcp-port 3001 --mcp-auth-token <token>
+     Command: agent-backend --rootDir /var/workspace --mcp-port 3001 --mcp-auth-token <token>
 
-Both access the SAME filesystem (/workspace).
+Both access the SAME filesystem (/var/workspace).
 ```
 
 **MCP Client Caching**: MCP clients are cached per session to avoid spawning multiple processes.
 
 ## Backend Configuration
 
-### UI-Driven Configuration
+### Client Configuration (UI-Driven)
 
-Backend settings are configured through the UI, not environment variables:
+The Settings UI configures how the **client** connects to a backend:
 
 1. **Click the settings icon** in the header (top right)
 2. **Choose backend type**: Local or Remote
-3. **Configure settings**:
-   - **Local**: Root directory, isolation mode
-   - **Remote**: SSH host, username, password, MCP server URL, root directory
+3. **Configure client settings**:
+   - **Local**: Root directory, isolation mode (client spawns daemon subprocess)
+   - **Remote**: SSH host, ports, credentials, MCP auth token (client connects to existing daemon)
 4. **Click "Save & Restart"** to apply changes
 
-Configuration is stored **in-memory only** and resets on server restart. This keeps the demo app lightweight and stateless.
+Configuration is stored **in-memory only** and resets on server restart.
 
-### Switching Backends
+### Daemon Configuration (Separate)
 
-To test remote backend:
-1. Start the remote MCP server (see Remote Backend Testing below)
+When using **remote mode**, the daemon runs separately and has its own configuration:
+- CLI args: `agent-backend daemon --rootDir /var/workspace --mcp-auth-token <token>`
+- Docker env vars: `MCP_PORT`, `SSH_USERS`, `MCP_AUTH_TOKEN`
+
+See [deploy README](../../typescript/deploy/README.md) for daemon configuration options.
+
+### Switching to Remote Backend
+
+1. Start the daemon (see Remote Backend Testing below)
 2. Open backend settings in the UI
-3. Switch to "Remote" and configure connection details
+3. Switch to "Remote" and configure connection details to match the daemon
 4. Save and restart
 
 ## Development Workflow
@@ -171,11 +178,12 @@ pnpm run dev
 make dev-remote
 ```
 
-This uses `mprocs.remote.yaml` to:
-1. Start Docker container with SSH-accessible filesystem
-2. Start MCP server on remote container (HTTP on port 3001)
-3. Start TypeScript watch mode
-4. Start NextJS dev server configured for remote backend
+This runs `REMOTE=1 mprocs` which starts:
+1. TypeScript watch mode
+2. Docker container with agentbe-daemon (SSH + MCP)
+3. NextJS dev server
+
+Configure the client via the Settings UI to connect to the daemon.
 
 ## Key Files
 

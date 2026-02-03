@@ -1,5 +1,5 @@
-import { isAbsolute, join, normalize, relative, resolve } from 'path'
 import { lstatSync, readlinkSync } from 'fs'
+import { isAbsolute, join, normalize, relative, resolve } from 'path'
 
 /**
  * Path validation utilities for ensuring file operations stay within workspace boundaries
@@ -27,7 +27,7 @@ export function isPathEscaping(workspacePath: string, targetPath: string): boole
  * Supports three path formats:
  * 1. Relative path: "someDir" or "./someDir" - resolved relative to workspace
  * 2. Workspace-absolute path: "/someDir" - treated as workspace-relative
- * 3. Full absolute path within workspace: "/workspace/someDir" - workspace prefix stripped
+ * 3. Full absolute path within workspace: "/var/workspace/someDir" - workspace prefix stripped
  *
  * @param workspacePath - Absolute path to workspace root
  * @param targetPath - Path to resolve (relative, workspace-absolute, or full absolute)

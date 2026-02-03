@@ -6,13 +6,31 @@ export type BackendConfig = {
   remote?: RemoteFilesystemBackendConfig
 }
 
+// Default configurations matching daemon defaults
+export const DEFAULT_LOCAL_CONFIG: LocalFilesystemBackendConfig = {
+  rootDir: '/tmp/agentbe-workspace',
+  isolation: 'software',
+}
+
+export const DEFAULT_REMOTE_CONFIG: RemoteFilesystemBackendConfig = {
+  host: 'localhost',
+  sshPort: 2222,
+  mcpPort: 3001,
+  rootDir: '/var/workspace',
+  sshAuth: {
+    type: 'password',
+    credentials: {
+      username: 'root',
+      password: 'agents',
+    },
+  },
+}
+
 class BackendConfigManager {
   private config: BackendConfig = {
     type: 'local',
-    local: {
-      rootDir: '/tmp/agentbe-workspace',
-      isolation: 'software',
-    },
+    local: DEFAULT_LOCAL_CONFIG,
+    remote: DEFAULT_REMOTE_CONFIG,
   }
 
   getConfig(): BackendConfig {
@@ -26,10 +44,8 @@ class BackendConfigManager {
   reset(): void {
     this.config = {
       type: 'local',
-      local: {
-        rootDir: '/tmp/agentbe-workspace',
-        isolation: 'software',
-      },
+      local: DEFAULT_LOCAL_CONFIG,
+      remote: DEFAULT_REMOTE_CONFIG,
     }
   }
 }
