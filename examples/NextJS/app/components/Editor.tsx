@@ -17,6 +17,7 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
   const [content, setContent] = useState('')
   const [originalContent, setOriginalContent] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [isDirty, setIsDirty] = useState(false)
   const [language, setLanguage] = useState('plaintext')
@@ -37,6 +38,7 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
     if (!selectedFile) return
 
     setLoading(true)
+    setError(null)
     try {
       const response = await fetch(`/api/files/read?sessionId=${sessionId}&path=${encodeURIComponent(selectedFile)}`)
       const data = await response.json()
@@ -46,12 +48,17 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
         setOriginalContent(data.content)
         setFileSize(data.size)
         setIsDirty(false)
+        setError(null)
         detectLanguage(selectedFile)
       } else {
-        console.error('Failed to load file:', data.error)
+        const errorMsg = data.error || 'Failed to load file'
+        console.error('Failed to load file:', errorMsg)
+        setError(errorMsg)
       }
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Error loading file'
       console.error('Error loading file:', error)
+      setError(errorMsg)
     } finally {
       setLoading(false)
     }
@@ -217,6 +224,20 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
         ) : loading ? (
           <div className="flex items-center justify-center h-full">
             <div className="w-8 h-8 border-2 border-primary-600/30 border-t-primary-600 rounded-full animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center max-w-md px-4">
+              <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+              <p className="text-sm font-medium text-text-primary mb-2">Failed to load file</p>
+              <p className="text-xs text-text-secondary mb-4">{error}</p>
+              <button
+                onClick={loadFile}
+                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 rounded text-white text-sm transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
           </div>
         ) : useLargeFileMode ? (
           <textarea
