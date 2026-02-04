@@ -12,63 +12,22 @@
 
 import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import type { Backend, FileBasedBackend, ScopedBackend } from '../backends/types.js'
+import type { Backend } from '../backends/types.js'
 import { BackendType } from '../backends/types.js'
-import { BackendError } from '../types.js'
 import { ERROR_CODES } from '../constants.js'
+import { BackendError } from '../types.js'
+import {
+  type AnyBackend,
+  getProperty,
+  getRootBackend,
+  hasRemoteConfig,
+  hasRootDir,
+} from '../typing.js'
 
 /**
  * Union type for MCP transports
  */
 export type MCPTransport = StdioClientTransport | StreamableHTTPClientTransport
-
-/**
- * Backend with optional config property (for RemoteFilesystemBackend)
- */
-interface BackendWithConfig extends Backend {
-  config?: {
-    host?: string
-    mcpPort?: number
-    mcpServerHostOverride?: string
-    mcpAuth?: {
-      token: string
-    }
-  }
-}
-
-/**
- * Backend with optional isolation and shell properties (for LocalFilesystemBackend)
- */
-interface LocalBackendLike extends FileBasedBackend {
-  isolation?: 'auto' | 'bwrap' | 'software' | 'none'
-  shell?: string
-}
-
-/**
- * Check if a backend is a scoped backend
- */
-function isScopedBackend<T extends FileBasedBackend>(
-  backend: Backend | FileBasedBackend | ScopedBackend<T>
-): backend is ScopedBackend<T> {
-  return 'parent' in backend && 'scopePath' in backend
-}
-
-/**
- * Get the root backend from a potentially scoped backend
- */
-function getRootBackend<T extends FileBasedBackend>(
-  backend: Backend | FileBasedBackend | ScopedBackend<T>
-): Backend | FileBasedBackend {
-  if (isScopedBackend(backend)) {
-    // Traverse up to find the root backend
-    let current: FileBasedBackend | ScopedBackend<FileBasedBackend> = backend.parent
-    while (isScopedBackend(current)) {
-      current = current.parent
-    }
-    return current
-  }
-  return backend
-}
 
 /**
  * Adapter for creating MCP transports compatible with Vercel AI SDK
@@ -86,10 +45,10 @@ function getRootBackend<T extends FileBasedBackend>(
  * const tools = await mcpClient.tools()
  * ```
  */
-export class VercelAIAdapter<T extends Backend | FileBasedBackend | ScopedBackend<FileBasedBackend>> {
-  private readonly backend: T
+export class VercelAIAdapter {
+  private readonly backend: AnyBackend
 
-  constructor(backend: T) {
+  constructor(backend: AnyBackend) {
     this.backend = backend
   }
 
@@ -105,19 +64,16 @@ export class VercelAIAdapter<T extends Backend | FileBasedBackend | ScopedBacken
    * @returns MCP transport configured for the backend type
    */
   async getTransport(): Promise<MCPTransport> {
-    // Get root backend for type detection and config access
     const rootBackend = getRootBackend(this.backend)
     const backendType = rootBackend.type
-
-    // Get the effective rootDir (scoped if applicable)
     const effectiveRootDir = this.getEffectiveRootDir()
 
     switch (backendType) {
       case BackendType.LOCAL_FILESYSTEM:
-        return this.createStdioTransport(rootBackend as LocalBackendLike, effectiveRootDir)
+        return this.createStdioTransport(rootBackend, effectiveRootDir)
 
       case BackendType.REMOTE_FILESYSTEM:
-        return this.createHttpTransport(rootBackend as BackendWithConfig)
+        return this.createHttpTransport(rootBackend)
 
       case BackendType.MEMORY:
         return this.createMemoryTransport(effectiveRootDir)
@@ -135,10 +91,9 @@ export class VercelAIAdapter<T extends Backend | FileBasedBackend | ScopedBacken
    * Get the effective rootDir, considering scoped backends
    */
   private getEffectiveRootDir(): string {
-    if ('rootDir' in this.backend) {
-      return (this.backend as FileBasedBackend).rootDir
+    if (hasRootDir(this.backend)) {
+      return this.backend.rootDir
     }
-    // Fallback for non-file-based backends
     return '/'
   }
 
@@ -146,7 +101,7 @@ export class VercelAIAdapter<T extends Backend | FileBasedBackend | ScopedBacken
    * Create Stdio transport for local filesystem backend
    */
   private async createStdioTransport(
-    backend: LocalBackendLike,
+    backend: Backend,
     rootDir: string
   ): Promise<StdioClientTransport> {
     const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
@@ -157,15 +112,15 @@ export class VercelAIAdapter<T extends Backend | FileBasedBackend | ScopedBacken
       '--local-only',
     ]
 
-    // Access isolation through duck typing (may be private)
-    const isolation = this.getBackendProperty<string>(backend, 'isolation') ||
-                      this.getBackendProperty<string>(backend, 'actualIsolation')
+    // Access isolation through duck typing
+    const isolation = getProperty<string>(backend, 'isolation') ||
+                      getProperty<string>(backend, 'actualIsolation')
     if (isolation && isolation !== 'auto') {
       args.push('--isolation', isolation)
     }
 
     // Access shell through duck typing
-    const shell = this.getBackendProperty<string>(backend, 'shell')
+    const shell = getProperty<string>(backend, 'shell')
     if (shell && shell !== 'auto') {
       args.push('--shell', shell)
     }
@@ -180,12 +135,11 @@ export class VercelAIAdapter<T extends Backend | FileBasedBackend | ScopedBacken
    * Create HTTP transport for remote filesystem backend
    */
   private async createHttpTransport(
-    backend: BackendWithConfig
+    backend: Backend
   ): Promise<StreamableHTTPClientTransport> {
     const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
 
-    const config = backend.config
-    if (!config?.host) {
+    if (!hasRemoteConfig(backend)) {
       throw new BackendError(
         'RemoteFilesystemBackend requires host to be configured. ' +
         'The MCP server must run on the remote host and be accessible via HTTP.',
@@ -194,6 +148,7 @@ export class VercelAIAdapter<T extends Backend | FileBasedBackend | ScopedBacken
       )
     }
 
+    const { config } = backend
     const mcpHost = config.mcpServerHostOverride || config.host
     const mcpPort = config.mcpPort || 3001
     const mcpServerUrl = `http://${mcpHost}:${mcpPort}`
@@ -227,16 +182,5 @@ export class VercelAIAdapter<T extends Backend | FileBasedBackend | ScopedBacken
       command: 'agent-backend',
       args,
     })
-  }
-
-  /**
-   * Safely access a property on a backend (handles private properties)
-   */
-  private getBackendProperty<V>(backend: object, key: string): V | undefined {
-    // Try direct access first (for public/protected properties)
-    if (key in backend) {
-      return (backend as Record<string, V>)[key]
-    }
-    return undefined
   }
 }

@@ -85,3 +85,23 @@ export {
 
 export { VercelAIAdapter } from './adapters/index.js'
 export type { MCPTransport } from './adapters/index.js'
+
+// ============================================================================
+// Type Guards & Utilities
+// ============================================================================
+
+export {
+    getProperty,
+    getRootBackend,
+    hasRemoteConfig,
+    hasRootDir,
+    isFileBasedBackend,
+    isScopedBackend,
+} from './typing.js'
+
+export type {
+    AnyBackend,
+    BackendWithRemoteConfig,
+    BackendWithRootDir,
+    RemoteBackendConfig,
+} from './typing.js'
