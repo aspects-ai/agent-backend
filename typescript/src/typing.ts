@@ -9,11 +9,9 @@ import type { Backend, FileBasedBackend, ScopedBackend } from './backends/types.
 
 /**
  * Any backend type that can be passed around.
- *
- * Note: ScopedBackend doesn't extend Backend (it's missing destroy()),
- * so we need the union type to accept both.
+ * All backend types extend Backend, so this is just an alias for clarity.
  */
-export type AnyBackend = Backend | ScopedBackend<FileBasedBackend>
+export type AnyBackend = Backend
 
 /**
  * Backend with a rootDir property
@@ -60,7 +58,9 @@ export function hasRootDir(backend: AnyBackend): backend is BackendWithRootDir {
  * }
  * ```
  */
-export function isScopedBackend(backend: AnyBackend): backend is ScopedBackend<FileBasedBackend> {
+export function isScopedBackend<T extends FileBasedBackend = FileBasedBackend>(
+  backend: Backend
+): backend is ScopedBackend<T> {
   return 'parent' in backend && 'scopePath' in backend
 }
 
@@ -80,7 +80,6 @@ export function isFileBasedBackend(backend: AnyBackend): backend is FileBasedBac
          'read' in backend &&
          'write' in backend &&
          'exec' in backend &&
-         'destroy' in backend &&
          typeof (backend as { read?: unknown }).read === 'function'
 }
 
@@ -112,18 +111,17 @@ export function hasRemoteConfig(backend: AnyBackend): backend is BackendWithRemo
  * console.log(root.type) // The actual backend type
  * ```
  */
-export function getRootBackend(backend: AnyBackend): Backend {
+export function getRootBackend(backend: Backend): Backend {
   if (!isScopedBackend(backend)) {
     return backend
   }
 
   // Traverse up the parent chain
-  let current = backend.parent
+  let current: Backend = backend.parent
   while (isScopedBackend(current)) {
     current = current.parent
   }
-  // After the loop, current is the root FileBasedBackend (which extends Backend)
-  return current as Backend
+  return current
 }
 
 /**

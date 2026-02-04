@@ -150,13 +150,7 @@ export interface FileBasedBackend extends Backend {
  * Scoped backend wraps a backend with path restriction
  * Operations are relative to the scope path
  */
-export interface ScopedBackend<T extends FileBasedBackend> {
-  /** Backend type identifier */
-  readonly type: BackendType
-
-  /** Whether backend connection is established */
-  readonly connected: boolean
-
+export interface ScopedBackend<T extends FileBasedBackend> extends Backend {
   /** Root directory or namespace for file-based operations */
   readonly rootDir: string
 
