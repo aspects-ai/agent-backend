@@ -330,17 +330,27 @@ const backend = new LocalFilesystemBackend({
 
 ### Vercel AI SDK
 
-Agent Backend provides seamless integration with Vercel's AI SDK through MCP transports:
+Agent Backend provides seamless integration with Vercel's AI SDK through the `VercelAIAdapter`. The adapter automatically creates the appropriate MCP transport based on your backend type:
+
+- **LocalFilesystemBackend** → Stdio transport (spawns subprocess)
+- **RemoteFilesystemBackend** → HTTP transport (connects to remote MCP server)
+- **MemoryBackend** → Stdio transport (spawns subprocess)
 
 ```typescript
 import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
+import { LocalFilesystemBackend, VercelAIAdapter } from 'agent-backend'
 import { generateText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 
+// Create backend and adapter
 const backend = new LocalFilesystemBackend({ rootDir: '/tmp/workspace' })
-const transport = backend.getMCPTransport()
+const adapter = new VercelAIAdapter(backend)
+
+// Get transport and create AI SDK MCP client
+const transport = await adapter.getTransport()
 const mcp = await createMCPClient({ transport })
 
+// Tools are already in AI SDK format - no manual transformation needed
 const result = await generateText({
   model: openai('gpt-4'),
   tools: await mcp.tools(),

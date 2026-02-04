@@ -53,6 +53,7 @@
     "@types/minimatch": "^5.1.2",
     "buffer": "^6.0.3",
     "express": "^5.1.0",
+    "hono": "^4.11.7",
     "minimatch": "^10.1.1",
     "ssh2": "^1.16.0",
     "zod": "^4.1.5"
@@ -86,6 +87,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./adapters": {
+      "types": "./dist/adapters/index.d.ts",
+      "import": "./dist/adapters/index.js"
     },
     "./mcp": {
       "types": "./dist/mcp/index.d.ts",

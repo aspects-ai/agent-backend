@@ -267,4 +267,16 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
     // Logging disabled - OperationsLogger interface requires full OperationLogEntry
     // which includes userId, workspaceName, workspacePath, etc. that scoped backends don't have
   }
+
+  /**
+   * Destroy is not supported on scoped backends.
+   * Destroy the parent backend instead.
+   * @throws {Error} Always throws - scoped backends cannot be destroyed independently
+   */
+  async destroy(): Promise<void> {
+    throw new Error(
+      'Cannot destroy a scoped backend. Destroy the parent backend instead. ' +
+      `This scope (${this.scopePath}) is a view into the parent backend.`
+    )
+  }
 }

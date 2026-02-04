@@ -1,17 +1,19 @@
+import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
+import { VercelAIAdapter } from 'agent-backend'
 import { backendManager } from './backend'
 
-// MCP client cache - exported so it can be cleared on config change
-const mcpClientCache = new Map<string, any>()
+// MCP client cache - stores AI SDK MCP clients per session
+const mcpClientCache = new Map<string, Awaited<ReturnType<typeof createMCPClient>>>()
 
 /**
  * Clear all cached MCP clients (call when backend config changes)
  */
-export function clearMCPClients() {
+export async function clearMCPClients() {
   console.log('[mcp-client] Clearing', mcpClientCache.size, 'cached clients')
   // Close all clients before clearing
-  for (const [sessionId, client] of mcpClientCache) {
+  for (const [, client] of mcpClientCache) {
     try {
-      client.close?.()
+      await client.close()
     } catch (e) {
       console.warn('[mcp-client] Error closing client:', e)
     }
@@ -20,40 +22,40 @@ export function clearMCPClients() {
 }
 
 /**
- * Get or create an MCP client for a session
+ * Get or create an MCP client for a session.
+ * Returns an AI SDK MCP client with tools already in AI SDK format.
  */
 export async function getMCPClientForSession(sessionId: string) {
   if (mcpClientCache.has(sessionId)) {
-    return mcpClientCache.get(sessionId)
+    return mcpClientCache.get(sessionId)!
   }
 
-  const client = await createMCPClient()
+  const client = await createAIMCPClient()
   mcpClientCache.set(sessionId, client)
   return client
 }
 
 /**
- * Create an MCP client using the configured backend.
+ * Create an AI SDK MCP client using the configured backend.
  *
- * For local backends:
- * - Automatically spawns agent-backend CLI via stdio
- * - No separate process management needed
- * - MCP server runs in same system as files
+ * Uses VercelAIAdapter to get the appropriate transport:
+ * - LocalFilesystemBackend → StdioClientTransport (spawns subprocess)
+ * - RemoteFilesystemBackend → StreamableHTTPClientTransport (HTTP)
+ * - MemoryBackend → StdioClientTransport (spawns subprocess)
  *
- * For remote backends:
- * - Connects to HTTP MCP server on remote host
- * - Uses host and mcpPort from config (mcpServerHostOverride if specified)
- * - MCP server must be started on remote: agent-backend daemon --rootDir /agentbe
+ * The returned client has tools already in AI SDK format.
  */
-export async function createMCPClient() {
-  // Get the backend (Local or Remote based on env)
+async function createAIMCPClient() {
   const backend = await backendManager.getBackend()
-  console.log('[mcp-client] Creating MCP client for backend type:', backend.type)
+  console.log('[mcp-client] Creating AI SDK MCP client for backend type:', backend.type)
 
-  // Let backend handle MCP client creation
-  // - Local: spawns CLI via stdio
-  // - Remote: connects to HTTP server at http://{host}:{mcpPort}
-  const client = await backend.getMCPClient()
+  // Use VercelAIAdapter to get the transport
+  const adapter = new VercelAIAdapter(backend)
+  const transport = await adapter.getTransport()
 
+  // Create AI SDK MCP client with the transport
+  const client = await createMCPClient({ transport })
+
+  console.log('[mcp-client] AI SDK MCP client created')
   return client
 }

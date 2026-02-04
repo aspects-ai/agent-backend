@@ -3,26 +3,12 @@ import { openrouter } from '@openrouter/ai-sdk-provider'
 import { convertToModelMessages, streamText } from 'ai'
 
 export async function POST(req: Request) {
-  const { id, messages, sessionId } = await req.json()
+  const { messages, sessionId } = await req.json()
 
-  // Get MCP client (cached per session, cleared on backend config change)
+  // Get AI SDK MCP client (cached per session, cleared on backend config change)
+  // Tools are already in AI SDK format - no manual transformation needed
   const mcpClient = await getMCPClientForSession(sessionId)
-  const toolsResult = await mcpClient.listTools()
-
-  const tools = toolsResult.tools.reduce((acc: any, tool: any) => {
-    acc[tool.name] = {
-      description: tool.description,
-      parameters: tool.inputSchema,
-      execute: async (params: any) => {
-        const result = await mcpClient.callTool({
-          name: tool.name,
-          arguments: params,
-        })
-        return result.content
-      },
-    }
-    return acc
-  }, {})
+  const tools = await mcpClient.tools()
 
   // Convert UI messages to model messages
   const modelMessages = await convertToModelMessages(messages, { tools })

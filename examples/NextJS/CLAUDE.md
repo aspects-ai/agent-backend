@@ -47,30 +47,41 @@ const handleSubmit = async (e: React.FormEvent) => {
 
 **Server** (`/api/chat/route.ts`):
 ```typescript
-import { streamText } from 'ai'
+import { getMCPClientForSession } from '@/lib/mcp-client'
+import { streamText, convertToModelMessages } from 'ai'
 
-// Convert MCP tools to AI SDK format
-const tools = toolsResult.tools.reduce((acc, tool) => {
-  acc[tool.name] = {
-    description: tool.description,
-    parameters: tool.inputSchema,
-    execute: async (params) => {
-      const result = await mcpClient.callTool({ name: tool.name, arguments: params })
-      return result.content
-    },
-  }
-  return acc
-}, {})
+// Get AI SDK MCP client - tools are already in AI SDK format
+const mcpClient = await getMCPClientForSession(sessionId)
+const tools = await mcpClient.tools()
+
+// Convert UI messages to model messages
+const modelMessages = await convertToModelMessages(messages, { tools })
 
 // Stream AI response with tools
 const result = streamText({
   model: openrouter('anthropic/claude-4.5-sonnet'),
-  messages,
+  messages: modelMessages,
   tools,
 })
 
 // Returns UI message stream (includes text deltas, tool calls, tool results)
 return result.toUIMessageStreamResponse()
+```
+
+**MCP Client** (`lib/mcp-client.ts`):
+```typescript
+import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
+import { VercelAIAdapter } from 'agent-backend'
+
+// Get backend and create adapter
+const backend = await backendManager.getBackend()
+const adapter = new VercelAIAdapter(backend)
+
+// Get transport (Stdio for local, HTTP for remote)
+const transport = await adapter.getTransport()
+
+// Create AI SDK MCP client - tools already in AI SDK format
+const client = await createMCPClient({ transport })
 ```
 
 ### Key Benefits
@@ -85,30 +96,34 @@ return result.toUIMessageStreamResponse()
 
 ### Backend Architecture
 
+The app uses `VercelAIAdapter` to automatically create the right MCP transport based on backend type:
+
 #### Local Backend (Development)
 ```
-NextJS App → LocalFilesystemBackend
-  └── getMCPClient() spawns: agent-backend --rootDir /tmp/workspace (stdio)
-      └── agentbe-daemon serves local filesystem via stdio MCP
+NextJS App
+  └── VercelAIAdapter(LocalFilesystemBackend)
+      └── getTransport() → StdioClientTransport
+          └── spawns: agent-backend daemon --rootDir /tmp/workspace
+              └── agentbe-daemon serves local filesystem via stdio MCP
 ```
 
 #### Remote Backend (Production)
 ```
-NextJS App → RemoteFilesystemBackend
-  ├── SSH client → Remote:2222 (sshd)
-  │   └── Direct filesystem operations (exec, read, write)
-  └── MCP client → Remote:3001 (HTTP)
-      └── agentbe-daemon serves /var/workspace via HTTP MCP
+NextJS App
+  └── VercelAIAdapter(RemoteFilesystemBackend)
+      └── getTransport() → StreamableHTTPClientTransport
+          └── HTTP → Remote:3001 (agentbe-daemon)
+              └── agentbe-daemon serves /var/workspace via HTTP MCP
 
 Remote machine runs TWO daemons:
-  1. sshd (SSH daemon) - port 2222
-  2. agentbe-daemon (agent backend daemon) - port 3001
-     Command: agent-backend --rootDir /var/workspace --mcp-port 3001 --mcp-auth-token <token>
+  1. sshd (SSH daemon) - port 2222 (for direct file operations)
+  2. agentbe-daemon (agent backend daemon) - port 3001 (for MCP tools)
+     Command: agent-backend daemon --rootDir /var/workspace --mcp-port 3001 --mcp-auth-token <token>
 
 Both access the SAME filesystem (/var/workspace).
 ```
 
-**MCP Client Caching**: MCP clients are cached per session to avoid spawning multiple processes.
+**MCP Client Caching**: AI SDK MCP clients are cached per session to avoid spawning multiple processes.
 
 ## Backend Configuration
 
@@ -217,8 +232,9 @@ OPENROUTER_API_KEY=sk-or-v1-your-key
 ### AI & Streaming
 - `ai@^6.0.0` - Core AI SDK (v6 uses `streamText` with `maxSteps` for agentic behavior)
 - `@ai-sdk/react@^3.0.0` - React hooks (`useChat` returns `messages`, `sendMessage`, `status`)
+- `@ai-sdk/mcp@^1.0.0` - MCP integration for AI SDK (creates tools in AI SDK format)
 - `@openrouter/ai-sdk-provider@^2.0.0` - OpenRouter integration
-- `@modelcontextprotocol/sdk@^1.25.0` - MCP client/server
+- `@modelcontextprotocol/sdk@^1.25.0` - MCP client/server (transport layer)
 
 ### Frontend
 - `next@^15.5.0` - React framework
@@ -227,7 +243,7 @@ OPENROUTER_API_KEY=sk-or-v1-your-key
 - `lucide-react@^0.469.0` - Icons
 
 ### Backend
-- `agent-backend@workspace:*` - Core backend library
+- `agent-backend@workspace:*` - Core backend library (includes `VercelAIAdapter` for MCP transport creation)
 - `ssh2@^1.17.0` - SSH client for remote backend
 - `zod@^3.24.0` - Schema validation
 

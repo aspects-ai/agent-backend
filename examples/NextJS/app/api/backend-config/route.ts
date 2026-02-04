@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     console.log('[backend-config] POST switching to:', config.type)
 
     // Clear MCP client cache (they hold references to old backend)
-    clearMCPClients()
+    await clearMCPClients()
 
     // Disconnect current backend before switching
     await backendManager.disconnect()

@@ -13,6 +13,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/mcp": "^1.0.18",
     "@ai-sdk/react": "^3.0.70",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@monaco-editor/react": "^4.6.0",
