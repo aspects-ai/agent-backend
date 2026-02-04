@@ -33,13 +33,16 @@ We welcome feature suggestions! Please:
 
 ## Development Setup
 
+This is a multi-language monorepo (TypeScript + Python). Use Makefile for all commands.
+
 ### Prerequisites
 
-- Node.js 18+ 
-- npm (comes with Node.js)
+- Node.js 18+
+- pnpm (package manager)
 - Git
+- Docker (for remote backend testing)
 
-### Local Development
+### Initial Setup
 
 1. **Fork and clone the repository**
    ```bash
@@ -49,18 +52,153 @@ We welcome feature suggestions! Please:
 
 2. **Install dependencies**
    ```bash
-   npm install
+   make install        # Installs deps + mprocs
    ```
 
 3. **Run tests to ensure everything works**
    ```bash
-   npm test
+   make test
    ```
 
 4. **Build the project**
    ```bash
-   npm run build
+   make build
    ```
+
+5. **Link CLI for development** (optional but recommended)
+   ```bash
+   cd typescript && pnpm link --global
+   ```
+   This makes the `agent-backend` CLI available system-wide and keeps it synced with your dev changes.
+
+### Common Commands
+
+```bash
+make help           # Show all available commands
+make install        # Install dependencies (including mprocs)
+make build          # Build all packages
+make test           # Run all tests
+make typecheck      # Type check everything
+make ci             # Full CI pipeline
+```
+
+Language-specific: `make build-typescript`, `make test-python`, etc.
+
+### Development Mode
+
+Start all dev processes with unified TUI:
+
+```bash
+make dev            # Local development (TypeScript + NextJS)
+make dev-remote     # Test with Docker-based remote backend
+```
+
+Uses [mprocs](https://github.com/pvolok/mprocs) for process management with interactive TUI, auto-restart on changes, and Docker support.
+
+**mprocs keyboard shortcuts:**
+- `Tab`/`Shift+Tab` - Cycle through processes
+- `Space` - Start/stop process
+- `r` - Restart process
+- `f` - Focus process (full screen)
+- `/` - Search logs
+- `q` - Quit all
+
+### Development Workflows
+
+#### Working on TypeScript Package
+
+```bash
+make dev
+
+# In mprocs:
+# 1. Watch typescript-watch logs to see compilation
+# 2. Make changes to typescript/src/**
+# 3. See rebuild happen automatically
+# 4. NextJS picks up changes on next request
+```
+
+#### Working on NextJS Example
+
+```bash
+make dev
+
+# In mprocs:
+# 1. Focus on nextjs-dev logs (press f)
+# 2. Make changes to examples/NextJS/app/**
+# 3. See hot reload in browser
+```
+
+#### Testing Remote Backend Locally
+
+```bash
+make dev-remote     # Auto-builds Docker image if needed
+
+# This simulates:
+# - Remote server with MCP server on port 3001
+# - SSH access on port 2222 (user: root, password: agents)
+# - NextJS connecting to "remote" backend
+```
+
+#### Adding Python Examples
+
+Edit `mprocs.yaml`:
+```yaml
+procs:
+  python-app:
+    cmd: ["python", "-m", "uvicorn", "main:app", "--reload"]
+    cwd: "examples/python-app"
+```
+
+Then run `make dev` - Python app starts automatically.
+
+### Docker Commands
+
+```bash
+make docker-build   # Build agentbe-daemon Docker image
+make docker-clean   # Remove containers and images
+```
+
+Manual testing:
+```bash
+docker run --rm -it \
+  -p 3001:3001 -p 2222:22 \
+  -v "$(pwd)/tmp/workspace:/var/workspace" \
+  agentbe-daemon:latest
+
+# Test: ssh -p 2222 root@localhost (password: agents)
+# Test: curl http://localhost:3001/health
+```
+
+### Configuration
+
+- **mprocs.yaml** - All dev processes (edit to add new services)
+- **.env** - Daemon configuration (copy from `.env.example`)
+
+Use `REMOTE=1 mprocs` or `make dev-remote` to enable the Docker daemon.
+
+### Troubleshooting
+
+**mprocs not found**
+```bash
+make install        # Includes mprocs (macOS: Homebrew, Linux: cargo)
+```
+
+**Port conflicts**
+```bash
+lsof -ti:3000 | xargs kill -9    # NextJS
+lsof -ti:3001 | xargs kill -9    # MCP server
+```
+
+**TypeScript changes not appearing**
+1. Check typescript-watch logs in mprocs
+2. Verify compilation succeeded
+3. Restart nextjs-dev (press `r` in mprocs)
+
+**Remote mode not working**
+1. Verify Docker image: `docker images | grep agentbe-daemon`
+2. Check container: `docker ps | grep agentbe-daemon`
+3. Test MCP: `curl http://localhost:3001/health`
+4. View logs: `docker logs agentbe-daemon`
 
 ### Development Workflow
 
@@ -78,9 +216,9 @@ We welcome feature suggestions! Please:
 
 3. **Run quality checks & tests**
    ```bash
-   pnpm run typecheck   # Verify TypeScript types
-   pnpm run build       # Ensure it builds
-   pnpm test --run      # Run tests
+   make typecheck      # Verify TypeScript types
+   make build          # Ensure it builds
+   make test           # Run tests
    ```
 
 4. **Commit your changes**
