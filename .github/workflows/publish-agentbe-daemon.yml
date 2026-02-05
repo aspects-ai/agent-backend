@@ -1,4 +1,4 @@
-name: Publish Remote Backend to GHCR
+name: Publish agentbe-daemon to GHCR
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/agent-backend-remote
+  IMAGE_NAME: ${{ github.repository_owner }}/agentbe-daemon
 
 jobs:
   build-and-push:
@@ -73,8 +73,8 @@ jobs:
         if: steps.version-check.outputs.changed == 'true'
         uses: docker/build-push-action@v5
         with:
-          context: ./typescript
-          file: ./typescript/remote/Dockerfile.runtime
+          context: .
+          file: ./typescript/deploy/docker/Dockerfile.runtime
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
