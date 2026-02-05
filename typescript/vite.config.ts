@@ -16,6 +16,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: path.resolve(__dirname, 'src/index.ts'),
+        'adapters/index': path.resolve(__dirname, 'src/adapters/index.ts'),
         'mcp/index': path.resolve(__dirname, 'src/mcp/index.ts'),
         'server/index': path.resolve(__dirname, 'src/server/index.ts'),
       },
@@ -32,6 +33,7 @@ export default defineConfig({
         '@modelcontextprotocol/sdk/client/index.js',
         '@modelcontextprotocol/sdk/client/stdio.js',
         '@modelcontextprotocol/sdk/client/streamableHttp.js',
+        '@ai-sdk/mcp',
         'express', 'zod', 'minimatch'
       ],
       output: {

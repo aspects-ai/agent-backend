@@ -4,6 +4,8 @@ export type BackendConfig = {
   type: 'local' | 'remote'
   local?: LocalFilesystemBackendConfig
   remote?: RemoteFilesystemBackendConfig
+  /** Optional scope subdirectory - if set, backend is scoped to this path within rootDir */
+  scope?: string
 }
 
 // Default configurations matching daemon defaults

@@ -1,4 +1,4 @@
-import { VercelAIAdapter } from 'agent-backend'
+import { VercelAIAdapter } from 'agent-backend/adapters'
 import { backendManager } from './backend'
 
 // MCP client type from VercelAIAdapter

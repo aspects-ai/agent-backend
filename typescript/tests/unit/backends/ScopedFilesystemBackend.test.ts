@@ -297,37 +297,13 @@ describe('ScopedFilesystemBackend (Unit Tests)', () => {
     })
   })
 
-  describe('List Scopes', () => {
-    it('should list subdirectories by calling readdir and stat', async () => {
-      vi.mocked(mockParent.readdir).mockResolvedValue(['dir1', 'file.txt', 'dir2'])
-      vi.mocked(mockParent.stat).mockImplementation(async (path) => {
-        // Path will be 'users/user1/dir1', 'users/user1/file.txt', etc.
-        const pathStr = path.toString()
-        const isDir = pathStr.includes('/dir1') || pathStr.includes('/dir2')
-        return {
-          isDirectory: () => isDir,
-          isFile: () => !isDir,
-        } as any
-      })
+  describe('List Active Scopes', () => {
+    it('should delegate listActiveScopes to parent', async () => {
+      vi.mocked(mockParent.listActiveScopes).mockResolvedValue(['scope1', 'scope2'])
 
-      const scopes = await scoped.listScopes()
+      const scopes = await scoped.listActiveScopes()
 
-      expect(scopes).toEqual(['dir1', 'dir2'])
-    })
-
-    it('should filter out files and only return directories', async () => {
-      vi.mocked(mockParent.readdir).mockResolvedValue(['scope1', 'readme.txt', 'scope2', 'data.json'])
-      vi.mocked(mockParent.stat).mockImplementation(async (path) => {
-        const pathStr = path.toString()
-        const isDir = pathStr.includes('/scope1') || pathStr.includes('/scope2')
-        return {
-          isDirectory: () => isDir,
-          isFile: () => !isDir,
-        } as any
-      })
-
-      const scopes = await scoped.listScopes()
-
+      expect(mockParent.listActiveScopes).toHaveBeenCalled()
       expect(scopes).toEqual(['scope1', 'scope2'])
     })
   })

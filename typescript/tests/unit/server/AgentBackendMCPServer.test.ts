@@ -25,7 +25,7 @@ function createMockFileBackend(type: string): FileBasedBackend {
     exec: vi.fn().mockResolvedValue('command output'),
     touch: vi.fn().mockResolvedValue(undefined),
     scope: vi.fn(),
-    listScopes: vi.fn().mockResolvedValue([]),
+    listActiveScopes: vi.fn().mockResolvedValue([]),
     getMCPClient: vi.fn(),
     destroy: vi.fn().mockResolvedValue(undefined)
   } as any
@@ -53,7 +53,7 @@ function createMockMemoryBackend(): MemoryBackend {
     } as any),
     touch: vi.fn().mockResolvedValue(undefined),
     scope: vi.fn(),
-    listScopes: vi.fn().mockResolvedValue([]),
+    listActiveScopes: vi.fn().mockResolvedValue([]),
     getMCPClient: vi.fn(),
     destroy: vi.fn().mockResolvedValue(undefined),
     list: vi.fn().mockResolvedValue(['key1', 'key2', 'key3']),
@@ -328,7 +328,7 @@ describe('AgentBackendMCPServer (Adaptive Server)', () => {
         stat: vi.fn(),
         touch: vi.fn(),
         scope: vi.fn(),
-        listScopes: vi.fn(),
+        listActiveScopes: vi.fn(),
         getMCPClient: vi.fn(),
         destroy: vi.fn()
       } as any
@@ -353,7 +353,7 @@ describe('AgentBackendMCPServer (Adaptive Server)', () => {
         stat: vi.fn(),
         touch: vi.fn(),
         scope: vi.fn(),
-        listScopes: vi.fn(),
+        listActiveScopes: vi.fn(),
         getMCPClient: vi.fn(),
         destroy: vi.fn()
       } as any

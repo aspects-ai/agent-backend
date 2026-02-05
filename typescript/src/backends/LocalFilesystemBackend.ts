@@ -14,7 +14,7 @@ import type { ExecOptions, LocalFilesystemBackendConfig, ReadOptions, ScopeConfi
 import { validateLocalFilesystemBackendConfig } from './config.js'
 import { validateWithinBoundary } from './pathValidation.js'
 import { ScopedFilesystemBackend } from './ScopedFilesystemBackend.js'
-import type { FileBasedBackend, ScopedBackend } from './types.js'
+import type { Backend, FileBasedBackend, ScopedBackend } from './types.js'
 import { BackendType } from './types.js'
 
 /**
@@ -33,6 +33,9 @@ export class LocalFilesystemBackend implements FileBasedBackend {
   private readonly onDangerousOperation?: (operation: string) => void
   private readonly maxOutputLength?: number
   private readonly actualIsolation: 'bwrap' | 'software' | 'none'
+
+  /** Track active scoped backends for reference counting */
+  private readonly _activeScopes = new Set<ScopedFilesystemBackend>()
 
   constructor(config: LocalFilesystemBackendConfig) {
     validateLocalFilesystemBackendConfig(config)
@@ -592,27 +595,31 @@ export class LocalFilesystemBackend implements FileBasedBackend {
    * Create a scoped backend restricted to a subdirectory
    */
   scope(scopePath: string, config?: ScopeConfig): ScopedBackend<this> {
-    return new ScopedFilesystemBackend(this, scopePath, config) as ScopedBackend<this>
+    const scoped = new ScopedFilesystemBackend(this, scopePath, config)
+    this._activeScopes.add(scoped)
+    return scoped as ScopedBackend<this>
   }
 
   /**
-   * List all scopes (subdirectories from root)
+   * Called by child scopes when they are destroyed.
+   * Unregisters the child from tracking.
+   *
+   * Note: Does NOT auto-destroy the parent when no children remain.
+   * The owner of this backend (e.g., pool manager or direct caller) is
+   * responsible for calling destroy() when appropriate.
+   *
+   * @param child - The child backend that was destroyed
    */
-  async listScopes(): Promise<string[]> {
-    try {
-      const entries = await readdir(this.rootDir, { withFileTypes: true })
-      return entries.filter(entry => entry.isDirectory()).map(entry => entry.name)
-    } catch (error) {
-      // If root doesn't exist yet, return empty array
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return []
-      }
-      throw new BackendError(
-        'Failed to list scopes',
-        ERROR_CODES.LS_FAILED,
-        'listScopes'
-      )
-    }
+  async onChildDestroyed(child: Backend): Promise<void> {
+    this._activeScopes.delete(child as ScopedFilesystemBackend)
+  }
+
+  /**
+   * List all active scoped backends created from this backend
+   * @returns Array of scope paths for currently active scopes
+   */
+  async listActiveScopes(): Promise<string[]> {
+    return Array.from(this._activeScopes).map(scope => scope.scopePath)
   }
 
   /**
@@ -634,10 +641,11 @@ export class LocalFilesystemBackend implements FileBasedBackend {
    * @returns MCP Client connected to a server for this backend
    */
   async getMCPClient(scopePath?: string): Promise<Client> {
-    // Build command args
+    // Build command args - scopePath is appended to rootDir if provided
+    const effectiveRootDir = scopePath ? path.join(this.rootDir, scopePath) : this.rootDir
     const args = [
       'daemon',
-      '--rootDir', scopePath || this.rootDir,
+      '--rootDir', effectiveRootDir,
       '--local-only',
     ]
 
@@ -695,9 +703,16 @@ export class LocalFilesystemBackend implements FileBasedBackend {
   }
 
   /**
-   * Clean up backend resources
+   * Clean up backend resources.
+   * If there are active scopes, they are orphaned (removed from tracking).
    */
   async destroy(): Promise<void> {
+    // Clear active scopes - they become orphaned but that's expected
+    // when the parent is explicitly destroyed
+    if (this._activeScopes.size > 0) {
+      getLogger().debug(`LocalFilesystemBackend destroying with ${this._activeScopes.size} active scopes`)
+      this._activeScopes.clear()
+    }
     getLogger().debug(`LocalFilesystemBackend destroyed for root: ${this.rootDir}`)
   }
 }

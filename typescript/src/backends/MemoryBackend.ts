@@ -25,6 +25,7 @@ import type {
 import { validateMemoryBackendConfig } from './config.js'
 import { ScopedMemoryBackend } from './ScopedMemoryBackend.js'
 import type {
+  Backend,
   FileBasedBackend,
   ScopedBackend
 } from './types.js'
@@ -36,6 +37,9 @@ export class MemoryBackend implements FileBasedBackend {
   readonly connected = true
 
   private store: Map<string, string | Buffer>
+
+  /** Track active scoped backends for reference counting */
+  private readonly _activeScopes = new Set<ScopedMemoryBackend>()
 
   constructor(config?: MemoryBackendConfig) {
     // Validate config if provided
@@ -326,26 +330,34 @@ export class MemoryBackend implements FileBasedBackend {
   }
 
   /**
-   * List all scopes (top-level keys/directories)
+   * List all active scoped backends created from this backend
+   * @returns Array of scope paths for currently active scopes
    */
-  async listScopes(): Promise<string[]> {
-    const scopes = new Set<string>()
-
-    for (const key of this.store.keys()) {
-      const parts = key.split('/')
-      if (parts.length > 1 && parts[0]) {
-        scopes.add(parts[0])
-      }
-    }
-
-    return Array.from(scopes).sort()
+  async listActiveScopes(): Promise<string[]> {
+    return Array.from(this._activeScopes).map(scope => scope.scopePath)
   }
 
   /**
    * Create scoped backend
    */
   scope(scopePath: string, config?: ScopeConfig): ScopedBackend<this> {
-    return new ScopedMemoryBackend(this, scopePath, config) as ScopedBackend<this>
+    const scoped = new ScopedMemoryBackend(this, scopePath, config)
+    this._activeScopes.add(scoped)
+    return scoped as ScopedBackend<this>
+  }
+
+  /**
+   * Called by child scopes when they are destroyed.
+   * Unregisters the child from tracking.
+   *
+   * Note: Does NOT auto-destroy the parent when no children remain.
+   * The owner of this backend (e.g., pool manager or direct caller) is
+   * responsible for calling destroy() when appropriate.
+   *
+   * @param child - The child backend that was destroyed
+   */
+  async onChildDestroyed(child: Backend): Promise<void> {
+    this._activeScopes.delete(child as ScopedMemoryBackend)
   }
 
   /**
@@ -369,10 +381,11 @@ export class MemoryBackend implements FileBasedBackend {
    * @returns MCP Client connected to a server for this backend
    */
   async getMCPClient(scopePath?: string): Promise<Client> {
-    // Build command args
+    // Build command args - scopePath is appended to rootDir if provided
+    const effectiveRootDir = scopePath ? `${this.rootDir}/${scopePath}` : this.rootDir
     const args = [
       '--backend', 'memory',
-      '--rootDir', scopePath || this.rootDir,
+      '--rootDir', effectiveRootDir,
     ]
 
     // Spawn agent-backend CLI
@@ -399,6 +412,9 @@ export class MemoryBackend implements FileBasedBackend {
    * Cleanup - clear all data
    */
   async destroy(): Promise<void> {
+    // Clear active scopes - they become orphaned but that's expected
+    // when the parent is explicitly destroyed
+    this._activeScopes.clear()
     this.store.clear()
   }
 

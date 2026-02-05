@@ -3,6 +3,8 @@ import type { StdioServerParameters } from '@modelcontextprotocol/sdk/client/std
 export interface LocalMCPTransportOptions {
   /** Root directory for the MCP server */
   rootDir: string
+  /** Scope path within the root directory (optional) */
+  scopePath?: string
   /** Isolation mode (optional) */
   isolation?: 'auto' | 'bwrap' | 'software' | 'none'
   /** Shell to use (optional) */
@@ -34,6 +36,10 @@ export function createLocalMCPTransportOptions(
     '--local-only',
   ]
 
+  if (options.scopePath) {
+    args.push('--scopePath', options.scopePath)
+  }
+
   if (options.isolation && options.isolation !== 'auto') {
     args.push('--isolation', options.isolation)
   }
@@ -50,7 +56,9 @@ export function createLocalMCPTransportOptions(
 
 export interface MemoryMCPTransportOptions {
   /** Root directory/namespace for the memory backend */
-  rootDir: string
+  rootDir: string,
+  /** Scope path within the root directory (optional) */
+  scopePath?: string
 }
 
 /**
@@ -59,11 +67,17 @@ export interface MemoryMCPTransportOptions {
 export function createMemoryMCPTransportOptions(
   options: MemoryMCPTransportOptions
 ): StdioServerParameters {
+  const args = [
+    '--backend', 'memory',
+    '--rootDir', options.rootDir,
+  ]
+
+  if (options.scopePath) {
+    args.push('--scopePath', options.scopePath)
+  }
+
   return {
     command: 'agent-backend',
-    args: [
-      '--backend', 'memory',
-      '--rootDir', options.rootDir,
-    ],
+    args,
   }
 }

@@ -73,13 +73,14 @@ async function createLocalTransport(
   scopePath?: string
 ): Promise<StdioClientTransport> {
   const defaultRootDir = isFileBasedBackend(backend) ? backend.rootDir : '/'
-  const rootDir = scopePath || defaultRootDir
+  const rootDir = defaultRootDir
   const isolation = getProperty<string>(rootBackend, 'isolation') ||
                     getProperty<string>(rootBackend, 'actualIsolation')
   const shell = getProperty<string>(rootBackend, 'shell')
 
   const options = createLocalMCPTransportOptions({
     rootDir,
+    scopePath,
     isolation: isolation as 'auto' | 'bwrap' | 'software' | 'none' | undefined,
     shell,
   })
@@ -112,9 +113,8 @@ async function createRemoteTransport(
   return createAgentBeMCPTransport({
     url: `http://${mcpHost}:${mcpPort}`,
     authToken: config.mcpAuth?.token || '',
-    workspaceRoot: scopePath || defaultRootDir,
-    userId: '',
-    workspace: '',
+    rootDir: defaultRootDir,
+    scopePath
   })
 }
 
@@ -126,8 +126,8 @@ async function createMemoryTransport(
   scopePath?: string
 ): Promise<StdioClientTransport> {
   const defaultRootDir = isFileBasedBackend(backend) ? backend.rootDir : '/'
-  const rootDir = scopePath || defaultRootDir
-  const options = createMemoryMCPTransportOptions({ rootDir })
+  const rootDir = defaultRootDir
+  const options = createMemoryMCPTransportOptions({ rootDir, scopePath })
 
   return new StdioClientTransport(options)
 }

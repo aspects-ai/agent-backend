@@ -78,6 +78,43 @@ describe('Daemon Config Parsing', () => {
       })
     })
 
+    describe('Scope Path Options', () => {
+      it('should parse --scopePath', () => {
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--scopePath', 'users/user1'])
+        expect(result.config?.scopePath).toBe('users/user1')
+      })
+
+      it('should strip leading slashes from scopePath', () => {
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--scopePath', '/users/user1'])
+        expect(result.config?.scopePath).toBe('users/user1')
+      })
+
+      it('should strip multiple leading slashes from scopePath', () => {
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--scopePath', '///users/user1'])
+        expect(result.config?.scopePath).toBe('users/user1')
+      })
+
+      it('should reject scopePath with path traversal', () => {
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--scopePath', 'users/../etc'])
+        expect(result.error).toContain('path traversal')
+      })
+
+      it('should reject scopePath with double dots', () => {
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--scopePath', '..'])
+        expect(result.error).toContain('path traversal')
+      })
+
+      it('should error if --scopePath has no value', () => {
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--scopePath'])
+        expect(result.error).toBe('--scopePath requires a value')
+      })
+
+      it('should error if --scopePath value looks like a flag', () => {
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--scopePath', '--other'])
+        expect(result.error).toBe('--scopePath requires a value')
+      })
+    })
+
     describe('Isolation Options', () => {
       it('should parse --isolation auto', () => {
         const result = parseDaemonArgs(['--rootDir', '/tmp', '--isolation', 'auto'])
@@ -218,6 +255,19 @@ describe('Daemon Config Parsing', () => {
         expect(result.error).toBeUndefined()
         expect(result.config?.localOnly).toBe(true)
         expect(result.config?.isolation).toBe('none')
+      })
+
+      it('should parse local-only mode with scopePath', () => {
+        const result = parseDaemonArgs([
+          '--rootDir', '/tmp/workspace',
+          '--scopePath', 'users/user123',
+          '--local-only'
+        ])
+
+        expect(result.error).toBeUndefined()
+        expect(result.config?.rootDir).toBe('/tmp/workspace')
+        expect(result.config?.scopePath).toBe('users/user123')
+        expect(result.config?.localOnly).toBe(true)
       })
     })
   })

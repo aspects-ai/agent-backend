@@ -85,8 +85,12 @@ describe('MCP Transport (Unit Tests)', () => {
 
         const transport = await createBackendMCPTransport(backend, '/custom/scope')
 
-        expect((transport as any).options.args).toContain('/custom/scope')
-        expect((transport as any).options.args).not.toContain('/test/workspace')
+        // scopePath is passed as separate arg, rootDir is still included
+        const args = (transport as any).options.args as string[]
+        expect(args).toContain('--rootDir')
+        expect(args).toContain('/test/workspace')
+        expect(args).toContain('--scopePath')
+        expect(args).toContain('/custom/scope')
       })
     })
 
@@ -110,7 +114,12 @@ describe('MCP Transport (Unit Tests)', () => {
 
         const transport = await createBackendMCPTransport(backend, '/scoped/path')
 
-        expect((transport as any).options.args).toContain('/scoped/path')
+        // scopePath is passed as separate arg, rootDir is still included
+        const args = (transport as any).options.args as string[]
+        expect(args).toContain('--rootDir')
+        expect(args).toContain('/memory')
+        expect(args).toContain('--scopePath')
+        expect(args).toContain('/scoped/path')
       })
     })
 
@@ -217,7 +226,9 @@ describe('MCP Transport (Unit Tests)', () => {
 
         const transport = await backend.getMCPTransport('/scoped/path')
 
-        expect((transport as any).options.args).toContain('/scoped/path')
+        const args = (transport as any).options.args as string[]
+        expect(args).toContain('--scopePath')
+        expect(args).toContain('/scoped/path')
       })
     })
 
@@ -237,7 +248,9 @@ describe('MCP Transport (Unit Tests)', () => {
 
         const transport = await backend.getMCPTransport('/scoped/memory')
 
-        expect((transport as any).options.args).toContain('/scoped/memory')
+        const args = (transport as any).options.args as string[]
+        expect(args).toContain('--scopePath')
+        expect(args).toContain('/scoped/memory')
       })
     })
 

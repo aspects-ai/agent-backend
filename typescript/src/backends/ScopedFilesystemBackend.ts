@@ -5,7 +5,7 @@ import * as path from 'path'
 import type { OperationsLogger } from '../logging/types.js'
 import type { ExecOptions, ReadOptions, ScopeConfig } from './config.js'
 import { validateWithinBoundary } from './pathValidation.js'
-import type { BackendType, FileBasedBackend, ScopedBackend } from './types.js'
+import type { Backend, BackendType, FileBasedBackend, ScopedBackend } from './types.js'
 
 /**
  * Scoped filesystem backend implementation
@@ -194,21 +194,12 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
   }
 
   /**
-   * List all scopes (subdirectories from scoped root)
+   * List all active scoped backends created from this backend
+   * Delegates to parent since scopes register with the root parent.
+   * @returns Array of scope paths for currently active scopes
    */
-  async listScopes(): Promise<string[]> {
-    // List subdirectories in the current scope
-    const entries = await this.readdir('.')
-    const scopes: string[] = []
-
-    for (const entry of entries) {
-      const stats = await this.stat(entry)
-      if (stats.isDirectory()) {
-        scopes.push(entry)
-      }
-    }
-
-    return scopes
+  async listActiveScopes(): Promise<string[]> {
+    return this.parent.listActiveScopes()
   }
 
   /**
@@ -235,14 +226,19 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
   }
 
   /**
-   * Destroy is not supported on scoped backends.
-   * Destroy the parent backend instead.
-   * @throws {Error} Always throws - scoped backends cannot be destroyed independently
+   * Destroy this scoped backend.
+   * Notifies parent so it can unregister and optionally self-destruct.
    */
   async destroy(): Promise<void> {
-    throw new Error(
-      'Cannot destroy a scoped backend. Destroy the parent backend instead. ' +
-      `This scope (${this.scopePath}) is a view into the parent backend.`
-    )
+    await this.parent.onChildDestroyed(this)
+  }
+
+  /**
+   * Called by child scopes when they are destroyed.
+   * Delegates to parent backend.
+   * @param child - The child backend that was destroyed
+   */
+  async onChildDestroyed(child: Backend): Promise<void> {
+    await this.parent.onChildDestroyed(child)
   }
 }

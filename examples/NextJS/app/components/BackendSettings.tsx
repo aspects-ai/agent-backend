@@ -326,6 +326,28 @@ export default function BackendSettings() {
                 </div>
               </div>
             )}
+
+            {/* Scope (optional, applies to both local and remote) */}
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                Scope (optional)
+              </label>
+              <input
+                type="text"
+                value={config.scope || ''}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    scope: e.target.value || undefined,
+                  })
+                }
+                className="w-full px-3 py-2 bg-bg-elevated border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-primary-600"
+                placeholder="e.g., projects/myapp"
+              />
+              <p className="mt-1 text-xs text-text-tertiary">
+                Subdirectory within root to restrict operations to
+              </p>
+            </div>
           </div>
         ) : null}
 

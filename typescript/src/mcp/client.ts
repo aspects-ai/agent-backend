@@ -7,11 +7,9 @@ export interface AgentBeMCPClientOptions {
   /** Authentication token */
   authToken: string
   /** Workspace root directory (for validation that client and server are configured identically) */
-  workspaceRoot: string
-  /** User ID for workspace isolation */
-  userId: string
-  /** Workspace name to scope operations to */
-  workspace: string
+  rootDir: string
+  /** Optional scope path for scoped backends */
+  scopePath?: string
 }
 
 /**
@@ -23,8 +21,8 @@ export interface AgentBeMCPClientOptions {
  * const mcpClient = await createAgentBeMCPClient({
  *   url: 'http://backend.example.com:3000',
  *   authToken: process.env.MCP_AUTH_TOKEN,
- *   userId: 'user123',
- *   workspace: 'my-project',
+ *   rootDir: '/tmp/workspace',
+ *   scopePath: 'users/123',
  * })
  *
  * // Get tool definitions
@@ -52,8 +50,8 @@ export interface AgentBeMCPClientOptions {
  * const transport = createAgentBeMCPTransport({
  *   url: 'http://your-server:3001',
  *   authToken: 'your-token',
- *   userId: 'user123',
- *   workspace: 'default',
+ *   rootDir: '/tmp/workspace',
+ *   scopePath: 'users/123',
  * })
  *
  * const mcpClient = await createMCPClient({ transport })
@@ -63,16 +61,18 @@ export interface AgentBeMCPClientOptions {
 export function createAgentBeMCPTransport(
   options: AgentBeMCPClientOptions
 ): StreamableHTTPClientTransport {
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${options.authToken}`,
+    'X-Root-Dir': options.rootDir,
+  }
+  if (options.scopePath) {
+    headers['X-Scope-Path'] = options.scopePath
+  }
   return new StreamableHTTPClientTransport(
     new URL('/mcp', options.url),
     {
       requestInit: {
-        headers: {
-          'Authorization': `Bearer ${options.authToken}`,
-          'X-Workspace-Root': options.workspaceRoot,
-          'X-User-ID': options.userId,
-          'X-Workspace': options.workspace,
-        },
+        headers,
       },
     }
   )
@@ -126,8 +126,7 @@ export async function createAgentBeMCPClient(
       throw new Error(
         `MCP connection failed: Server rejected request. ` +
         `This usually means missing or invalid headers. ` +
-        `Ensure workspaceRoot ('${options.workspaceRoot}'), userId ('${options.userId}'), ` +
-        `and workspace ('${options.workspace}') are correctly configured. ` +
+        `Ensure rootDir ('${options.rootDir}'), scopePath ('${options.scopePath}') are correctly configured. ` +
         `Original error: ${message}`
       )
     }

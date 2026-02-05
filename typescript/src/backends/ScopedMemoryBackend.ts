@@ -8,6 +8,7 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import * as path from 'path'
 import type {
+  Backend,
   FileBasedBackend,
   ScopedBackend,
   BackendType
@@ -159,27 +160,12 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
   }
 
   /**
-   * List scopes within this scope
+   * List all active scoped backends created from this backend
+   * Delegates to parent since scopes register with the root parent.
+   * @returns Array of scope paths for currently active scopes
    */
-  async listScopes(): Promise<string[]> {
-    // Use list() if available (memory-specific)
-    if ('list' in this.parent && typeof this.parent.list === 'function') {
-      const allKeys = await this.parent.list(this.scopePath)
-      const scopes = new Set<string>()
-
-      for (const key of allKeys) {
-        const relativePath = key.substring(this.scopePath.length)
-        const parts = relativePath.split('/')
-        if (parts.length > 1 && parts[0]) {
-          scopes.add(parts[0])
-        }
-      }
-
-      return Array.from(scopes).sort()
-    }
-
-    // Fallback: use readdir
-    return this.parent.readdir(this.scopePath.slice(0, -1)) // Remove trailing /
+  async listActiveScopes(): Promise<string[]> {
+    return this.parent.listActiveScopes()
   }
 
   /**
@@ -290,14 +276,19 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
   }
 
   /**
-   * Destroy is not supported on scoped backends.
-   * Destroy the parent backend instead.
-   * @throws {Error} Always throws - scoped backends cannot be destroyed independently
+   * Destroy this scoped backend.
+   * Notifies parent so it can unregister and optionally self-destruct.
    */
   async destroy(): Promise<void> {
-    throw new Error(
-      'Cannot destroy a scoped backend. Destroy the parent backend instead. ' +
-      `This scope (${this.scopePath}) is a view into the parent backend.`
-    )
+    await this.parent.onChildDestroyed(this)
+  }
+
+  /**
+   * Called by child scopes when they are destroyed.
+   * Delegates to parent backend.
+   * @param child - The child backend that was destroyed
+   */
+  async onChildDestroyed(child: Backend): Promise<void> {
+    await this.parent.onChildDestroyed(child)
   }
 }

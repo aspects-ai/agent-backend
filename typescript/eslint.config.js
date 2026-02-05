@@ -23,7 +23,11 @@ export default [
         module: 'readonly',
         NodeJS: 'readonly',
         BufferEncoding: 'readonly',
-        URL: 'readonly'
+        URL: 'readonly',
+        setTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        clearTimeout: 'readonly',
       },
     },
     plugins: {

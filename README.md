@@ -347,12 +347,11 @@ const backend = new LocalFilesystemBackend({ rootDir: '/tmp/workspace' })
 const adapter = new VercelAIAdapter(backend)
 
 // Get transport and create AI SDK MCP client
-const transport = await adapter.getTransport()
-const mcp = await createMCPClient({ transport })
+const mcp = await adapter.getMCPClient()
 
 // Tools are already in AI SDK format - no manual transformation needed
 const result = await generateText({
-  model: openai('gpt-4'),
+  model: openai('gpt-5'),
   tools: await mcp.tools(),
   prompt: 'List all TypeScript files in src/'
 })
@@ -445,7 +444,19 @@ For local development without Docker (works on macOS/Windows):
 ```bash
 # Start agentbe-daemon in local-only mode (stdio MCP, no SSH)
 agent-backend daemon --rootDir /tmp/workspace --local-only
+
+# With static scoping (all operations restricted to users/user1/)
+agent-backend daemon --rootDir /tmp/workspace --scopePath users/user1 --local-only
 ```
+
+### Daemon Scoping
+
+The daemon supports scoping to restrict operations to a subdirectory:
+
+- **Static scoping** (`--scopePath`): Set at daemon startup, used for stdio mode or single-tenant deployments
+- **Dynamic scoping** (`X-Scope-Path` header): Per-request scoping for HTTP mode, enables multi-tenant deployments
+
+See [docs/agentbe-daemon.md](./docs/agentbe-daemon.md) for complete daemon configuration options.
 
 ### Cloud Deployment
 
@@ -597,6 +608,7 @@ const scopedBackend: ScopedBackend<LocalFilesystemBackend> = backend.scope('proj
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [Agent Backend Daemon](docs/agentbe-daemon.md)
 - [Security & Isolation](docs/security.md)
 - [Performance](docs/performance.md)
 

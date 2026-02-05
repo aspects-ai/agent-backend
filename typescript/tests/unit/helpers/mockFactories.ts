@@ -116,10 +116,11 @@ export function createMockFileBackend(overrides: Partial<FileBasedBackend> = {})
     exec: vi.fn().mockResolvedValue('mock output'),
     touch: vi.fn().mockResolvedValue(undefined),
     scope: vi.fn().mockReturnValue(null as any),
-    listScopes: vi.fn().mockResolvedValue([]),
+    listActiveScopes: vi.fn().mockResolvedValue([]),
     getMCPClient: vi.fn(),
     getMCPTransport: vi.fn(),
     destroy: vi.fn().mockResolvedValue(undefined),
+    onChildDestroyed: vi.fn().mockResolvedValue(undefined),
     ...overrides
   } as FileBasedBackend
 }
@@ -147,10 +148,11 @@ export function createMockMemoryBackend(overrides: Partial<MemoryBackend> = {}):
     } as any),
     touch: vi.fn().mockResolvedValue(undefined),
     scope: vi.fn().mockReturnValue(null as any),
-    listScopes: vi.fn().mockResolvedValue([]),
+    listActiveScopes: vi.fn().mockResolvedValue([]),
     getMCPClient: vi.fn(),
     getMCPTransport: vi.fn(),
     destroy: vi.fn().mockResolvedValue(undefined),
+    onChildDestroyed: vi.fn().mockResolvedValue(undefined),
     list: vi.fn().mockResolvedValue([]),
     delete: vi.fn().mockResolvedValue(undefined),
     clear: vi.fn().mockResolvedValue(undefined),

@@ -95,7 +95,8 @@ export { createBackendMCPTransport } from './mcp/transport.js'
 // Adapters
 // ============================================================================
 
-export { VercelAIAdapter } from './adapters/index.js'
+// VercelAIAdapter is available via 'agent-backend/adapters' subpath
+// Not exported from main index to avoid requiring @ai-sdk/mcp dependency
 
 // ============================================================================
 // Type Guards & Utilities

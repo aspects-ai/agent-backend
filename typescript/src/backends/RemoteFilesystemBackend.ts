@@ -15,7 +15,7 @@ import type { ExecOptions, ReadOptions, RemoteFilesystemBackendConfig, ScopeConf
 import { validateRemoteFilesystemBackendConfig } from './config.js'
 import { validateWithinBoundary } from './pathValidation.js'
 import { ScopedFilesystemBackend } from './ScopedFilesystemBackend.js'
-import type { FileBasedBackend, ScopedBackend } from './types.js'
+import type { Backend, FileBasedBackend, ScopedBackend } from './types.js'
 import { BackendType } from './types.js'
 
 /** Default timeout for filesystem operations in milliseconds (120 seconds) */
@@ -91,6 +91,9 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
   private readonly operationTimeoutMs: number
   private readonly keepaliveIntervalMs: number
   private readonly keepaliveCountMax: number
+
+  /** Track active scoped backends for reference counting */
+  private readonly _activeScopes = new Set<ScopedFilesystemBackend>()
 
   constructor(config: RemoteFilesystemBackendConfig) {
     validateRemoteFilesystemBackendConfig(config)
@@ -776,32 +779,31 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
    * Create scoped backend
    */
   scope(scopePath: string, config?: ScopeConfig): ScopedBackend<this> {
-    return new ScopedFilesystemBackend(this, scopePath, config) as ScopedBackend<this>
+    const scoped = new ScopedFilesystemBackend(this, scopePath, config)
+    this._activeScopes.add(scoped)
+    return scoped as ScopedBackend<this>
   }
 
   /**
-   * List all scopes (subdirectories from root)
+   * List all active scoped backends created from this backend
+   * @returns Array of scope paths for currently active scopes
    */
-  async listScopes(): Promise<string[]> {
-    try {
-      const entries = await this.readdir('.')
-      const scopes: string[] = []
+  async listActiveScopes(): Promise<string[]> {
+    return Array.from(this._activeScopes).map(scope => scope.scopePath)
+  }
 
-      for (const entry of entries) {
-        try {
-          const stats = await this.stat(entry)
-          if (stats.isDirectory()) {
-            scopes.push(entry)
-          }
-        } catch {
-          // Skip entries we can't stat
-        }
-      }
-
-      return scopes
-    } catch {
-      return []
-    }
+  /**
+   * Called by child scopes when they are destroyed.
+   * Unregisters the child from tracking.
+   *
+   * Note: Does NOT auto-destroy the parent when no children remain.
+   * The owner of this backend (e.g., pool manager or direct caller) is
+   * responsible for calling destroy() when appropriate.
+   *
+   * @param child - The child backend that was destroyed
+   */
+  async onChildDestroyed(child: Backend): Promise<void> {
+    this._activeScopes.delete(child as ScopedFilesystemBackend)
   }
 
   /**
@@ -876,6 +878,13 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
    * Clean up backend resources
    */
   async destroy(): Promise<void> {
+    // Clear active scopes - they become orphaned but that's expected
+    // when the parent is explicitly destroyed
+    if (this._activeScopes.size > 0) {
+      getLogger().debug(`RemoteFilesystemBackend destroying with ${this._activeScopes.size} active scopes`)
+      this._activeScopes.clear()
+    }
+
     // Reject all pending operations
     const error = new BackendError('Backend destroyed', 'CONNECTION_CLOSED')
     for (const op of this.pendingOperations) {

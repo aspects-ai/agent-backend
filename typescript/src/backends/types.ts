@@ -50,6 +50,13 @@ export interface Backend {
    * Cleanup resources
    */
   destroy(): Promise<void>
+
+  /**
+   * Called by child scopes when they are destroyed.
+   * Parent should unregister the child and optionally destroy itself if no children remain.
+   * @param child - The child backend that was destroyed
+   */
+  onChildDestroyed(child: Backend): Promise<void>
 }
 
 /**
@@ -83,9 +90,10 @@ export interface FileBasedBackend extends Backend {
   scope(path: string, config?: ScopeConfig): ScopedBackend<this>
 
   /**
-   * List all scopes (subdirectories from root)
+   * List all active scoped backends created from this backend
+   * @returns Array of scope paths for currently active scopes
    */
-  listScopes(): Promise<string[]>
+  listActiveScopes(): Promise<string[]>
 
   /**
    * Execute a shell command
@@ -211,9 +219,10 @@ export interface ScopedBackend<T extends Backend> extends Backend {
   scope(path: string, config?: ScopeConfig): ScopedBackend<T>
 
   /**
-   * List all scopes (subdirectories from root)
+   * List all active scoped backends created from this backend
+   * @returns Array of scope paths for currently active scopes
    */
-  listScopes(): Promise<string[]>
+  listActiveScopes(): Promise<string[]>
 
   /**
    * Execute a shell command

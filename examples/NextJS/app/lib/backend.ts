@@ -1,24 +1,25 @@
 import type { FileBasedBackend } from 'agent-backend'
-import { LocalFilesystemBackend, RemoteFilesystemBackend } from 'agent-backend'
+import { LocalFilesystemBackend, RemoteFilesystemBackend, ScopedFilesystemBackend } from 'agent-backend'
 import { getBackendConfig } from './backend-config'
 
 class BackendManager {
   private backend: FileBasedBackend | null = null
   private connecting: Promise<void> | null = null
   private currentType: 'local' | 'remote' | null = null
+  private currentScope: string | undefined = undefined
 
   async getBackend(): Promise<FileBasedBackend> {
     const config = await getBackendConfig()
-    console.log('[BackendManager] getBackend called, config type:', config.type, 'current cached type:', this.currentType)
+    console.log('[BackendManager] getBackend called, config type:', config.type, 'scope:', config.scope, 'current cached type:', this.currentType, 'cached scope:', this.currentScope)
 
-    if (this.backend && this.currentType === config.type) {
+    if (this.backend && this.currentType === config.type && this.currentScope === config.scope) {
       console.log('[BackendManager] Returning cached backend')
       return this.backend
     }
 
-    // Config type changed, need to reinitialize
-    if (this.backend && this.currentType !== config.type) {
-      console.log('[BackendManager] Config type changed, reinitializing...')
+    // Config type or scope changed, need to reinitialize
+    if (this.backend && (this.currentType !== config.type || this.currentScope !== config.scope)) {
+      console.log('[BackendManager] Config changed, reinitializing...')
       await this.disconnect()
     }
 
@@ -51,6 +52,7 @@ class BackendManager {
     const config = await getBackendConfig()
     console.log('[BackendManager] initializeBackend, config:', JSON.stringify(config, null, 2))
     this.currentType = config.type
+    this.currentScope = config.scope
 
     if (config.type === 'remote' && config.remote) {
       const remote = config.remote
@@ -87,15 +89,32 @@ class BackendManager {
       await this.backend.connect()
       console.log('[BackendManager] Connected')
     }
+
+    // Apply scope if configured
+    if (config.scope) {
+      console.log('[BackendManager] Applying scope:', config.scope)
+
+      // Ensure scope directory exists before scoping
+      const scopeExists = await this.backend.exists(config.scope)
+      if (!scopeExists) {
+        console.log('[BackendManager] Creating scope directory:', config.scope)
+        await this.backend.mkdir(config.scope)
+      }
+
+      this.backend = this.backend.scope(config.scope)
+      console.log('[BackendManager] Backend scoped to:', config.scope)
+    }
   }
 
   async disconnect(): Promise<void> {
     if (this.backend) {
-      // RemoteFilesystemBackend has destroy, LocalFilesystemBackend doesn't need cleanup
-      if ('destroy' in this.backend && typeof this.backend.destroy === 'function') {
-        await this.backend.destroy()
+      await this.backend.destroy()
+      // Since we only have a single backend instance, we should destroy the parent backend if it exists as well.
+      if (this.backend instanceof ScopedFilesystemBackend) {
+        await this.backend.parent.destroy()
       }
       this.backend = null
+      this.currentScope = undefined
     }
   }
 }

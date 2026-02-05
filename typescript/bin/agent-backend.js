@@ -70,15 +70,23 @@ async function handleDaemon(args) {
   if (config.localOnly) {
     console.error('🌟 Starting agentbe-daemon (local stdio mode)...')
     console.error(`📁 Workspace: ${config.rootDir}`)
+    if (config.scopePath) {
+      console.error(`📂 Scope: ${config.scopePath}`)
+    }
     console.error('')
 
     try {
-      // Create backend
-      const backend = new LocalFilesystemBackend({
+      // Create base backend
+      let backend = new LocalFilesystemBackend({
         rootDir: config.rootDir,
         isolation: config.isolation,
         shell: config.shell
       })
+
+      // Apply static scoping if configured
+      if (config.scopePath) {
+        backend = backend.scope(config.scopePath)
+      }
 
       // Create MCP server
       const mcpServer = new AgentBackendMCPServer(backend)
@@ -202,6 +210,11 @@ function parseDaemonArgs(args) {
     switch (arg) {
       case '--rootDir':
         config.rootDir = next
+        i++
+        break
+
+      case '--scopePath':
+        config.scopePath = next
         i++
         break
 
@@ -360,20 +373,13 @@ async function setupSshUsers(config) {
 async function startDaemonHttpServer(config) {
   const app = express()
 
-  // Create backend
-  const backend = new LocalFilesystemBackend({
+  // Create base backend
+  const baseBackend = new LocalFilesystemBackend({
     rootDir: config.rootDir,
     isolation: config.isolation,
     shell: config.shell,
     preventDangerous: true
   })
-
-  // Create MCP server
-  const mcpServer = new AgentBackendMCPServer(backend)
-
-  // Create transport and connect
-  const transport = new StreamableHTTPServerTransport()
-  await mcpServer.getServer().connect(transport)
 
   // Health check endpoint
   app.get('/health', (req, res) => {
@@ -383,7 +389,7 @@ async function startDaemonHttpServer(config) {
     })
   })
 
-  // MCP endpoint
+  // MCP endpoint - creates scoped backend per request
   app.post('/mcp', async (req, res) => {
     // Validate auth token if configured
     if (config.mcpAuthToken) {
@@ -399,6 +405,54 @@ async function startDaemonHttpServer(config) {
       }
     }
 
+    // Read scope headers
+    const requestedRootDir = req.headers['x-root-dir']
+    const dynamicScopePath = req.headers['x-scope-path']
+
+    // Validate X-Root-Dir matches configured rootDir (if provided and not 'undefined')
+    if (requestedRootDir && requestedRootDir !== 'undefined' && requestedRootDir !== config.rootDir) {
+      console.error(`[MCP] Root dir mismatch: requested=${requestedRootDir}, configured=${config.rootDir}`)
+      res.status(403).json({
+        error: 'Root directory mismatch',
+        message: `Server is configured for ${config.rootDir}, not ${requestedRootDir}`
+      })
+      return
+    }
+
+    // Check for conflicting scope configuration
+    if (config.scopePath && dynamicScopePath) {
+      console.error(`[MCP] Scope conflict: static=${config.scopePath}, dynamic=${dynamicScopePath}`)
+      res.status(400).json({
+        error: 'Scope conflict',
+        message: `Server was started with static scope '${config.scopePath}', but request also specified scope '${dynamicScopePath}'. Use one or the other, not both.`
+      })
+      return
+    }
+
+    // Determine effective scope (static from CLI or dynamic from header)
+    const effectiveScopePath = config.scopePath || dynamicScopePath
+
+    // Validate and create scoped backend if scope requested
+    let backend = baseBackend
+    if (effectiveScopePath) {
+      // Validate scope path doesn't escape root
+      const normalizedScope = effectiveScopePath.replace(/^\/+/, '').replace(/\.\.+/g, '')
+      if (normalizedScope !== effectiveScopePath.replace(/^\/+/, '') || effectiveScopePath.includes('..')) {
+        res.status(400).json({
+          error: 'Invalid scope path',
+          message: 'Scope path must not contain path traversal sequences'
+        })
+        return
+      }
+      backend = baseBackend.scope(normalizedScope)
+      console.error(`[MCP] Request scoped to: ${normalizedScope}${config.scopePath ? ' (static)' : ' (dynamic)'}`)
+    }
+
+    // Create MCP server and transport for this request
+    const mcpServer = new AgentBackendMCPServer(backend)
+    const transport = new StreamableHTTPServerTransport()
+    await mcpServer.getServer().connect(transport)
+
     await transport.handleRequest(req, res)
   })
 
@@ -407,6 +461,9 @@ async function startDaemonHttpServer(config) {
       console.error('🔌 MCP server started')
       console.error(`   Port: ${config.mcpPort}`)
       console.error(`   Auth: ${config.mcpAuthToken ? 'enabled (token required)' : 'disabled (open access)'}`)
+      if (config.scopePath) {
+        console.error(`   Scope: ${config.scopePath} (static)`)
+      }
       resolve(server)
     })
   })
@@ -446,6 +503,11 @@ function parseArgs(args) {
       // Daemon options
       case '--rootDir':
         config.rootDir = next
+        i++
+        break
+
+      case '--scopePath':
+        config.scopePath = next
         i++
         break
 
@@ -521,24 +583,31 @@ async function startMCPServer(args) {
 
   console.error(`🚀 Starting agentbe-daemon (agent backend daemon)...`)
   console.error(`📁 Root directory: ${config.rootDir}`)
+  if (config.scopePath) {
+    console.error(`📂 Scope: ${config.scopePath}`)
+  }
   console.error(`🔒 Isolation: ${config.isolation || 'auto'}`)
 
   try {
-    // Create backend for the MCP server
-    const backend = new LocalFilesystemBackend({
+    // Create base backend for the MCP server
+    let backend = new LocalFilesystemBackend({
       rootDir: config.rootDir,
       isolation: config.isolation,
       shell: config.shell,
       preventDangerous: true
     })
 
-    // Create MCP server
-    const mcpServer = new AgentBackendMCPServer(backend)
+    // Apply static scoping if configured
+    if (config.scopePath) {
+      backend = backend.scope(config.scopePath)
+    }
 
     // Choose transport mode based on config
     if (config.mcpPort) {
-      await startHttpServer(mcpServer, config)
+      await startHttpServer(backend, config)
     } else {
+      // Create MCP server for stdio mode
+      const mcpServer = new AgentBackendMCPServer(backend)
       // Connect stdio transport
       const transport = new StdioServerTransport()
       await mcpServer.getServer().connect(transport)
@@ -559,12 +628,8 @@ async function startMCPServer(args) {
 /**
  * Start HTTP server for MCP
  */
-async function startHttpServer(mcpServer, config) {
+async function startHttpServer(baseBackend, config) {
   const app = express()
-
-  // Create transport and connect once
-  const transport = new StreamableHTTPServerTransport()
-  await mcpServer.getServer().connect(transport)
 
   // Health check endpoint
   app.get('/health', (req, res) => {
@@ -574,7 +639,7 @@ async function startHttpServer(mcpServer, config) {
     })
   })
 
-  // MCP endpoint - transport handles the request
+  // MCP endpoint - creates scoped backend per request
   app.post('/mcp', async (req, res) => {
     // Validate auth token if configured
     if (config.mcpAuthToken) {
@@ -590,6 +655,54 @@ async function startHttpServer(mcpServer, config) {
       }
     }
 
+    // Read scope headers
+    const requestedRootDir = req.headers['x-root-dir']
+    const dynamicScopePath = req.headers['x-scope-path']
+
+    // Validate X-Root-Dir matches configured rootDir (if provided and not 'undefined')
+    if (requestedRootDir && requestedRootDir !== 'undefined' && requestedRootDir !== config.rootDir) {
+      console.error(`[MCP] Root dir mismatch: requested=${requestedRootDir}, configured=${config.rootDir}`)
+      res.status(403).json({
+        error: 'Root directory mismatch',
+        message: `Server is configured for ${config.rootDir}, not ${requestedRootDir}`
+      })
+      return
+    }
+
+    // Check for conflicting scope configuration
+    if (config.scopePath && dynamicScopePath) {
+      console.error(`[MCP] Scope conflict: static=${config.scopePath}, dynamic=${dynamicScopePath}`)
+      res.status(400).json({
+        error: 'Scope conflict',
+        message: `Server was started with static scope '${config.scopePath}', but request also specified scope '${dynamicScopePath}'. Use one or the other, not both.`
+      })
+      return
+    }
+
+    // Determine effective scope (static from CLI or dynamic from header)
+    const effectiveScopePath = config.scopePath || dynamicScopePath
+
+    // Validate and create scoped backend if scope requested
+    let backend = baseBackend
+    if (effectiveScopePath) {
+      // Validate scope path doesn't escape root
+      const normalizedScope = effectiveScopePath.replace(/^\/+/, '').replace(/\.\.+/g, '')
+      if (normalizedScope !== effectiveScopePath.replace(/^\/+/, '') || effectiveScopePath.includes('..')) {
+        res.status(400).json({
+          error: 'Invalid scope path',
+          message: 'Scope path must not contain path traversal sequences'
+        })
+        return
+      }
+      backend = baseBackend.scope(normalizedScope)
+      console.error(`[MCP] Request scoped to: ${normalizedScope}${config.scopePath ? ' (static)' : ' (dynamic)'}`)
+    }
+
+    // Create MCP server and transport for this request
+    const mcpServer = new AgentBackendMCPServer(backend)
+    const transport = new StreamableHTTPServerTransport()
+    await mcpServer.getServer().connect(transport)
+
     await transport.handleRequest(req, res)
   })
 
@@ -598,6 +711,9 @@ async function startHttpServer(mcpServer, config) {
       console.error(`✅ agentbe-daemon running on HTTP`)
       console.error(`   Port: ${config.mcpPort}`)
       console.error(`   Auth: ${config.mcpAuthToken ? 'enabled (token required)' : 'disabled (open access)'}`)
+      if (config.scopePath) {
+        console.error(`   Scope: ${config.scopePath} (static)`)
+      }
       console.error(`   Health: http://localhost:${config.mcpPort}/health`)
       console.error(`   Endpoint: http://localhost:${config.mcpPort}/mcp`)
       resolve()
@@ -813,6 +929,11 @@ DAEMON COMMAND:
   Optional - Mode:
     --local-only           Run MCP server via stdio (no SSH, no HTTP). Works on any platform.
                            Perfect for local development with LocalFilesystemBackend.
+
+  Optional - Scoping:
+    --scopePath <path>     Static scope path within rootDir. All operations are restricted
+                           to this subdirectory. For stdio mode, this is the only way to scope.
+                           For HTTP mode, this conflicts with dynamic X-Scope-Path header.
 
   Optional - MCP Server:
     --mcp-port <port>      HTTP server port (default: 3001)

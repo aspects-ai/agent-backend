@@ -5,6 +5,7 @@
 
 export interface DaemonConfig {
   rootDir?: string
+  scopePath?: string
   mcpPort: number
   mcpAuthToken?: string
   localOnly: boolean
@@ -41,6 +42,18 @@ export function parseDaemonArgs(args: string[]): ParseResult {
           return { error: '--rootDir requires a value' }
         }
         config.rootDir = next
+        i++
+        break
+
+      case '--scopePath':
+        if (!next || next.startsWith('--')) {
+          return { error: '--scopePath requires a value' }
+        }
+        // Validate scopePath doesn't contain path traversal
+        if (next.includes('..')) {
+          return { error: '--scopePath must not contain path traversal sequences (..)' }
+        }
+        config.scopePath = next.replace(/^\/+/, '') // Strip leading slashes
         i++
         break
 

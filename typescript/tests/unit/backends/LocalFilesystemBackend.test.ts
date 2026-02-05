@@ -637,16 +637,29 @@ describe('LocalFilesystemBackend (Unit Tests)', () => {
       expect(() => backend.scope('deeply/nested/scope')).not.toThrow()
     })
 
-    it('should list scopes (subdirectories)', async () => {
-      vi.mocked(fs.readdir).mockResolvedValue([
-        { name: 'user1', isDirectory: () => true },
-        { name: 'user2', isDirectory: () => true },
-        { name: 'file.txt', isDirectory: () => false }
-      ] as any)
+    it('should list active scopes', async () => {
+      // Create some scopes
+      const scope1 = backend.scope('users/user1')
+      const scope2 = backend.scope('projects/proj1')
 
-      const scopes = await backend.listScopes('users')
+      const activeScopes = await backend.listActiveScopes()
 
-      expect(scopes).toEqual(['user1', 'user2'])
+      expect(activeScopes).toContain('users/user1')
+      expect(activeScopes).toContain('projects/proj1')
+      expect(activeScopes).toHaveLength(2)
+    })
+
+    it('should remove scope from active list when destroyed', async () => {
+      const scope1 = backend.scope('users/user1')
+      const scope2 = backend.scope('projects/proj1')
+
+      // Destroy one scope
+      await scope1.destroy()
+
+      const activeScopes = await backend.listActiveScopes()
+      expect(activeScopes).not.toContain('users/user1')
+      expect(activeScopes).toContain('projects/proj1')
+      expect(activeScopes).toHaveLength(1)
     })
   })
 
@@ -663,6 +676,8 @@ describe('LocalFilesystemBackend (Unit Tests)', () => {
       expect(backend.rootDir).toBe('/test/workspace')
     })
   })
+
+  // Note: getMCPTransport scopePath handling is tested in tests/unit/mcp/transport.test.ts
 
   describe('Cleanup', () => {
     it('should destroy without error', async () => {
