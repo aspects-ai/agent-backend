@@ -695,8 +695,9 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
           if (completed) return
           complete()
           if (err) {
+            const errMsg = err.message || String(err)
             reject(new BackendError(
-              `Failed to create directory: ${relativePath}`,
+              `Failed to create directory: ${relativePath} - ${errMsg}`,
               ERROR_CODES.WRITE_FAILED,
               'mkdir'
             ))

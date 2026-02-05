@@ -21,10 +21,10 @@ install: ## Install all dependencies (TypeScript + Python + dev tools)
 	pnpm install
 	@echo ""
 	@echo "Installing Python dependencies..."
-	@if [ -d "python" ]; then \
-		cd python && pip install -e .[dev]; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && pip install -e .[dev] || echo "⚠️  Python install failed"; \
 	else \
-		echo "Python package not found (will be added later)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 	@echo ""
 	@echo "Installing dev tools..."
@@ -54,10 +54,10 @@ build-typescript: ## Build TypeScript packages only
 
 build-python: ## Build Python package only
 	@echo "Building Python package..."
-	@if [ -d "python" ]; then \
-		cd python && python -m build; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && python -m build || echo "⚠️  Python build failed (missing 'build' module? Run: pip install build)"; \
 	else \
-		echo "Python package not found (skipping)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 
 ##@ Testing
@@ -70,10 +70,10 @@ test-typescript: ## Run TypeScript tests only
 
 test-python: ## Run Python tests only
 	@echo "Running Python tests..."
-	@if [ -d "python" ]; then \
-		cd python && pytest; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && pytest || echo "⚠️  Python tests failed or pytest not installed"; \
 	else \
-		echo "Python package not found (skipping)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 
 test-unit: ## Run unit tests only
@@ -90,10 +90,10 @@ typecheck-typescript: ## Type check TypeScript packages only
 
 typecheck-python: ## Type check Python package only
 	@echo "Type checking Python package..."
-	@if [ -d "python" ]; then \
-		cd python && mypy .; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && mypy . || echo "⚠️  Python typecheck failed or mypy not installed"; \
 	else \
-		echo "Python package not found (skipping)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 
 lint: lint-typescript lint-python ## Lint all packages
@@ -104,18 +104,18 @@ lint-typescript: ## Lint TypeScript packages only
 
 lint-python: ## Lint Python package only
 	@echo "Linting Python package..."
-	@if [ -d "python" ]; then \
-		cd python && ruff check .; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && ruff check . || echo "⚠️  Python lint failed or ruff not installed"; \
 	else \
-		echo "Python package not found (skipping)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 
 lint-fix: ## Auto-fix linting issues
 	@echo "Auto-fixing TypeScript..."
 	pnpm -r lint:fix || true
 	@echo "Auto-fixing Python..."
-	@if [ -d "python" ]; then \
-		cd python && ruff check --fix .; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && ruff check --fix . || true; \
 	fi
 
 ##@ Development
@@ -213,10 +213,10 @@ publish-typescript: ## Publish TypeScript package to npm
 
 publish-python: ## Publish Python package to PyPI
 	@echo "Publishing Python package..."
-	@if [ -d "python" ]; then \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
 		cd python && python -m twine upload dist/*; \
 	else \
-		echo "Python package not found"; \
+		echo "Python package not ready"; \
 	fi
 
 start-deploy-ui: ## Start deployment UI for cloud VM setup

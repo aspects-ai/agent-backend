@@ -590,22 +590,24 @@ async function startMCPServer(args) {
 
   try {
     // Create base backend for the MCP server
-    let backend = new LocalFilesystemBackend({
+    const baseBackend = new LocalFilesystemBackend({
       rootDir: config.rootDir,
       isolation: config.isolation,
       shell: config.shell,
       preventDangerous: true
     })
 
-    // Apply static scoping if configured
-    if (config.scopePath) {
-      backend = backend.scope(config.scopePath)
-    }
-
     // Choose transport mode based on config
     if (config.mcpPort) {
-      await startHttpServer(backend, config)
+      // HTTP mode: pass unscoped backend, scoping is handled per-request
+      await startHttpServer(baseBackend, config)
     } else {
+      // Stdio mode: apply static scoping here (no per-request scoping possible)
+      let backend = baseBackend
+      if (config.scopePath) {
+        backend = baseBackend.scope(config.scopePath)
+      }
+
       // Create MCP server for stdio mode
       const mcpServer = new AgentBackendMCPServer(backend)
       // Connect stdio transport

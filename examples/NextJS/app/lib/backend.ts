@@ -93,14 +93,7 @@ class BackendManager {
     // Apply scope if configured
     if (config.scope) {
       console.log('[BackendManager] Applying scope:', config.scope)
-
-      // Ensure scope directory exists before scoping
-      const scopeExists = await this.backend.exists(config.scope)
-      if (!scopeExists) {
-        console.log('[BackendManager] Creating scope directory:', config.scope)
-        await this.backend.mkdir(config.scope)
-      }
-
+      // ScopedFilesystemBackend lazily creates root directory on first write operation
       this.backend = this.backend.scope(config.scope)
       console.log('[BackendManager] Backend scoped to:', config.scope)
     }

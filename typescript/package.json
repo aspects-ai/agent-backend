@@ -61,7 +61,16 @@
   "optionalDependencies": {
     "node-gyp": "^10.0.0"
   },
+  "peerDependencies": {
+    "@ai-sdk/mcp": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@ai-sdk/mcp": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@ai-sdk/mcp": "^1.0.18",
     "@eslint/js": "^9.39.2",
     "@types/express": "^5.0.2",
     "@types/node": "^22.10.0",
