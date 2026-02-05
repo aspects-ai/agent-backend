@@ -1,4 +1,4 @@
-.PHONY: help install build test typecheck lint clean dev publish
+.PHONY: help install build test typecheck lint clean dev publish start-daemon stop-daemon
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -171,6 +171,39 @@ docker-clean: ## Remove agentbe-daemon Docker images and containers
 	@docker rm agentbe-daemon 2>/dev/null || true
 	@echo "Removing images..."
 	@docker rmi agentbe-daemon:latest 2>/dev/null || true
+
+start-daemon: ## Start agentbe-daemon Docker container in background
+	@command -v docker >/dev/null 2>&1 || { \
+		echo "Error: Docker not installed"; \
+		echo "Install: https://docs.docker.com/get-docker/"; \
+		exit 1; \
+	}
+	@if ! docker images | grep -q "agentbe-daemon.*latest"; then \
+		echo "Docker image not found. Building agentbe-daemon:latest..."; \
+		$(MAKE) docker-build; \
+	fi
+	@mkdir -p typescript/deploy/docker/var/workspace
+	@if docker ps -q -f name=agentbe-daemon | grep -q .; then \
+		echo "agentbe-daemon is already running"; \
+	else \
+		echo "Starting agentbe-daemon..."; \
+		docker run -d --name agentbe-daemon \
+			-p 2222:22 -p 3001:3001 \
+			-v $(PWD)/typescript/deploy/docker/var/workspace:/var/workspace \
+			--restart unless-stopped \
+			agentbe-daemon:latest; \
+		echo "✓ agentbe-daemon started (SSH: 2222, MCP: 3001)"; \
+	fi
+
+stop-daemon: ## Stop agentbe-daemon Docker container
+	@if docker ps -q -f name=agentbe-daemon | grep -q .; then \
+		echo "Stopping agentbe-daemon..."; \
+		docker stop agentbe-daemon; \
+		docker rm agentbe-daemon; \
+		echo "✓ agentbe-daemon stopped"; \
+	else \
+		echo "agentbe-daemon is not running"; \
+	fi
 
 ##@ Publishing & Deployment
 
