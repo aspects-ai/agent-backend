@@ -1,10 +1,13 @@
-import type { Client as MCPClient } from '@modelcontextprotocol/sdk/client/index.js'
+import { Client as MCPClient } from '@modelcontextprotocol/sdk/client/index.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { Stats } from 'fs'
 import { clearTimeout, setTimeout } from 'node:timers'
 import * as path from 'path'
 import type { ConnectConfig, SFTPWrapper } from 'ssh2'
 import { Client as SSH2Client } from 'ssh2'
 import { ERROR_CODES } from '../constants.js'
+import { createBackendMCPTransport } from '../mcp/transport.js'
 import { isCommandSafe, isDangerous } from '../safety.js'
 import { BackendError, DangerousOperationError } from '../types.js'
 import { getLogger } from '../utils/logger.js'
@@ -600,6 +603,58 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
   }
 
   /**
+   * List directory contents with stats for each entry.
+   * Highly efficient for SFTP - attrs are returned with readdir, no extra stat calls needed.
+   */
+  async readdirWithStats(relativePath: string): Promise<{ name: string, stats: Stats }[]> {
+    const fullPath = this.resolvePath(relativePath)
+    const sftp = await this.getSFTPSession()
+
+    return this.withChannelLimit(() => new Promise((resolve, reject) => {
+      let completed = false
+      const untrack = this.trackOperation(`readdirWithStats: ${relativePath}`, reject)
+
+      const complete = () => {
+        if (!completed) {
+          completed = true
+          clearTimeout(timeout)
+          untrack()
+        }
+      }
+
+      const timeout = setTimeout(() => {
+        if (!completed) {
+          complete()
+          reject(new BackendError(
+            `readdirWithStats timed out after ${this.operationTimeoutMs}ms`,
+            ERROR_CODES.LS_FAILED
+          ))
+        }
+      }, this.operationTimeoutMs)
+
+      sftp.readdir(fullPath, (err, list) => {
+        if (completed) return
+        complete()
+        if (err) {
+          reject(new BackendError(
+            `Failed to read directory: ${relativePath}`,
+            ERROR_CODES.LS_FAILED,
+            'readdirWithStats'
+          ))
+        } else {
+          // SFTP attrs are already included - convert to Stats-like objects
+          const results = list.map(item => ({
+            name: item.filename,
+            // SSH2 Stats is compatible with fs.Stats for our purposes
+            stats: item.attrs as unknown as Stats,
+          }))
+          resolve(results)
+        }
+      })
+    }))
+  }
+
+  /**
    * Create directory
    */
   async mkdir(relativePath: string, options?: { recursive?: boolean }): Promise<void> {
@@ -750,6 +805,17 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
   }
 
   /**
+   * Get MCP transport for this backend.
+   * Can be used directly with Vercel AI SDK's createMCPClient or raw MCP SDK.
+   *
+   * @param scopePath - Optional scope path to use as rootDir
+   * @returns StreamableHTTPClientTransport configured for this backend
+   */
+  async getMCPTransport(scopePath?: string): Promise<Transport> {
+    return createBackendMCPTransport(this, scopePath)
+  }
+
+  /**
    * Get MCP client for remote backend.
    * Connects to HTTP MCP server running on the remote host.
    *
@@ -773,9 +839,6 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
       )
     }
 
-    const { Client: MCPClientClass } = await import('@modelcontextprotocol/sdk/client/index.js')
-    const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
-
     // Construct MCP server URL from host and port
     const mcpHost = this.config.mcpServerHostOverride || this.config.host
     const mcpPort = this.config.mcpPort || 3001
@@ -795,7 +858,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
       }
     )
 
-    const client = new MCPClientClass(
+    const client = new MCPClient(
       {
         name: 'remote-filesystem-client',
         version: '1.0.0',

@@ -23,6 +23,7 @@ export default [
         module: 'readonly',
         NodeJS: 'readonly',
         BufferEncoding: 'readonly',
+        URL: 'readonly'
       },
     },
     plugins: {

@@ -35,6 +35,7 @@ export { BackendType } from './backends/types.js'
 export type {
     Backend,
     FileBasedBackend,
+    MCPTransport,
     ScopedBackend
 } from './backends/types.js'
 
@@ -79,12 +80,22 @@ export {
     type CreateMCPClientOptions
 } from './mcp/client.js'
 
+// Local/memory transport helpers
+export {
+    createLocalMCPTransportOptions,
+    createMemoryMCPTransportOptions,
+    type LocalMCPTransportOptions,
+    type MemoryMCPTransportOptions,
+} from './mcp/local-transport.js'
+
+// Centralized backend transport creation
+export { createBackendMCPTransport } from './mcp/transport.js'
+
 // ============================================================================
 // Adapters
 // ============================================================================
 
 export { VercelAIAdapter } from './adapters/index.js'
-export type { MCPTransport } from './adapters/index.js'
 
 // ============================================================================
 // Type Guards & Utilities
@@ -97,3 +108,10 @@ export {
     isFileBasedBackend,
     isScopedBackend,
 } from './typing.js'
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+// Default patterns for excluding directories from tree listings
+export { DEFAULT_EXCLUDE_PATTERNS } from './server/tools.js'

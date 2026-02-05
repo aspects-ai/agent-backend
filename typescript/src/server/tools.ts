@@ -7,6 +7,47 @@ import { z } from 'zod'
 type BackendGetter = (sessionId?: string) => Promise<Backend> | Backend
 
 /**
+ * Default patterns to exclude from directory listings (gitignore-style).
+ * These match at any depth in the tree.
+ */
+export const DEFAULT_EXCLUDE_PATTERNS = [
+  // Version control
+  '.git',
+  '.svn',
+  '.hg',
+  // Dependencies
+  'node_modules',
+  '.venv',
+  'venv',
+  '__pycache__',
+  '.tox',
+  '.nox',
+  // Build artifacts
+  'dist',
+  'build',
+  '.next',
+  '.nuxt',
+  '.output',
+  'target',
+  // Caches
+  '.cache',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.ruff_cache',
+  // Coverage
+  'coverage',
+  '.coverage',
+  'htmlcov',
+  // IDE
+  '.idea',
+  '.vscode',
+  // Misc
+  '.DS_Store',
+  '*.egg-info',
+  '.eggs',
+]
+
+/**
  * Create a simple unified diff between two strings
  * This is a lightweight implementation - the official server uses the 'diff' library
  */
@@ -440,15 +481,19 @@ export function registerFilesystemTools(server: McpServer, getBackend: BackendGe
   server.registerTool(
     'directory_tree',
     {
-      description: 'Get recursive JSON tree structure of directory contents. Each entry includes name, type (file/directory), and children for directories.',
+      description: 'Get recursive JSON tree structure of directory contents. Each entry includes name, type (file/directory), and children for directories. By default excludes common non-essential directories (node_modules, .venv, .git, etc.).',
       inputSchema: {
         path: z.string().describe('Path to the directory'),
         excludePatterns: z.array(z.string()).optional()
-          .describe('Glob patterns to exclude (e.g., "node_modules", "*.log")'),
+          .describe('Additional glob patterns to exclude (e.g., "*.log", "temp")'),
+        includeDefaultExcludes: z.boolean().optional().default(true)
+          .describe('Include default exclusions (node_modules, .venv, .git, etc.). Set to false to disable.'),
       },
     },
-    async ({ path: dirPath, excludePatterns: excludePatternsParam }, { sessionId }) => {
-      const excludePatterns = excludePatternsParam ?? []
+    async ({ path: dirPath, excludePatterns: excludePatternsParam, includeDefaultExcludes }, { sessionId }) => {
+      // Combine default excludes with user-provided patterns
+      const defaultExcludes = includeDefaultExcludes !== false ? DEFAULT_EXCLUDE_PATTERNS : []
+      const excludePatterns = [...defaultExcludes, ...(excludePatternsParam ?? [])]
       const backend = await getBackend(sessionId) as FileBasedBackend
 
       interface TreeNode {

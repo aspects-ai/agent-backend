@@ -552,6 +552,50 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       expect(files).toEqual(['file1.txt', 'file2.txt', 'subdir'])
     })
 
+    it('should read directory contents with stats (readdirWithStats)', async () => {
+      const mockClient = createMockSSHClient({
+        sftpMethods: {
+          readdir: (_path, callback) => callback(null, [
+            {
+              filename: 'file1.txt',
+              attrs: {
+                isDirectory: () => false,
+                isFile: () => true,
+                size: 100,
+                mtime: 1704067200
+              }
+            },
+            {
+              filename: 'subdir',
+              attrs: {
+                isDirectory: () => true,
+                isFile: () => false,
+                size: 4096,
+                mtime: 1704153600
+              }
+            }
+          ])
+        }
+      })
+      vi.mocked(Client).mockImplementation(() => mockClient as any)
+
+      const backend = new RemoteFilesystemBackend({
+        rootDir: TEST_ROOT_DIR,
+        host: 'example.com',
+        sshAuth: {
+          type: 'password',
+          credentials: { username: 'user', password: 'pass' }
+        }
+      })
+
+      const entries = await backend.readdirWithStats('.')
+      expect(entries).toHaveLength(2)
+      expect(entries[0].name).toBe('file1.txt')
+      expect(entries[0].stats.size).toBe(100)
+      expect(entries[1].name).toBe('subdir')
+      expect(entries[1].stats.isDirectory()).toBe(true)
+    })
+
     it('should check file existence', async () => {
       const mockClient = createMockSSHClient({
         sftpMethods: {

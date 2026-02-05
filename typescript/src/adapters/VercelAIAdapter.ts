@@ -1,185 +1,116 @@
 /**
  * Vercel AI SDK Adapter
  *
- * Provides MCP transports for use with Vercel AI SDK's createMCPClient
- * or any other MCP-compatible client.
- *
- * Transport type depends on backend:
- * - LocalFilesystemBackend → StdioClientTransport (spawns subprocess)
- * - RemoteFilesystemBackend → StreamableHTTPClientTransport (HTTP)
- * - MemoryBackend → StdioClientTransport (spawns subprocess)
- */
-
-import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import type { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import type { Backend } from '../backends/types.js'
-import { BackendType } from '../backends/types.js'
-import { ERROR_CODES } from '../constants.js'
-import { BackendError } from '../types.js'
-import {
-  getProperty,
-  getRootBackend,
-  hasRemoteConfig,
-  isFileBasedBackend,
-} from '../typing.js'
-
-/**
- * Union type for MCP transports
- */
-export type MCPTransport = StdioClientTransport | StreamableHTTPClientTransport
-
-/**
- * Adapter for creating MCP transports compatible with Vercel AI SDK
+ * Provides easy integration with Vercel AI SDK's MCP client.
+ * Wraps a backend and returns an MCP client ready for use with streamText/generateText.
  *
  * @example
  * ```typescript
- * import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
  * import { LocalFilesystemBackend, VercelAIAdapter } from 'agent-backend'
  *
  * const backend = new LocalFilesystemBackend({ rootDir: '/tmp/workspace' })
  * const adapter = new VercelAIAdapter(backend)
  *
- * const transport = await adapter.getTransport()
- * const mcpClient = await createMCPClient({ transport })
+ * const mcpClient = await adapter.getMCPClient()
  * const tools = await mcpClient.tools()
+ *
+ * // Use with streamText
+ * const result = await streamText({
+ *   model: openai('gpt-4'),
+ *   tools,
+ *   messages,
+ * })
+ *
+ * // Remember to close when done
+ * await mcpClient.close()
  * ```
+ */
+
+import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
+import type { Backend } from '../backends/types.js'
+import { BackendType } from '../backends/types.js'
+
+/** Default timeout for MCP client connection (15 seconds) */
+const DEFAULT_CONNECTION_TIMEOUT_MS = 15_000
+
+/**
+ * Type for Vercel AI SDK's MCP client
+ */
+type VercelMCPClient = Awaited<ReturnType<typeof createMCPClient>>
+
+/**
+ * Options for VercelAIAdapter
+ */
+export interface VercelAIAdapterOptions {
+  /** Connection timeout in milliseconds (default: 15000) */
+  connectionTimeoutMs?: number
+}
+
+/**
+ * Adapter for creating Vercel AI SDK MCP clients from agent-backend backends.
+ *
+ * This adapter wraps a backend and provides a simple interface to get
+ * a Vercel AI SDK MCP client with tools ready for use.
  */
 export class VercelAIAdapter {
   private readonly backend: Backend
+  private readonly connectionTimeoutMs: number
 
-  constructor(backend: Backend) {
+  constructor(backend: Backend, options?: VercelAIAdapterOptions) {
     this.backend = backend
+    this.connectionTimeoutMs = options?.connectionTimeoutMs ?? DEFAULT_CONNECTION_TIMEOUT_MS
   }
 
   /**
-   * Get MCP transport for use with any MCP-compatible client.
-   * Works with Vercel AI SDK's createMCPClient or raw MCP SDK.
+   * Get a Vercel AI SDK MCP client.
+   * The client has tools already in AI SDK format, ready for use with streamText/generateText.
    *
-   * Transport type depends on backend:
-   * - LocalFilesystemBackend → StdioClientTransport (spawns subprocess)
-   * - RemoteFilesystemBackend → StreamableHTTPClientTransport (HTTP)
-   * - MemoryBackend → StdioClientTransport (spawns subprocess)
-   *
-   * @returns MCP transport configured for the backend type
+   * @returns Vercel AI SDK MCP client with tools() method
+   * @throws Error if connection times out or fails
    */
-  async getTransport(): Promise<MCPTransport> {
-    const rootBackend = getRootBackend(this.backend)
-    const backendType = rootBackend.type
-    const effectiveRootDir = this.getEffectiveRootDir()
+  async getMCPClient(): Promise<VercelMCPClient> {
+    const transport = await this.backend.getMCPTransport()
 
-    switch (backendType) {
-      case BackendType.LOCAL_FILESYSTEM:
-        return this.createStdioTransport(rootBackend, effectiveRootDir)
+    // Create timeout promise for connection
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        const backendType = this.backend.type
+        const isRemote = backendType === BackendType.REMOTE_FILESYSTEM
 
-      case BackendType.REMOTE_FILESYSTEM:
-        return this.createHttpTransport(rootBackend)
+        if (isRemote) {
+          reject(new Error(
+            `MCP client connection timed out after ${this.connectionTimeoutMs}ms. ` +
+            'For remote backends, ensure the MCP server is running on the remote host. ' +
+            'Start the server with: agent-backend daemon --rootDir <path> --mcp-port <port>'
+          ))
+        } else {
+          reject(new Error(
+            `MCP client connection timed out after ${this.connectionTimeoutMs}ms. ` +
+            'Check that agent-backend CLI is available in PATH.'
+          ))
+        }
+      }, this.connectionTimeoutMs)
+    })
 
-      case BackendType.MEMORY:
-        return this.createMemoryTransport(effectiveRootDir)
+    // Race between connection and timeout
+    try {
+      const client = await Promise.race([
+        createMCPClient({ transport }),
+        timeoutPromise
+      ])
+      return client
+    } catch (error) {
+      // Enhance error message for common issues
+      const message = error instanceof Error ? error.message : String(error)
 
-      default:
-        throw new BackendError(
-          `Unsupported backend type: ${backendType}. VercelAIAdapter supports LOCAL_FILESYSTEM, REMOTE_FILESYSTEM, and MEMORY backends.`,
-          ERROR_CODES.INVALID_CONFIGURATION,
-          'unsupported-backend-type'
+      if (message.includes('ECONNREFUSED')) {
+        throw new Error(
+          `MCP connection refused. The MCP server is not running or not reachable. ` +
+          `Original error: ${message}`
         )
-    }
-  }
-
-  /**
-   * Get the effective rootDir, considering scoped backends
-   */
-  private getEffectiveRootDir(): string {
-    if (isFileBasedBackend(this.backend)) {
-      return this.backend.rootDir
-    }
-    return '/'
-  }
-
-  /**
-   * Create Stdio transport for local filesystem backend
-   */
-  private async createStdioTransport(
-    backend: Backend,
-    rootDir: string
-  ): Promise<StdioClientTransport> {
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
-
-    const args = [
-      'daemon',
-      '--rootDir', rootDir,
-      '--local-only',
-    ]
-
-    // Access isolation through duck typing
-    const isolation = getProperty<string>(backend, 'isolation') ||
-                      getProperty<string>(backend, 'actualIsolation')
-    if (isolation && isolation !== 'auto') {
-      args.push('--isolation', isolation)
-    }
-
-    // Access shell through duck typing
-    const shell = getProperty<string>(backend, 'shell')
-    if (shell && shell !== 'auto') {
-      args.push('--shell', shell)
-    }
-
-    return new StdioClientTransport({
-      command: 'agent-backend',
-      args,
-    })
-  }
-
-  /**
-   * Create HTTP transport for remote filesystem backend
-   */
-  private async createHttpTransport(
-    backend: Backend
-  ): Promise<StreamableHTTPClientTransport> {
-    const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
-
-    if (!hasRemoteConfig(backend)) {
-      throw new BackendError(
-        'RemoteFilesystemBackend requires host to be configured. ' +
-        'The MCP server must run on the remote host and be accessible via HTTP.',
-        ERROR_CODES.INVALID_CONFIGURATION,
-        'host'
-      )
-    }
-
-    const { config } = backend
-    const mcpHost = config.mcpServerHostOverride || config.host
-    const mcpPort = config.mcpPort || 3001
-    const mcpServerUrl = `http://${mcpHost}:${mcpPort}`
-
-    return new StreamableHTTPClientTransport(
-      new URL('/mcp', mcpServerUrl),
-      {
-        requestInit: {
-          headers: {
-            ...(config.mcpAuth?.token && {
-              'Authorization': `Bearer ${config.mcpAuth.token}`,
-            }),
-          },
-        },
       }
-    )
-  }
 
-  /**
-   * Create Stdio transport for memory backend
-   */
-  private async createMemoryTransport(rootDir: string): Promise<StdioClientTransport> {
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
-
-    const args = [
-      '--backend', 'memory',
-      '--rootDir', rootDir,
-    ]
-
-    return new StdioClientTransport({
-      command: 'agent-backend',
-      args,
-    })
+      throw error
+    }
   }
 }

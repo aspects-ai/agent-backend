@@ -5,6 +5,7 @@
 
 import type { Stats } from 'fs'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import * as path from 'path'
 import type {
   FileBasedBackend,
@@ -115,6 +116,15 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
   }
 
   /**
+   * List keys in scoped directory with stats
+   */
+  async readdirWithStats(prefix: string): Promise<{ name: string, stats: Stats }[]> {
+    const scopedPrefix = this.scopeKey(prefix)
+    this.logOperation('readdirWithStats', { prefix: scopedPrefix })
+    return this.parent.readdirWithStats(scopedPrefix)
+  }
+
+  /**
    * Create directory (no-op for memory)
    */
   async mkdir(_dirPath: string, _options?: { recursive?: boolean }): Promise<void> {
@@ -184,6 +194,17 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
     }
 
     return new ScopedMemoryBackend(this.parent, combinedPath, mergedConfig) as ScopedBackend<T>
+  }
+
+  /**
+   * Get MCP transport for scoped memory.
+   * Can be used directly with Vercel AI SDK's createMCPClient or raw MCP SDK.
+   */
+  async getMCPTransport(relativeScopePath?: string): Promise<Transport> {
+    const fullScopePath = relativeScopePath
+      ? path.posix.join(this.scopePath, relativeScopePath)
+      : this.scopePath
+    return this.parent.getMCPTransport(fullScopePath)
   }
 
   /**

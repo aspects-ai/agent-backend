@@ -66,6 +66,8 @@ import type { Backend, FileBasedBackend } from './types.js'
 import { LocalFilesystemBackend } from './backends/LocalFilesystemBackend.js'
 ```
 
+- No inline `@import`. Use static imports at the top. 
+
 ## Testing
 
 ### Unit Tests (Vitest)

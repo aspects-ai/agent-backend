@@ -1,6 +1,13 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { Stats } from 'fs'
 import type { ExecOptions, ReadOptions, ScopeConfig } from './config.js'
+
+/**
+ * MCP Transport type - returned by getMCPTransport()
+ * Can be StdioClientTransport (local) or StreamableHTTPClientTransport (remote)
+ */
+export type MCPTransport = Transport
 
 /**
  * Backend type identifier
@@ -25,6 +32,16 @@ export interface Backend {
   readonly connected: boolean
 
   /**
+   * Get MCP transport for this backend.
+   *
+   * Transport type depends on backend:
+   * - LocalFilesystemBackend → StdioClientTransport (spawns subprocess)
+   * - RemoteFilesystemBackend → StreamableHTTPClientTransport (HTTP)
+   * - MemoryBackend → StdioClientTransport (spawns subprocess)
+   */
+  getMCPTransport(): Promise<MCPTransport>
+
+  /**
    * Get MCP client for this backend
    */
   getMCPClient(): Promise<Client>
@@ -45,6 +62,12 @@ export interface Backend {
 export interface FileBasedBackend extends Backend {
   /** Root directory or namespace for file-based operations */
   readonly rootDir: string
+
+  /**
+   * Get MCP transport for this backend (overrides base to add scopePath)
+   * @param scopePath - Optional path to scope transport to
+   */
+  getMCPTransport(scopePath?: string): Promise<MCPTransport>
 
   /**
    * Get MCP client for this backend (overrides base to add scopePath)
@@ -121,6 +144,14 @@ export interface FileBasedBackend extends Backend {
   readdir(path: string): Promise<string[]>
 
   /**
+   * List directory contents with stats for each entry.
+   * More efficient than calling readdir + stat for each entry,
+   * especially for remote backends where SFTP returns stats with readdir.
+   * @param path - Relative path to directory
+   */
+  readdirWithStats(path: string): Promise<{ name: string, stats: Stats }[]>
+
+  /**
    * Create directory
    * @param path - Relative path to directory
    * @param options - Options including recursive flag
@@ -150,7 +181,7 @@ export interface FileBasedBackend extends Backend {
  * Scoped backend wraps a backend with path restriction
  * Operations are relative to the scope path
  */
-export interface ScopedBackend<T extends FileBasedBackend> extends Backend {
+export interface ScopedBackend<T extends Backend> extends Backend {
   /** Root directory or namespace for file-based operations */
   readonly rootDir: string
 
@@ -159,6 +190,12 @@ export interface ScopedBackend<T extends FileBasedBackend> extends Backend {
 
   /** Relative path of this scope from parent */
   readonly scopePath: string
+
+  /**
+   * Get MCP transport for this scoped backend
+   * @param scopePath - Optional additional path to scope transport to
+   */
+  getMCPTransport(scopePath?: string): Promise<MCPTransport>
 
   /**
    * Get MCP client for this scoped backend
@@ -233,6 +270,14 @@ export interface ScopedBackend<T extends FileBasedBackend> extends Backend {
    * @param path - Relative path to directory
    */
   readdir(path: string): Promise<string[]>
+
+  /**
+   * List directory contents with stats for each entry.
+   * More efficient than calling readdir + stat for each entry,
+   * especially for remote backends where SFTP returns stats with readdir.
+   * @param path - Relative path to directory
+   */
+  readdirWithStats(path: string): Promise<{ name: string, stats: Stats }[]>
 
   /**
    * Create directory

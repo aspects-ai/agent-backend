@@ -155,6 +155,18 @@ describe('ScopedFilesystemBackend (Unit Tests)', () => {
       expect(mockParent.readdir).toHaveBeenCalledWith('users/user1/subdir')
     })
 
+    it('should delegate readdirWithStats to parent with scoped path', async () => {
+      const mockEntries = [
+        { name: 'file.txt', stats: { isFile: () => true, size: 100 } }
+      ]
+      vi.mocked(mockParent.readdirWithStats).mockResolvedValue(mockEntries as any)
+
+      const entries = await scoped.readdirWithStats('subdir')
+
+      expect(mockParent.readdirWithStats).toHaveBeenCalledWith('users/user1/subdir')
+      expect(entries).toEqual(mockEntries)
+    })
+
     it('should delegate mkdir to parent with scoped path', async () => {
       await scoped.mkdir('newdir', { recursive: true })
 

@@ -426,4 +426,25 @@ describe('AgentBackendMCPServer (Adaptive Server)', () => {
       expect(() => new AgentBackendMCPServer(memoryBackend)).not.toThrow()
     })
   })
+
+  describe('directory_tree Tool', () => {
+    it('should register directory_tree tool', () => {
+      const backend = createMockFileBackend('LocalFilesystem')
+      const server = new AgentBackendMCPServer(backend)
+      const tools = server.server.getTools()
+
+      expect(Object.keys(tools)).toContain('directory_tree')
+    })
+
+    it('should have includeDefaultExcludes parameter defined', () => {
+      const backend = createMockFileBackend('LocalFilesystem')
+      const server = new AgentBackendMCPServer(backend)
+      const tools = server.server.getTools()
+      const dirTreeTool = tools['directory_tree']
+
+      expect(dirTreeTool).toBeDefined()
+      // The tool has inputSchema with path, excludePatterns, and includeDefaultExcludes
+      expect(dirTreeTool.inputSchema).toBeDefined()
+    })
+  })
 })

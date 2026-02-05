@@ -10,4 +10,4 @@
  */
 
 export { AgentBackendMCPServer } from './AgentBackendMCPServer.js'
-export { registerFilesystemTools, registerExecTool } from './tools.js'
+export { registerFilesystemTools, registerExecTool, DEFAULT_EXCLUDE_PATTERNS } from './tools.js'

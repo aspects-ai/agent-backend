@@ -1,47 +1,54 @@
 import { backendManager } from '@/lib/backend'
 import type { FileItem, FileTreeResponse } from '@/lib/types'
-import { FileBasedBackend } from 'agent-backend'
+import { DEFAULT_EXCLUDE_PATTERNS, FileBasedBackend } from 'agent-backend'
 import { NextRequest, NextResponse } from 'next/server'
 
+// Convert DEFAULT_EXCLUDE_PATTERNS to a Set for fast lookup
+const EXCLUDED_NAMES = new Set(DEFAULT_EXCLUDE_PATTERNS.filter(p => !p.includes('*')))
+const EXCLUDED_SUFFIXES = DEFAULT_EXCLUDE_PATTERNS.filter(p => p.startsWith('*.')).map(p => p.slice(1))
+
+function shouldExclude(filename: string): boolean {
+  // Check exact match
+  if (EXCLUDED_NAMES.has(filename)) return true
+  // Check suffix patterns (e.g., *.egg-info)
+  return EXCLUDED_SUFFIXES.some(suffix => filename.endsWith(suffix))
+}
+
 async function buildFileTree(backend: FileBasedBackend, dirPath: string): Promise<FileItem[]> {
-  // readdir returns just filenames (string[])
-  const filenames = await backend.readdir(dirPath)
+  // readdirWithStats returns entries with stats in one call
+  // Much more efficient for remote backends (SFTP returns all attrs with readdir)
+  const entries = await backend.readdirWithStats(dirPath)
   const items: FileItem[] = []
 
-  for (const filename of filenames) {
-    const fullPath = dirPath === '.' ? filename : `${dirPath}/${filename}`
+  for (const { name, stats } of entries) {
+    // Skip excluded patterns (gitignore-style: matches at any depth)
+    if (shouldExclude(name)) continue
 
-    try {
-      // Use stat to get file metadata
-      const stats = await backend.stat(fullPath)
+    const fullPath = dirPath === '.' ? name : `${dirPath}/${name}`
 
-      // mtime can be a Date (local fs) or number/Unix timestamp (SFTP)
-      const mtime = stats.mtime instanceof Date
-        ? stats.mtime.toISOString()
-        : new Date((stats.mtime as number) * 1000).toISOString()
+    // mtime can be a Date (local fs) or number/Unix timestamp (SFTP)
+    const mtime = stats.mtime instanceof Date
+      ? stats.mtime.toISOString()
+      : new Date((stats.mtime as number) * 1000).toISOString()
 
-      const item: FileItem = {
-        name: filename,
-        path: fullPath,
-        type: stats.isDirectory() ? 'directory' : 'file',
-        size: stats.size,
-        mtime,
-      }
-
-      if (stats.isDirectory()) {
-        try {
-          item.children = await buildFileTree(backend, fullPath)
-        } catch (error) {
-          // Skip directories we can't read
-          item.children = []
-        }
-      }
-
-      items.push(item)
-    } catch (error) {
-      // Skip files we can't stat
-      console.warn(`Failed to stat ${fullPath}:`, error)
+    const item: FileItem = {
+      name,
+      path: fullPath,
+      type: stats.isDirectory() ? 'directory' : 'file',
+      size: stats.size,
+      mtime,
     }
+
+    if (stats.isDirectory()) {
+      try {
+        item.children = await buildFileTree(backend, fullPath)
+      } catch {
+        // Skip directories we can't read
+        item.children = []
+      }
+    }
+
+    items.push(item)
   }
 
   return items.sort((a, b) => {

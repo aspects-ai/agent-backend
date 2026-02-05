@@ -8,7 +8,11 @@ export async function POST(req: Request) {
   // Get AI SDK MCP client (cached per session, cleared on backend config change)
   // Tools are already in AI SDK format - no manual transformation needed
   const mcpClient = await getMCPClientForSession(sessionId)
-  const tools = await mcpClient.tools()
+
+  // Cast needed due to TypeScript incompatibility between @ai-sdk/mcp and ai package
+  // (FlexibleSchema<unknown> vs FlexibleSchema<never>) - runtime works fine
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tools = await mcpClient.tools() as any
 
   // Convert UI messages to model messages
   const modelMessages = await convertToModelMessages(messages, { tools })

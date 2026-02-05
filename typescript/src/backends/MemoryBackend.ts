@@ -10,8 +10,11 @@
  * Stores data in a Map, directories are implicit from key paths
  */
 
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { Stats } from 'fs'
+import { createBackendMCPTransport } from '../mcp/transport.js'
 import { BackendError, NotImplementedError } from '../types.js'
 import type {
   ExecOptions,
@@ -183,6 +186,79 @@ export class MemoryBackend implements FileBasedBackend {
   }
 
   /**
+   * List all keys matching prefix with stats
+   * Returns immediate children only (not nested)
+   */
+  async readdirWithStats(prefix: string): Promise<{ name: string, stats: Stats }[]> {
+    // Normalize prefix (ensure it ends with /)
+    const normalizedPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`
+
+    // Track children and whether they are directories
+    const childrenInfo = new Map<string, { isDir: boolean, size: number }>()
+
+    for (const key of this.store.keys()) {
+      if (key.startsWith(normalizedPrefix)) {
+        const relativePath = key.substring(normalizedPrefix.length)
+        const parts = relativePath.split('/')
+        const immediateChild = parts[0]
+
+        if (immediateChild) {
+          const existing = childrenInfo.get(immediateChild)
+          // It's a directory if there are nested paths
+          const isDir = parts.length > 1
+          const value = this.store.get(key)
+          const size = value ? (Buffer.isBuffer(value) ? value.length : Buffer.byteLength(value)) : 0
+
+          if (!existing) {
+            childrenInfo.set(immediateChild, { isDir, size: isDir ? 0 : size })
+          } else if (isDir) {
+            // If any entry indicates it's a dir, mark as dir
+            existing.isDir = true
+          }
+        }
+      }
+    }
+
+    const now = new Date()
+    const results: { name: string, stats: Stats }[] = []
+
+    for (const [name, info] of childrenInfo) {
+      results.push({
+        name,
+        stats: {
+          isFile: () => !info.isDir,
+          isDirectory: () => info.isDir,
+          isBlockDevice: () => false,
+          isCharacterDevice: () => false,
+          isSymbolicLink: () => false,
+          isFIFO: () => false,
+          isSocket: () => false,
+          dev: 0,
+          ino: 0,
+          mode: info.isDir ? 0o755 : 0o644,
+          nlink: 1,
+          uid: 0,
+          gid: 0,
+          rdev: 0,
+          size: info.size,
+          blksize: 4096,
+          blocks: Math.ceil(info.size / 512),
+          atimeMs: now.getTime(),
+          mtimeMs: now.getTime(),
+          ctimeMs: now.getTime(),
+          birthtimeMs: now.getTime(),
+          atime: now,
+          mtime: now,
+          ctime: now,
+          birthtime: now,
+        } as Stats,
+      })
+    }
+
+    return results.sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  /**
    * Create directory - no-op for memory backend (directories are implicit)
    */
   async mkdir(_path: string, _options?: { recursive?: boolean }): Promise<void> {
@@ -273,6 +349,18 @@ export class MemoryBackend implements FileBasedBackend {
   }
 
   /**
+   * Get MCP transport for this backend.
+   * Can be used directly with Vercel AI SDK's createMCPClient or raw MCP SDK.
+   * Note: Memory backend does NOT support exec tool.
+   *
+   * @param scopePath - Optional scope path to use as rootDir
+   * @returns StdioClientTransport configured for this backend
+   */
+  async getMCPTransport(scopePath?: string): Promise<Transport> {
+    return createBackendMCPTransport(this, scopePath)
+  }
+
+  /**
    * Get MCP client for memory backend.
    * Spawns agent-backend CLI with this backend's configuration.
    * Note: Memory backend does NOT support exec tool.
@@ -281,9 +369,6 @@ export class MemoryBackend implements FileBasedBackend {
    * @returns MCP Client connected to a server for this backend
    */
   async getMCPClient(scopePath?: string): Promise<Client> {
-    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
-
     // Build command args
     const args = [
       '--backend', 'memory',

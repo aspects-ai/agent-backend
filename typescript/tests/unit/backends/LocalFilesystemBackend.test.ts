@@ -521,6 +521,59 @@ describe('LocalFilesystemBackend (Unit Tests)', () => {
       expect(files).toEqual(['file1.txt', 'file2.txt'])
     })
 
+    it('should call readdirWithStats and return entries with stats', async () => {
+      const mockDirents = [
+        { name: 'file1.txt', isDirectory: () => false, isFile: () => true },
+        { name: 'subdir', isDirectory: () => true, isFile: () => false },
+      ]
+      const mockStats1 = {
+        isFile: () => true,
+        isDirectory: () => false,
+        size: 100,
+        mtime: new Date('2024-01-01'),
+      }
+      const mockStats2 = {
+        isFile: () => false,
+        isDirectory: () => true,
+        size: 4096,
+        mtime: new Date('2024-01-02'),
+      }
+
+      vi.mocked(fs.readdir).mockResolvedValue(mockDirents as any)
+      vi.mocked(fs.stat)
+        .mockResolvedValueOnce(mockStats1 as any)
+        .mockResolvedValueOnce(mockStats2 as any)
+
+      const entries = await backend.readdirWithStats('mydir')
+
+      expect(fs.readdir).toHaveBeenCalledWith('/test/workspace/mydir', { withFileTypes: true })
+      expect(fs.stat).toHaveBeenCalledWith('/test/workspace/mydir/file1.txt')
+      expect(fs.stat).toHaveBeenCalledWith('/test/workspace/mydir/subdir')
+      expect(entries).toHaveLength(2)
+      expect(entries[0].name).toBe('file1.txt')
+      expect(entries[0].stats.size).toBe(100)
+      expect(entries[1].name).toBe('subdir')
+      expect(entries[1].stats.isDirectory()).toBe(true)
+    })
+
+    it('should skip entries that fail to stat in readdirWithStats', async () => {
+      const mockDirents = [
+        { name: 'file1.txt', isDirectory: () => false },
+        { name: 'broken.txt', isDirectory: () => false },
+      ]
+      const mockStats = { isFile: () => true, size: 100 }
+
+      vi.mocked(fs.readdir).mockResolvedValue(mockDirents as any)
+      vi.mocked(fs.stat)
+        .mockResolvedValueOnce(mockStats as any)
+        .mockRejectedValueOnce(new Error('EACCES'))
+
+      const entries = await backend.readdirWithStats('mydir')
+
+      expect(entries).toHaveLength(1)
+      expect(entries[0].name).toBe('file1.txt')
+    })
+
     it('should call stat with correct path', async () => {
       const mockStats = {
         isFile: () => true,

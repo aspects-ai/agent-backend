@@ -103,6 +103,7 @@ export function createMockFileBackend(overrides: Partial<FileBasedBackend> = {})
     read: vi.fn().mockResolvedValue('mock content'),
     write: vi.fn().mockResolvedValue(undefined),
     readdir: vi.fn().mockResolvedValue([]),
+    readdirWithStats: vi.fn().mockResolvedValue([]),
     mkdir: vi.fn().mockResolvedValue(undefined),
     exists: vi.fn().mockResolvedValue(true),
     stat: vi.fn().mockResolvedValue({
@@ -117,6 +118,7 @@ export function createMockFileBackend(overrides: Partial<FileBasedBackend> = {})
     scope: vi.fn().mockReturnValue(null as any),
     listScopes: vi.fn().mockResolvedValue([]),
     getMCPClient: vi.fn(),
+    getMCPTransport: vi.fn(),
     destroy: vi.fn().mockResolvedValue(undefined),
     ...overrides
   } as FileBasedBackend
@@ -133,6 +135,7 @@ export function createMockMemoryBackend(overrides: Partial<MemoryBackend> = {}):
     read: vi.fn().mockResolvedValue('mock content'),
     write: vi.fn().mockResolvedValue(undefined),
     readdir: vi.fn().mockResolvedValue([]),
+    readdirWithStats: vi.fn().mockResolvedValue([]),
     mkdir: vi.fn().mockResolvedValue(undefined),
     exists: vi.fn().mockResolvedValue(true),
     stat: vi.fn().mockResolvedValue({
@@ -146,6 +149,7 @@ export function createMockMemoryBackend(overrides: Partial<MemoryBackend> = {}):
     scope: vi.fn().mockReturnValue(null as any),
     listScopes: vi.fn().mockResolvedValue([]),
     getMCPClient: vi.fn(),
+    getMCPTransport: vi.fn(),
     destroy: vi.fn().mockResolvedValue(undefined),
     list: vi.fn().mockResolvedValue([]),
     delete: vi.fn().mockResolvedValue(undefined),

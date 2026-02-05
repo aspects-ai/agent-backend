@@ -1,9 +1,12 @@
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { execSync, spawn } from 'child_process'
 import { mkdirSync, type Stats } from 'fs'
 import { access, mkdir as fsMkdir, rename as fsRename, rm as fsRm, readdir, readFile, stat, writeFile } from 'fs/promises'
 import * as path from 'path'
 import { ERROR_CODES } from '../constants.js'
+import { createBackendMCPTransport } from '../mcp/transport.js'
 import { isCommandSafe, isDangerous } from '../safety.js'
 import { BackendError, DangerousOperationError } from '../types.js'
 import { getLogger } from '../utils/logger.js'
@@ -496,6 +499,39 @@ export class LocalFilesystemBackend implements FileBasedBackend {
   }
 
   /**
+   * List directory contents with stats for each entry.
+   * Uses withFileTypes for efficiency, then stats each entry.
+   */
+  async readdirWithStats(relativePath: string): Promise<{ name: string, stats: Stats }[]> {
+    const fullPath = this.resolvePath(relativePath)
+
+    try {
+      const entries = await readdir(fullPath, { withFileTypes: true })
+      const results: { name: string, stats: Stats }[] = []
+
+      for (const entry of entries) {
+        try {
+          const entryPath = path.join(fullPath, entry.name)
+          const stats = await stat(entryPath)
+          results.push({ name: entry.name, stats })
+        } catch {
+          // Skip entries we can't stat
+        }
+      }
+
+      return results
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      getLogger().error(`[LocalFilesystemBackend] readdirWithStats failed for ${relativePath} (${fullPath}):`, errorMessage)
+      throw new BackendError(
+        `Failed to read directory: ${relativePath} - ${errorMessage}`,
+        ERROR_CODES.LS_FAILED,
+        error instanceof Error ? error.message : String(error)
+      )
+    }
+  }
+
+  /**
    * Create directory
    */
   async mkdir(relativePath: string, options?: { recursive?: boolean }): Promise<void> {
@@ -580,6 +616,17 @@ export class LocalFilesystemBackend implements FileBasedBackend {
   }
 
   /**
+   * Get MCP transport for this backend.
+   * Can be used directly with Vercel AI SDK's createMCPClient or raw MCP SDK.
+   *
+   * @param scopePath - Optional scope path to use as rootDir
+   * @returns StdioClientTransport configured for this backend
+   */
+  async getMCPTransport(scopePath?: string): Promise<Transport> {
+    return createBackendMCPTransport(this, scopePath)
+  }
+
+  /**
    * Get MCP client for this backend.
    * Spawns agent-backend CLI with this backend's configuration.
    *
@@ -587,9 +634,6 @@ export class LocalFilesystemBackend implements FileBasedBackend {
    * @returns MCP Client connected to a server for this backend
    */
   async getMCPClient(scopePath?: string): Promise<Client> {
-    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
-
     // Build command args
     const args = [
       'daemon',
