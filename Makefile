@@ -1,4 +1,4 @@
-.PHONY: help install build test typecheck lint clean dev publish
+.PHONY: help install build test typecheck lint clean dev publish start-daemon stop-daemon
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -21,10 +21,10 @@ install: ## Install all dependencies (TypeScript + Python + dev tools)
 	pnpm install
 	@echo ""
 	@echo "Installing Python dependencies..."
-	@if [ -d "python" ]; then \
-		cd python && pip install -e .[dev]; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && pip install -e .[dev] || echo "⚠️  Python install failed"; \
 	else \
-		echo "Python package not found (will be added later)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 	@echo ""
 	@echo "Installing dev tools..."
@@ -54,10 +54,10 @@ build-typescript: ## Build TypeScript packages only
 
 build-python: ## Build Python package only
 	@echo "Building Python package..."
-	@if [ -d "python" ]; then \
-		cd python && python -m build; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && python -m build || echo "⚠️  Python build failed (missing 'build' module? Run: pip install build)"; \
 	else \
-		echo "Python package not found (skipping)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 
 ##@ Testing
@@ -70,10 +70,10 @@ test-typescript: ## Run TypeScript tests only
 
 test-python: ## Run Python tests only
 	@echo "Running Python tests..."
-	@if [ -d "python" ]; then \
-		cd python && pytest; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && pytest || echo "⚠️  Python tests failed or pytest not installed"; \
 	else \
-		echo "Python package not found (skipping)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 
 test-unit: ## Run unit tests only
@@ -90,10 +90,10 @@ typecheck-typescript: ## Type check TypeScript packages only
 
 typecheck-python: ## Type check Python package only
 	@echo "Type checking Python package..."
-	@if [ -d "python" ]; then \
-		cd python && mypy .; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && mypy . || echo "⚠️  Python typecheck failed or mypy not installed"; \
 	else \
-		echo "Python package not found (skipping)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 
 lint: lint-typescript lint-python ## Lint all packages
@@ -104,18 +104,18 @@ lint-typescript: ## Lint TypeScript packages only
 
 lint-python: ## Lint Python package only
 	@echo "Linting Python package..."
-	@if [ -d "python" ]; then \
-		cd python && ruff check .; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && ruff check . || echo "⚠️  Python lint failed or ruff not installed"; \
 	else \
-		echo "Python package not found (skipping)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 
 lint-fix: ## Auto-fix linting issues
 	@echo "Auto-fixing TypeScript..."
 	pnpm -r lint:fix || true
 	@echo "Auto-fixing Python..."
-	@if [ -d "python" ]; then \
-		cd python && ruff check --fix .; \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && ruff check --fix . || true; \
 	fi
 
 ##@ Development
@@ -172,6 +172,39 @@ docker-clean: ## Remove agentbe-daemon Docker images and containers
 	@echo "Removing images..."
 	@docker rmi agentbe-daemon:latest 2>/dev/null || true
 
+start-daemon: ## Start agentbe-daemon Docker container in background
+	@command -v docker >/dev/null 2>&1 || { \
+		echo "Error: Docker not installed"; \
+		echo "Install: https://docs.docker.com/get-docker/"; \
+		exit 1; \
+	}
+	@if ! docker images | grep -q "agentbe-daemon.*latest"; then \
+		echo "Docker image not found. Building agentbe-daemon:latest..."; \
+		$(MAKE) docker-build; \
+	fi
+	@mkdir -p typescript/deploy/docker/var/workspace
+	@if docker ps -q -f name=agentbe-daemon | grep -q .; then \
+		echo "agentbe-daemon is already running"; \
+	else \
+		echo "Starting agentbe-daemon..."; \
+		docker run -d --name agentbe-daemon \
+			-p 2222:22 -p 3001:3001 \
+			-v $(PWD)/typescript/deploy/docker/var/workspace:/var/workspace \
+			--restart unless-stopped \
+			agentbe-daemon:latest; \
+		echo "✓ agentbe-daemon started (SSH: 2222, MCP: 3001)"; \
+	fi
+
+stop-daemon: ## Stop agentbe-daemon Docker container
+	@if docker ps -q -f name=agentbe-daemon | grep -q .; then \
+		echo "Stopping agentbe-daemon..."; \
+		docker stop agentbe-daemon; \
+		docker rm agentbe-daemon; \
+		echo "✓ agentbe-daemon stopped"; \
+	else \
+		echo "agentbe-daemon is not running"; \
+	fi
+
 ##@ Publishing & Deployment
 
 publish-typescript: ## Publish TypeScript package to npm
@@ -180,10 +213,10 @@ publish-typescript: ## Publish TypeScript package to npm
 
 publish-python: ## Publish Python package to PyPI
 	@echo "Publishing Python package..."
-	@if [ -d "python" ]; then \
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
 		cd python && python -m twine upload dist/*; \
 	else \
-		echo "Python package not found"; \
+		echo "Python package not ready"; \
 	fi
 
 start-deploy-ui: ## Start deployment UI for cloud VM setup

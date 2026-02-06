@@ -19,6 +19,8 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
 
   private readonly customEnv?: Record<string, string>
   private readonly operationsLogger?: OperationsLogger
+  private _rootEnsured = false
+  private _rootEnsurePromise: Promise<void> | null = null
 
   constructor(
     parent: T,
@@ -34,6 +36,31 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
 
     // Validate scope path doesn't escape parent
     this.validateScopePath(scopePath)
+  }
+
+  /**
+   * Ensure the scope root directory exists.
+   * Called lazily on first write operation.
+   */
+  private async ensureRoot(): Promise<void> {
+    if (this._rootEnsured) return
+
+    // Use a promise to prevent concurrent mkdir calls
+    if (!this._rootEnsurePromise) {
+      this._rootEnsurePromise = (async () => {
+        try {
+          const exists = await this.parent.exists(this.scopePath)
+          if (!exists) {
+            await this.parent.mkdir(this.scopePath, { recursive: true })
+          }
+          this._rootEnsured = true
+        } finally {
+          this._rootEnsurePromise = null
+        }
+      })()
+    }
+
+    await this._rootEnsurePromise
   }
 
   /**
@@ -80,6 +107,7 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
    * Execute shell command in scoped directory
    */
   async exec(command: string, options?: ExecOptions): Promise<string | Buffer> {
+    await this.ensureRoot()
     const mergedEnv = this.mergeEnv(options?.env)
     const scopedOptions: ExecOptions = {
       ...options,
@@ -101,6 +129,7 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
    * Write content to file in scoped directory
    */
   async write(relativePath: string, content: string | Buffer): Promise<void> {
+    await this.ensureRoot()
     return this.parent.write(this.toParentPath(relativePath), content)
   }
 
@@ -115,6 +144,7 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
    * Write content to file in scoped directory (alias for write, matches Node fs.promises API)
    */
   async writeFile(relativePath: string, content: string | Buffer): Promise<void> {
+    await this.ensureRoot()
     return this.parent.writeFile(this.toParentPath(relativePath), content)
   }
 
@@ -122,6 +152,7 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
    * Rename or move a file/directory in scoped directory (matches Node fs.promises API)
    */
   async rename(oldPath: string, newPath: string): Promise<void> {
+    await this.ensureRoot()
     return this.parent.rename(this.toParentPath(oldPath), this.toParentPath(newPath))
   }
 
@@ -136,6 +167,7 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
    * List directory contents in scoped directory
    */
   async readdir(relativePath: string): Promise<string[]> {
+    await this.ensureRoot()
     return this.parent.readdir(this.toParentPath(relativePath))
   }
 
@@ -143,6 +175,7 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
    * List directory contents with stats in scoped directory
    */
   async readdirWithStats(relativePath: string): Promise<{ name: string, stats: Stats }[]> {
+    await this.ensureRoot()
     return this.parent.readdirWithStats(this.toParentPath(relativePath))
   }
 
@@ -150,6 +183,7 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
    * Create directory in scoped directory
    */
   async mkdir(relativePath: string, options?: { recursive?: boolean }): Promise<void> {
+    await this.ensureRoot()
     return this.parent.mkdir(this.toParentPath(relativePath), options)
   }
 
@@ -157,6 +191,7 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
    * Create empty file in scoped directory
    */
   async touch(relativePath: string): Promise<void> {
+    await this.ensureRoot()
     return this.parent.touch(this.toParentPath(relativePath))
   }
 

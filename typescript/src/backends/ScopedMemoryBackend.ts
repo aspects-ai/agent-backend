@@ -3,24 +3,24 @@
  * Restricts operations to keys with a specific prefix
  */
 
-import type { Stats } from 'fs'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { Stats } from 'fs'
 import * as path from 'path'
-import type {
-  Backend,
-  FileBasedBackend,
-  ScopedBackend,
-  BackendType
-} from './types.js'
-import type {
-  ScopeConfig,
-  ExecOptions,
-  ReadOptions
-} from './config.js'
 import type { OperationsLogger } from '../logging/types.js'
 import { NotImplementedError } from '../types.js'
+import type {
+  ExecOptions,
+  ReadOptions,
+  ScopeConfig
+} from './config.js'
 import { validateWithinBoundary } from './pathValidation.js'
+import type {
+  Backend,
+  BackendType,
+  FileBasedBackend,
+  ScopedBackend
+} from './types.js'
 
 export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> implements ScopedBackend<T> {
   readonly type: BackendType
@@ -41,7 +41,7 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
     this.connected = parent.connected
     // Normalize scope path (ensure it ends with / for prefix matching)
     this.scopePath = scopePath.endsWith('/') ? scopePath : `${scopePath}/`
-    this.rootDir = this.scopePath
+    this.rootDir = path.join(this.parent.rootDir, this.scopePath)
     this.operationsLogger = config?.operationsLogger
   }
 

@@ -74,7 +74,7 @@ export class LocalFilesystemBackend implements FileBasedBackend {
   private ensureRootDir(): void {
     try {
       mkdirSync(this.rootDir, { recursive: true })
-    } catch (error) {
+    } catch {
       throw new BackendError(
         `Failed to create root directory: ${this.rootDir}`,
         ERROR_CODES.WRITE_FAILED,
