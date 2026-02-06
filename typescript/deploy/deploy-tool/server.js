@@ -1,5 +1,4 @@
 import { spawn } from "child_process";
-import { randomBytes } from "crypto";
 import express from "express";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
@@ -46,14 +45,14 @@ app.get("/version-info", async (req, res) => {
   try {
     // Get anonymous bearer token for public package
     const tokenResponse = await fetch(
-      "https://ghcr.io/token?scope=repository:aspects-ai/agent-backend-remote:pull"
+      "https://ghcr.io/token?scope=repository:aspects-ai/agentbe-daemon:pull"
     );
     const tokenData = await tokenResponse.json();
     const token = tokenData.token;
 
     // Fetch tags from GHCR
     const response = await fetch(
-      "https://ghcr.io/v2/aspects-ai/agent-backend-remote/tags/list",
+      "https://ghcr.io/v2/aspects-ai/agentbe-daemon/tags/list",
       { headers: { 'Authorization': `Bearer ${token}` } }
     );
 
@@ -284,13 +283,23 @@ app.get("/", (req, res) => {
       <legend>SSH Configuration</legend>
       <div class="section-note">Configure SSH access credentials for the VM</div>
       <div class="form-group">
-        <label for="sshUser">SSH Username *</label>
-        <input type="text" id="sshUser" name="sshUser" value="dev" placeholder="dev">
+        <label for="sshUser">SSH Username</label>
+        <input type="text" id="sshUser" name="sshUser" value="root" placeholder="root">
       </div>
       <div class="form-group">
-        <label for="sshPassword">SSH Password *</label>
-        <input type="password" id="sshPassword" name="sshPassword" placeholder="secure-password">
+        <label for="sshPassword">SSH Password</label>
+        <input type="password" id="sshPassword" name="sshPassword" value="agents" placeholder="agents">
         <div class="help-text env-hint" id="sshPasswordHint" style="display:none;">Using value from .env</div>
+      </div>
+      <div class="form-group">
+        <label for="sshPort">SSH Port (Container)</label>
+        <input type="text" id="sshPort" name="sshPort" value="22" placeholder="22">
+        <div class="help-text">Port SSH runs on inside the container</div>
+      </div>
+      <div class="form-group">
+        <label for="sshHostPort">SSH Host Port (VM)</label>
+        <input type="text" id="sshHostPort" name="sshHostPort" value="2222" placeholder="2222">
+        <div class="help-text">Port exposed on the VM for SSH connections</div>
       </div>
     </fieldset>
 
@@ -301,10 +310,10 @@ app.get("/", (req, res) => {
         <input type="text" id="mcpPort" name="mcpPort" value="3001" placeholder="3001">
       </div>
       <div class="form-group">
-        <label for="mcpAuthToken">MCP Auth Token *</label>
-        <input type="text" id="mcpAuthToken" name="mcpAuthToken" placeholder="(will auto-generate if empty)">
+        <label for="mcpAuthToken">MCP Auth Token</label>
+        <input type="text" id="mcpAuthToken" name="mcpAuthToken" placeholder="(no auth if empty)">
         <div class="help-text env-hint" id="mcpAuthTokenHint" style="display:none;">Using value from .env</div>
-        <div class="help-text">Leave empty to auto-generate a secure token</div>
+        <div class="help-text">Leave empty for no authentication (default)</div>
       </div>
       <div class="form-group">
         <label for="workspaceRoot">Workspace Root</label>
@@ -332,7 +341,7 @@ app.get("/", (req, res) => {
       'cloudProvider',
       'azureSubscription', 'azureResourceGroup', 'azureVmName', 'azureLocation', 'azureVmSize',
       'gcpProject', 'gcpVmName', 'gcpZone', 'gcpMachineType',
-      'sshUser', 'mcpPort', 'workspaceRoot'
+      'sshUser', 'sshPort', 'sshHostPort', 'mcpPort', 'workspaceRoot'
     ];
 
     // Show/hide cloud-specific sections
@@ -477,10 +486,12 @@ app.post("/deploy", async (req, res) => {
     gcpZone = "us-central1-a",
     gcpMachineType = "e2-medium",
     // Common
-    sshUser: formSshUser = "dev",
-    sshPassword: formSshPassword,
+    sshUser: formSshUser = "root",
+    sshPassword: formSshPassword = "agents",
+    sshPort = "22",
+    sshHostPort = "2222",
     mcpPort = "3001",
-    mcpAuthToken: formMcpAuthToken,
+    mcpAuthToken: formMcpAuthToken = "",
     workspaceRoot = "/agent-backend",
     useEnvSshPassword,
     useEnvMcpAuthToken,
@@ -489,12 +500,7 @@ app.post("/deploy", async (req, res) => {
   // Use env values if flagged
   const sshUser = envConfig.SSH_USER || formSshUser;
   const sshPassword = useEnvSshPassword ? envConfig.SSH_PASSWORD : formSshPassword;
-  let mcpAuthToken = useEnvMcpAuthToken ? envConfig.MCP_AUTH_TOKEN : formMcpAuthToken;
-
-  // Auto-generate MCP auth token if not provided
-  if (!mcpAuthToken) {
-    mcpAuthToken = randomBytes(32).toString('hex');
-  }
+  const mcpAuthToken = useEnvMcpAuthToken ? envConfig.MCP_AUTH_TOKEN : formMcpAuthToken;
 
   res.setHeader("Content-Type", "text/plain");
   res.setHeader("Transfer-Encoding", "chunked");
@@ -512,6 +518,8 @@ app.post("/deploy", async (req, res) => {
       vmSize: azureVmSize,
       sshUser,
       sshPassword,
+      sshPort,
+      sshHostPort,
       mcpPort,
       mcpAuthToken,
       workspaceRoot,
@@ -527,6 +535,8 @@ app.post("/deploy", async (req, res) => {
       machineType: gcpMachineType,
       sshUser,
       sshPassword,
+      sshPort,
+      sshHostPort,
       mcpPort,
       mcpAuthToken,
       workspaceRoot,
@@ -550,6 +560,8 @@ async function deployAzure({
   vmSize,
   sshUser,
   sshPassword,
+  sshPort,
+  sshHostPort,
   mcpPort,
   mcpAuthToken,
   workspaceRoot,
@@ -561,13 +573,14 @@ async function deployAzure({
   log(`Subscription: ${subscription}`);
   log(`Resource Group: ${resourceGroup}`);
   log(`VM: ${vmName} (${vmSize}) in ${location}`);
+  log(`SSH Port: ${sshHostPort} (container: ${sshPort})`);
   log(`MCP Port: ${mcpPort}`);
   log(`Workspace Root: ${workspaceRoot}`);
   log(``);
 
   // Load and customize startup script
   log(`Preparing startup script...`);
-  const startupScriptPath = path.join(__dirname, "..", "azure-vm-startup.sh");
+  const startupScriptPath = path.join(__dirname, "..", "scripts", "azure-vm-startup.sh");
   let startupScript;
   try {
     startupScript = readFileSync(startupScriptPath, "utf-8");
@@ -581,6 +594,8 @@ async function deployAzure({
     .replace(/__MCP_AUTH_TOKEN__/g, mcpAuthToken)
     .replace(/__MCP_PORT__/g, mcpPort)
     .replace(/__SSH_USERS__/g, `${sshUser}:${sshPassword}`)
+    .replace(/__SSH_PORT__/g, sshPort)
+    .replace(/__SSH_HOST_PORT__/g, sshHostPort)
     .replace(/__WORKSPACE_ROOT__/g, workspaceRoot);
 
   // Write startup script to temp file
@@ -655,15 +670,15 @@ async function deployAzure({
   logSuccess(`VM ${vmName} created!`);
   log(``);
 
-  // Open ports for SSH (2222) and MCP in a single call
+  // Open ports for SSH and MCP in a single call
   // Use priority 900 to avoid conflict with Azure's default-allow-ssh rule at priority 1000
-  log(`Opening ports 2222 (SSH) and ${mcpPort} (MCP)...`);
+  log(`Opening ports ${sshHostPort} (SSH) and ${mcpPort} (MCP)...`);
   await runCommand("az", [
     "vm", "open-port",
     "--subscription", subscription,
     "--resource-group", resourceGroup,
     "--name", vmName,
-    "--port", `2222,${mcpPort}`,
+    "--port", `${sshHostPort},${mcpPort}`,
     "--priority", "900",
   ], log);
 
@@ -689,14 +704,18 @@ async function deployAzure({
   log(`This may take 2-3 minutes for Docker to install and start.`);
   log(``);
   log(`Once ready, connect via:`);
-  log(`  SSH: ssh ${sshUser}@${publicIp} -p 2222`);
+  log(`  SSH: ssh ${sshUser}@${publicIp} -p ${sshHostPort}`);
   log(`  MCP: http://${publicIp}:${mcpPort}/health`);
   log(``);
-  log(`MCP Auth Token: ${mcpAuthToken}`);
-  log(``);
+  if (mcpAuthToken) {
+    log(`MCP Auth Token: ${mcpAuthToken}`);
+    log(``);
+  }
   log(`For NextJS, set these environment variables:`);
   log(`  REMOTE_MCP_URL=http://${publicIp}:${mcpPort}`);
-  log(`  REMOTE_MCP_AUTH_TOKEN=${mcpAuthToken}`);
+  if (mcpAuthToken) {
+    log(`  REMOTE_MCP_AUTH_TOKEN=${mcpAuthToken}`);
+  }
   log(``);
 }
 
@@ -708,6 +727,8 @@ async function deployGCP({
   machineType,
   sshUser,
   sshPassword,
+  sshPort,
+  sshHostPort,
   mcpPort,
   mcpAuthToken,
   workspaceRoot,
@@ -718,13 +739,14 @@ async function deployGCP({
   log(`=== AgentBackend GCP VM Deploy ===`);
   log(`Project: ${project}`);
   log(`VM: ${vmName} (${machineType}) in ${zone}`);
+  log(`SSH Port: ${sshHostPort} (container: ${sshPort})`);
   log(`MCP Port: ${mcpPort}`);
   log(`Workspace Root: ${workspaceRoot}`);
   log(``);
 
   // Load and customize startup script
   log(`Preparing startup script...`);
-  const startupScriptPath = path.join(__dirname, "..", "gcp-vm-startup.sh");
+  const startupScriptPath = path.join(__dirname, "..", "scripts", "gcp-vm-startup.sh");
   let startupScript;
   try {
     startupScript = readFileSync(startupScriptPath, "utf-8");
@@ -738,6 +760,8 @@ async function deployGCP({
     .replace(/__MCP_AUTH_TOKEN__/g, mcpAuthToken)
     .replace(/__MCP_PORT__/g, mcpPort)
     .replace(/__SSH_USERS__/g, `${sshUser}:${sshPassword}`)
+    .replace(/__SSH_PORT__/g, sshPort)
+    .replace(/__SSH_HOST_PORT__/g, sshHostPort)
     .replace(/__WORKSPACE_ROOT__/g, workspaceRoot);
 
   // Write startup script to temp file
@@ -831,20 +855,24 @@ async function deployGCP({
   log(`This may take 2-3 minutes for Docker to install and start.`);
   log(``);
   log(`Once ready, connect via:`);
-  log(`  SSH: ssh ${sshUser}@${externalIp} -p 2222`);
+  log(`  SSH: ssh ${sshUser}@${externalIp} -p ${sshHostPort}`);
   log(`  MCP: http://${externalIp}:${mcpPort}/health`);
   log(``);
-  log(`MCP Auth Token: ${mcpAuthToken}`);
-  log(``);
+  if (mcpAuthToken) {
+    log(`MCP Auth Token: ${mcpAuthToken}`);
+    log(``);
+  }
   log(`If ports are blocked, create firewall rules:`);
   log(`  gcloud compute firewall-rules create allow-agentbe-ssh \\`);
-  log(`    --allow tcp:2222 --target-tags agentbe-ssh --project ${project}`);
+  log(`    --allow tcp:${sshHostPort} --target-tags agentbe-ssh --project ${project}`);
   log(`  gcloud compute firewall-rules create allow-agentbe-mcp \\`);
   log(`    --allow tcp:${mcpPort} --target-tags agentbe-mcp --project ${project}`);
   log(``);
   log(`For NextJS, set these environment variables:`);
   log(`  REMOTE_MCP_URL=http://${externalIp}:${mcpPort}`);
-  log(`  REMOTE_MCP_AUTH_TOKEN=${mcpAuthToken}`);
+  if (mcpAuthToken) {
+    log(`  REMOTE_MCP_AUTH_TOKEN=${mcpAuthToken}`);
+  }
   log(``);
 }
 

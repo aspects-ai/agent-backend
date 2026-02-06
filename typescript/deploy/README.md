@@ -228,7 +228,7 @@ The deploy tool creates a VM with Docker and configures agentbe-daemon automatic
 3. Pull and run the image:
 
 ```bash
-docker pull ghcr.io/aspects-ai/agent-backend-remote:latest
+docker pull ghcr.io/aspects-ai/agentbe-daemon:latest
 
 docker run -d \
   --name agentbe-daemon \
@@ -238,7 +238,7 @@ docker run -d \
   -e SSH_USERS=agent:secure-password \
   -e MCP_AUTH_TOKEN=production-token \
   --restart unless-stopped \
-  ghcr.io/aspects-ai/agent-backend-remote:latest
+  ghcr.io/aspects-ai/agentbe-daemon:latest
 ```
 
 ---
@@ -260,7 +260,7 @@ docker run -d \
 # Production example
 services:
   agentbe-daemon:
-    image: ghcr.io/aspects-ai/agent-backend-remote:latest
+    image: ghcr.io/aspects-ai/agentbe-daemon:latest
     ports:
       - "127.0.0.1:2222:22"  # Localhost only
       - "127.0.0.1:3001:3001"

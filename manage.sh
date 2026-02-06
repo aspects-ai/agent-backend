@@ -121,7 +121,7 @@ publish_package() {
 }
 
 start_deploy_ui() {
-  local DEPLOY_DIR="$SCRIPT_DIR/remote/deploy/deploy-tool"
+  local DEPLOY_DIR="$SCRIPT_DIR/typescript/deploy/deploy-tool"
 
   if [[ ! -d "$DEPLOY_DIR" ]]; then
     echo "Error: Deploy tool directory not found at $DEPLOY_DIR" >&2
@@ -129,6 +129,12 @@ start_deploy_ui() {
   fi
 
   cd "$DEPLOY_DIR"
+
+  # Install dependencies if needed
+  if [[ ! -d "node_modules" ]]; then
+    echo "Installing dependencies..."
+    npm install
+  fi
 
   echo "Starting Agent Backend deployment UI..."
   echo "Will be available at: http://localhost:3456"
