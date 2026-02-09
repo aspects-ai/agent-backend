@@ -125,7 +125,7 @@ export default function BackendSettings() {
                 >
                   <Wifi className="w-6 h-6 mx-auto mb-2 text-text-primary" />
                   <div className="text-sm font-medium text-text-primary">Remote</div>
-                  <div className="text-xs text-text-tertiary mt-1">Connect via SSH</div>
+                  <div className="text-xs text-text-tertiary mt-1">Connect to remote daemon</div>
                 </button>
               </div>
             </div>
@@ -176,7 +176,7 @@ export default function BackendSettings() {
               </div>
             )}
 
-            {/* Remote Backend Settings */}
+            {/* Remote Backend Settings (SSH-WS) */}
             {config.type === 'remote' && (
               <div className="space-y-4">
                 <div>
@@ -197,101 +197,46 @@ export default function BackendSettings() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-2">
-                      SSH Port
-                    </label>
-                    <input
-                      type="number"
-                      value={config.remote?.sshPort || ''}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          remote: {
-                            ...config.remote!,
-                            sshPort: e.target.value ? parseInt(e.target.value) : undefined,
-                          },
-                        })
-                      }
-                      className="w-full px-3 py-2 bg-bg-elevated border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-primary-600"
-                      placeholder="2222"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-2">
-                      MCP Server Port
-                    </label>
-                    <input
-                      type="number"
-                      value={config.remote?.mcpPort || ''}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          remote: {
-                            ...config.remote!,
-                            mcpPort: e.target.value ? parseInt(e.target.value) : undefined,
-                          },
-                        })
-                      }
-                      className="w-full px-3 py-2 bg-bg-elevated border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-primary-600"
-                      placeholder="3001"
-                    />
-                  </div>
-                </div>
-
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-2">
-                    Username
+                    Port
                   </label>
                   <input
-                    type="text"
-                    value={config.remote?.sshAuth.credentials.username || ''}
+                    type="number"
+                    value={config.remote?.port || ''}
                     onChange={(e) =>
                       setConfig({
                         ...config,
                         remote: {
                           ...config.remote!,
-                          sshAuth: {
-                            ...config.remote!.sshAuth,
-                            credentials: {
-                              ...config.remote!.sshAuth.credentials,
-                              username: e.target.value,
-                            },
-                          },
+                          port: e.target.value ? parseInt(e.target.value) : undefined,
                         },
                       })
                     }
                     className="w-full px-3 py-2 bg-bg-elevated border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-primary-600"
-                    placeholder="root"
+                    placeholder="3001"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-2">
-                    Password
+                    Auth Token
                   </label>
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
-                      value={config.remote?.sshAuth.credentials.password || ''}
+                      value={config.remote?.authToken || ''}
                       onChange={(e) =>
                         setConfig({
                           ...config,
                           remote: {
                             ...config.remote!,
-                            sshAuth: {
-                              type: 'password',
-                              credentials: {
-                                ...config.remote!.sshAuth.credentials,
-                                password: e.target.value,
-                              },
-                            },
+                            authToken: e.target.value,
                           },
                         })
                       }
                       className="w-full px-3 py-2 pr-10 bg-bg-elevated border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-primary-600"
-                      placeholder="agents"
+                      placeholder="(optional if server has no auth)"
                     />
                     <button
                       type="button"

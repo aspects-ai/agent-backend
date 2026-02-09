@@ -12,6 +12,11 @@ vi.mock('ssh2', () => ({
 // Test constants
 const TEST_ROOT_DIR = '/remote/workspace'
 
+// Base config for all tests - uses conventional SSH transport for mocking
+const BASE_SSH_CONFIG = {
+  transport: 'ssh' as const,  // Use conventional SSH for unit tests (mocked)
+}
+
 /**
  * Build the expected full command string that RemoteFilesystemBackend.exec() generates.
  * This mirrors the logic in buildFullCommand() for test assertions.
@@ -124,6 +129,8 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -156,6 +163,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const passwordBackend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: '/tmp',
         host: 'example.com',
         sshAuth: {
@@ -171,6 +179,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const keyBackend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: '/tmp',
         host: 'example.com',
         sshAuth: {
@@ -189,6 +198,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const defaultPortBackend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: '/tmp',
         host: 'example.com',
         sshAuth: {
@@ -204,6 +214,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const customPortBackend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: '/tmp',
         host: 'example.com',
         sshPort: 2222,
@@ -220,6 +231,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: '/tmp',
         host: 'example.com',
         sshAuth: {
@@ -240,6 +252,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: '/tmp',
         host: 'example.com',
         sshAuth: {
@@ -255,6 +268,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: '/tmp',
         host: 'example.com',
         sshAuth: {
@@ -270,6 +284,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -290,6 +305,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -310,6 +326,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -331,6 +348,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -355,6 +373,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -371,6 +390,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -386,6 +406,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -404,6 +425,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -421,6 +443,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         preventDangerous: true,
@@ -440,6 +463,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         preventDangerous: false,
@@ -486,6 +510,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -512,6 +537,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -540,6 +566,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -580,6 +607,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -611,6 +639,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -638,6 +667,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -664,6 +694,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -683,6 +714,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -709,6 +741,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -739,6 +772,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -755,6 +789,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -772,6 +807,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -790,6 +826,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -805,6 +842,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -825,6 +863,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -845,6 +884,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {
@@ -875,6 +915,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       vi.mocked(Client).mockImplementation(() => mockClient as any)
 
       const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
         rootDir: TEST_ROOT_DIR,
         host: 'example.com',
         sshAuth: {

@@ -17,6 +17,10 @@ import { validateWithinBoundary } from './pathValidation.js'
 import { ScopedFilesystemBackend } from './ScopedFilesystemBackend.js'
 import type { Backend, FileBasedBackend, ScopedBackend } from './types.js'
 import { BackendType } from './types.js'
+import { WebSocketSSHTransport } from './transports/WebSocketSSHTransport.js'
+
+/** Transport type for SSH operations */
+type TransportType = 'ssh-ws' | 'ssh'
 
 /** Default timeout for filesystem operations in milliseconds (120 seconds) */
 const DEFAULT_OPERATION_TIMEOUT_MS = 120_000
@@ -69,9 +73,17 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
   readonly rootDir: string
 
   private _connected = false
+  private readonly config: RemoteFilesystemBackendConfig
+
+  /** Transport type being used */
+  private readonly transportType: TransportType
+
+  /** WebSocket SSH transport (used when transport is 'ssh-ws') */
+  private wsTransport: WebSocketSSHTransport | null = null
+
+  /** Conventional SSH client (used when transport is 'ssh') */
   private sshClient: SSH2Client | null = null
   private connectionPromise: Promise<void> | null = null
-  private readonly config: RemoteFilesystemBackendConfig
 
   /** Track pending operations so we can reject them on connection loss */
   private pendingOperations = new Set<PendingOperation>()
@@ -101,12 +113,31 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
     this.config = config
     this.rootDir = config.rootDir
 
+    // Determine transport type (default to ssh-ws)
+    this.transportType = config.transport ?? 'ssh-ws'
+
+    // Validate configuration based on transport type
+    if (this.transportType === 'ssh' && !config.sshAuth) {
+      throw new BackendError(
+        'sshAuth is required when using conventional SSH transport. ' +
+        'Either provide sshAuth or use transport: "ssh-ws" with authToken.',
+        ERROR_CODES.INVALID_CONFIGURATION
+      )
+    }
+
+    if (this.transportType === 'ssh-ws' && !config.authToken) {
+      getLogger().warn(
+        'No authToken provided for ssh-ws transport. ' +
+        'Connection will only work if server has auth disabled.'
+      )
+    }
+
     // Initialize configurable timeouts with defaults
     this.operationTimeoutMs = config.operationTimeoutMs ?? DEFAULT_OPERATION_TIMEOUT_MS
     this.keepaliveIntervalMs = config.keepaliveIntervalMs ?? DEFAULT_KEEPALIVE_INTERVAL_MS
     this.keepaliveCountMax = config.keepaliveCountMax ?? DEFAULT_KEEPALIVE_COUNT_MAX
 
-    // SSH client will be created on first connection (lazy initialization)
+    // Transport will be created on first connection (lazy initialization)
     this._connected = false
   }
 
@@ -119,7 +150,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
    */
   private getUserFromAuth(): string {
     const auth = this.config.sshAuth
-    return auth.credentials.username
+    return auth?.credentials?.username ?? 'agent'
   }
 
   /**
@@ -261,12 +292,79 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
     // Ensure SSH connection is established
     await this.ensureSSHConnection()
 
+    const cwd = options?.cwd ?? this.rootDir
+    const encoding = options?.encoding ?? 'utf8'
+    const fullCommand = this.buildFullCommand(command, cwd, options?.env)
+
+    // Use appropriate transport
+    if (this.transportType === 'ssh-ws') {
+      return this.execViaWebSocket(fullCommand, command, encoding)
+    } else {
+      return this.execViaConventionalSSH(fullCommand, command, encoding)
+    }
+  }
+
+  /**
+   * Execute command via WebSocket SSH transport
+   */
+  private async execViaWebSocket(
+    fullCommand: string,
+    originalCommand: string,
+    encoding: 'utf8' | 'buffer'
+  ): Promise<string | Buffer> {
+    if (!this.wsTransport) {
+      throw new BackendError('WebSocket transport not initialized', ERROR_CODES.EXEC_FAILED)
+    }
+
+    getLogger().debug(`[SSH-WS exec] Executing command: ${fullCommand}`)
+
+    try {
+      const result = await this.wsTransport.exec(fullCommand, {
+        timeout: this.operationTimeoutMs
+      })
+
+      if (result.code === 0) {
+        if (encoding === 'buffer') {
+          return Buffer.from(result.stdout)
+        } else {
+          let output = result.stdout.trim()
+
+          if (this.config.maxOutputLength && output.length > this.config.maxOutputLength) {
+            const truncatedLength = this.config.maxOutputLength - 50
+            output = `${output.substring(0, truncatedLength)}\n\n... [Output truncated. Full output was ${output.length} characters, showing first ${truncatedLength}]`
+          }
+
+          return output
+        }
+      } else {
+        const errorMessage = result.stderr.trim() || result.stdout.trim()
+        throw new BackendError(
+          `Command failed with exit code ${result.code}: ${errorMessage}`,
+          ERROR_CODES.EXEC_FAILED,
+          originalCommand
+        )
+      }
+    } catch (err: any) {
+      if (err instanceof BackendError) throw err
+      throw new BackendError(
+        `SSH command failed: ${err.message}`,
+        ERROR_CODES.EXEC_FAILED,
+        originalCommand
+      )
+    }
+  }
+
+  /**
+   * Execute command via conventional SSH
+   */
+  private async execViaConventionalSSH(
+    fullCommand: string,
+    originalCommand: string,
+    encoding: 'utf8' | 'buffer'
+  ): Promise<string | Buffer> {
     if (!this.sshClient) {
       throw new BackendError('SSH client not initialized', ERROR_CODES.EXEC_FAILED)
     }
-
-    const cwd = options?.cwd ?? this.rootDir
-    const encoding = options?.encoding ?? 'utf8'
 
     // Use channel limiting
     return this.withChannelLimit(() => new Promise((resolve, reject) => {
@@ -275,12 +373,10 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
         return
       }
 
-      const fullCommand = this.buildFullCommand(command, cwd, options?.env)
-
       getLogger().debug(`[SSH exec] Executing command: ${fullCommand}`)
 
       let completed = false
-      const untrack = this.trackOperation(`exec: ${command}`, reject)
+      const untrack = this.trackOperation(`exec: ${originalCommand}`, reject)
 
       const complete = () => {
         if (!completed) {
@@ -293,11 +389,11 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
       const timeout = setTimeout(() => {
         if (!completed) {
           complete()
-          getLogger().error(`[SSH exec] Command timed out after ${this.operationTimeoutMs}ms: ${command}`)
+          getLogger().error(`[SSH exec] Command timed out after ${this.operationTimeoutMs}ms: ${originalCommand}`)
           reject(new BackendError(
             `SSH command timed out after ${this.operationTimeoutMs}ms`,
             ERROR_CODES.EXEC_FAILED,
-            command
+            originalCommand
           ))
         }
       }, this.operationTimeoutMs)
@@ -309,7 +405,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
           reject(new BackendError(
             `SSH command failed: ${err.message}`,
             ERROR_CODES.EXEC_FAILED,
-            command
+            originalCommand
           ))
           return
         }
@@ -323,7 +419,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
           reject(new BackendError(
             `SSH stream error: ${streamErr.message}`,
             ERROR_CODES.EXEC_FAILED,
-            command
+            originalCommand
           ))
         })
 
@@ -355,7 +451,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
             reject(new BackendError(
               `Command failed with exit code ${code}: ${errorMessage}`,
               ERROR_CODES.EXEC_FAILED,
-              command
+              originalCommand
             ))
           }
         })
@@ -844,8 +940,11 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
 
     // Construct MCP server URL from host and port
     const mcpHost = this.config.mcpServerHostOverride || this.config.host
-    const mcpPort = this.config.mcpPort || 3001
+    const mcpPort = this.config.port ?? this.config.mcpPort ?? 3001
     const mcpServerUrl = `http://${mcpHost}:${mcpPort}`
+
+    // Use unified authToken or fallback to mcpAuth.token
+    const authToken = this.config.authToken ?? this.config.mcpAuth?.token
 
     // Create HTTP transport to remote MCP server
     const transport = new StreamableHTTPClientTransport(
@@ -853,8 +952,8 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
       {
         requestInit: {
           headers: {
-            ...(this.config.mcpAuth?.token && {
-              'Authorization': `Bearer ${this.config.mcpAuth.token}`,
+            ...(authToken && {
+              'Authorization': `Bearer ${authToken}`,
             }),
           },
         },
@@ -904,7 +1003,17 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
       this.sftpSessionPromise = null
     }
 
-    // Close SSH connection
+    // Close WebSocket transport
+    if (this.wsTransport) {
+      try {
+        await this.wsTransport.disconnect()
+      } catch (err) {
+        getLogger().debug('[SSH-WS] Error closing WebSocket transport:', err)
+      }
+      this.wsTransport = null
+    }
+
+    // Close conventional SSH connection
     if (this.sshClient) {
       try {
         this.sshClient.end()
@@ -912,9 +1021,9 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
         getLogger().debug('[SSH] Error closing SSH connection:', err)
       }
       this.sshClient = null
-      this._connected = false
     }
 
+    this._connected = false
     this.connectionPromise = null
     getLogger().debug(`RemoteFilesystemBackend destroyed for root: ${this.rootDir}`)
   }
@@ -924,31 +1033,95 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
   // =========================================================================
 
   /**
-   * Ensure SSH connection is established
+   * Ensure SSH connection is established (either ssh-ws or conventional ssh)
    */
   private async ensureSSHConnection(): Promise<void> {
-    if (this._connected && this.sshClient) {
-      return Promise.resolve()
+    if (this._connected) {
+      // Check if the appropriate transport is connected
+      if (this.transportType === 'ssh-ws' && this.wsTransport?.connected) {
+        return
+      }
+      if (this.transportType === 'ssh' && this.sshClient) {
+        return
+      }
     }
 
     if (this.connectionPromise) {
       return this.connectionPromise
     }
 
-    this.connectionPromise = this.createSSHConnection()
+    if (this.transportType === 'ssh-ws') {
+      this.connectionPromise = this.createWebSocketSSHConnection()
+    } else {
+      this.connectionPromise = this.createConventionalSSHConnection()
+    }
+
     return this.connectionPromise
   }
 
   /**
-   * Create SSH connection
+   * Create WebSocket SSH connection
    */
-  private async createSSHConnection(): Promise<void> {
+  private async createWebSocketSSHConnection(): Promise<void> {
+    const port = this.config.port ?? this.config.mcpPort ?? 3001
+
+    this.wsTransport = new WebSocketSSHTransport({
+      host: this.config.sshHostOverride || this.config.host,
+      port,
+      path: '/ssh',
+      authToken: this.config.authToken ?? this.config.mcpAuth?.token,
+      timeout: this.operationTimeoutMs,
+      keepaliveInterval: this.keepaliveIntervalMs
+    })
+
+    this.wsTransport.on('close', () => {
+      getLogger().debug('[SSH-WS] Connection closed')
+      this._connected = false
+      this.sftpSession = null
+      this.sftpSessionPromise = null
+
+      // Reject all pending operations
+      const error = new BackendError('SSH connection closed', 'CONNECTION_CLOSED')
+      for (const op of this.pendingOperations) {
+        op.reject(error)
+      }
+      this.pendingOperations.clear()
+    })
+
+    try {
+      await this.wsTransport.connect()
+      getLogger().debug('[SSH-WS] Connection established')
+      this._connected = true
+      this.connectionPromise = null
+    } catch (err: any) {
+      this._connected = false
+      this.connectionPromise = null
+      this.wsTransport = null
+      throw new BackendError(
+        `SSH-WS connection failed: ${err.message}`,
+        ERROR_CODES.EXEC_FAILED
+      )
+    }
+  }
+
+  /**
+   * Create conventional SSH connection (to sshd)
+   */
+  private async createConventionalSSHConnection(): Promise<void> {
     return new Promise((resolve, reject) => {
       const sshClient = new SSH2Client()
 
+      if (!this.config.sshAuth) {
+        reject(new BackendError(
+          'sshAuth is required for conventional SSH transport',
+          ERROR_CODES.INVALID_CONFIGURATION
+        ))
+        return
+      }
+
       const connectConfig: ConnectConfig = {
         host: this.config.sshHostOverride || this.config.host,
-        port: this.config.sshPort ?? 22,
+        port: this.config.port ?? this.config.sshPort ?? 22,
         username: this.getUserFromAuth(),
         keepaliveInterval: this.keepaliveIntervalMs,
         keepaliveCountMax: this.keepaliveCountMax,
@@ -1013,26 +1186,40 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
 
     await this.ensureSSHConnection()
 
-    this.sftpSessionPromise = new Promise((resolve, reject) => {
-      if (!this.sshClient) {
-        reject(new BackendError('SSH client not initialized', ERROR_CODES.EXEC_FAILED))
-        return
-      }
-
-      this.sshClient.sftp((err, sftp) => {
-        if (err) {
-          this.sftpSessionPromise = null
-          reject(new BackendError(
-            `Failed to create SFTP session: ${err.message}`,
-            ERROR_CODES.EXEC_FAILED
-          ))
-        } else {
-          this.sftpSession = sftp
-          this.sftpSessionPromise = null
-          resolve(sftp)
+    if (this.transportType === 'ssh-ws') {
+      // Use WebSocket transport for SFTP
+      this.sftpSessionPromise = (async () => {
+        if (!this.wsTransport) {
+          throw new BackendError('WebSocket transport not initialized', ERROR_CODES.EXEC_FAILED)
         }
+        const sftp = await this.wsTransport.getSFTP()
+        this.sftpSession = sftp
+        this.sftpSessionPromise = null
+        return sftp
+      })()
+    } else {
+      // Use conventional SSH client for SFTP
+      this.sftpSessionPromise = new Promise((resolve, reject) => {
+        if (!this.sshClient) {
+          reject(new BackendError('SSH client not initialized', ERROR_CODES.EXEC_FAILED))
+          return
+        }
+
+        this.sshClient.sftp((err, sftp) => {
+          if (err) {
+            this.sftpSessionPromise = null
+            reject(new BackendError(
+              `Failed to create SFTP session: ${err.message}`,
+              ERROR_CODES.EXEC_FAILED
+            ))
+          } else {
+            this.sftpSession = sftp
+            this.sftpSessionPromise = null
+            resolve(sftp)
+          }
+        })
       })
-    })
+    }
 
     return this.sftpSessionPromise
   }

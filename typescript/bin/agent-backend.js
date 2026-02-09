@@ -17,7 +17,7 @@ import { readFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { LocalFilesystemBackend } from '../dist/index.js'
-import { AgentBackendMCPServer } from '../dist/server/index.js'
+import { AgentBackendMCPServer, createWebSocketSSHServer } from '../dist/server/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -120,60 +120,70 @@ async function handleDaemon(args) {
     return
   }
 
-  // Full daemon mode (MCP + SSH) - requires Linux
-  if (process.platform !== 'linux') {
-    console.error('❌ Error: Full daemon mode (with SSH) requires Linux')
-    console.error('   Options:')
-    console.error('   1. Use --local-only flag for local stdio mode')
-    console.error('   2. Use Docker: agent-backend start-docker')
-    process.exit(1)
-  }
-
-  // Check running as root for user creation
-  if (process.getuid() !== 0) {
-    console.error('⚠️  Warning: daemon mode requires root privileges for SSH user management')
-    console.error('   Run with sudo or as root user')
-  }
-
-  // Validate sshd is installed
-  const sshdPath = '/usr/sbin/sshd'
-  try {
-    execSync(`test -f ${sshdPath}`, { stdio: 'ignore' })
-  } catch {
-    console.error('❌ Error: SSH daemon not found at /usr/sbin/sshd')
-    console.error('   Install openssh-server: apt-get install openssh-server')
-    console.error('   Or use --local-only flag for local stdio mode')
-    process.exit(1)
-  }
-
-  console.error('🌟 Starting agentbe-daemon (MCP + SSH)...')
+  // Full daemon mode (MCP + SSH-WS, optionally conventional SSH)
+  console.error('🌟 Starting agentbe-daemon...')
   console.error(`📁 Workspace: ${config.rootDir}`)
-  console.error(`🔌 MCP Port: ${config.mcpPort}`)
-  console.error(`👥 SSH Users: ${config.sshUsers.map(u => u.username).join(', ')}`)
+  console.error(`🔌 Port: ${config.mcpPort}`)
+
+  // Check if conventional SSH is requested
+  if (config.conventionalSsh) {
+    if (process.platform !== 'linux') {
+      console.error('❌ Error: Conventional SSH (--conventional-ssh) requires Linux')
+      console.error('   Use SSH-WS instead (enabled by default) which works on any platform')
+      process.exit(1)
+    }
+
+    if (process.getuid() !== 0) {
+      console.error('⚠️  Warning: Conventional SSH requires root privileges for user management')
+      console.error('   Run with sudo or as root user')
+    }
+
+    // Validate sshd is installed
+    const sshdPath = '/usr/sbin/sshd'
+    try {
+      execSync(`test -f ${sshdPath}`, { stdio: 'ignore' })
+    } catch {
+      console.error('❌ Error: SSH daemon not found at /usr/sbin/sshd')
+      console.error('   Install openssh-server: apt-get install openssh-server')
+      console.error('   Or remove --conventional-ssh to use SSH-WS instead')
+      process.exit(1)
+    }
+  }
 
   try {
-    // Set up SSH users
-    await setupSshUsers(config)
+    // Start HTTP MCP server (with optional SSH-WS)
+    const { httpServer, wsSshServer } = await startDaemonHttpServerWithSSH(config)
 
-    // Start HTTP MCP server
-    const httpServer = await startDaemonHttpServer(config)
+    let sshdProcess = null
 
-    // Start SSH daemon
-    const sshdProcess = startSshDaemon(config)
+    // Start conventional SSH daemon if requested
+    if (config.conventionalSsh) {
+      console.error(`👥 Conventional SSH Users: ${config.sshUsers.map(u => u.username).join(', ')}`)
+      await setupSshUsers(config)
+      sshdProcess = startSshDaemon(config)
+    }
 
     // Set up signal handlers for graceful shutdown
     const shutdown = async () => {
       console.error('')
       console.error('🛑 Shutting down agentbe-daemon...')
 
+      // Close SSH-WS server
+      if (wsSshServer) {
+        await wsSshServer.close()
+        console.error('   ✓ SSH-WS server stopped')
+      }
+
       // Close HTTP server
       await new Promise(resolve => httpServer.close(resolve))
       console.error('   ✓ MCP server stopped')
 
-      // Stop sshd
-      sshdProcess.kill('SIGTERM')
-      await new Promise(resolve => sshdProcess.on('exit', resolve))
-      console.error('   ✓ SSH daemon stopped')
+      // Stop conventional sshd if running
+      if (sshdProcess) {
+        sshdProcess.kill('SIGTERM')
+        await new Promise(resolve => sshdProcess.on('exit', resolve))
+        console.error('   ✓ Conventional SSH daemon stopped')
+      }
 
       process.exit(0)
     }
@@ -181,18 +191,30 @@ async function handleDaemon(args) {
     process.on('SIGTERM', shutdown)
     process.on('SIGINT', shutdown)
 
-    // Monitor sshd and exit if it crashes
-    sshdProcess.on('exit', (code, signal) => {
-      console.error(`❌ SSH daemon exited unexpectedly (code: ${code}, signal: ${signal})`)
-      console.error('   agentbe-daemon shutting down...')
-      httpServer.close(() => process.exit(1))
-    })
+    // Monitor conventional sshd if running
+    if (sshdProcess) {
+      sshdProcess.on('exit', (code, signal) => {
+        console.error(`❌ Conventional SSH daemon exited unexpectedly (code: ${code}, signal: ${signal})`)
+        console.error('   agentbe-daemon shutting down...')
+        httpServer.close(() => process.exit(1))
+      })
+    }
 
     console.error('')
     console.error('✅ agentbe-daemon is running')
-    console.error(`   SSH Port: ${config.sshPort}`)
-    console.error(`   MCP Port: ${config.mcpPort}`)
-    console.error(`   MCP Health: http://localhost:${config.mcpPort}/health`)
+    console.error(`   MCP endpoint: http://localhost:${config.mcpPort}/mcp`)
+    console.error(`   Health check: http://localhost:${config.mcpPort}/health`)
+    if (!config.disableSshWs) {
+      console.error(`   SSH-WS endpoint: ws://localhost:${config.mcpPort}/ssh`)
+    }
+    if (config.conventionalSsh) {
+      console.error(`   Conventional SSH: port ${config.sshPort}`)
+    }
+    if (config.mcpAuthToken) {
+      console.error(`   Auth: enabled (same token for MCP and SSH-WS)`)
+    } else {
+      console.error(`   Auth: disabled`)
+    }
     console.error('')
 
   } catch (error) {
@@ -209,9 +231,14 @@ function parseDaemonArgs(args) {
     mcpPort: 3001,
     sshPort: 22,
     localOnly: false,
+    // SSH-WS is enabled by default
+    disableSshWs: false,
+    // Conventional SSH is disabled by default
+    conventionalSsh: false,
     sshUsers: [{ username: 'root', password: 'agents' }],
     sshPublicKey: null,
-    sshAuthorizedKeys: null
+    sshAuthorizedKeys: null,
+    sshHostKey: null
   }
 
   for (let i = 0; i < args.length; i++) {
@@ -256,6 +283,21 @@ function parseDaemonArgs(args) {
 
       case '--local-only':
         config.localOnly = true
+        break
+
+      // SSH-WS options (enabled by default)
+      case '--disable-ssh-ws':
+        config.disableSshWs = true
+        break
+
+      case '--ssh-host-key':
+        config.sshHostKey = next
+        i++
+        break
+
+      // Conventional SSH options (disabled by default)
+      case '--conventional-ssh':
+        config.conventionalSsh = true
         break
 
       case '--ssh-users':
@@ -392,6 +434,15 @@ async function setupSshUsers(config) {
 }
 
 async function startDaemonHttpServer(config) {
+  // Legacy function - redirects to new implementation
+  const { httpServer } = await startDaemonHttpServerWithSSH({ ...config, disableSshWs: true })
+  return httpServer
+}
+
+/**
+ * Start HTTP server with MCP endpoint and optional SSH-WS endpoint
+ */
+async function startDaemonHttpServerWithSSH(config) {
   const app = express()
 
   // Create base backend
@@ -406,7 +457,13 @@ async function startDaemonHttpServer(config) {
   app.get('/health', (req, res) => {
     res.json({
       status: 'ok',
-      rootDir: config.rootDir
+      version: VERSION,
+      rootDir: config.rootDir,
+      transports: {
+        mcp: true,
+        'ssh-ws': !config.disableSshWs,
+        ssh: config.conventionalSsh || false
+      }
     })
   })
 
@@ -478,14 +535,28 @@ async function startDaemonHttpServer(config) {
   })
 
   return await new Promise((resolve) => {
-    const server = app.listen(config.mcpPort, () => {
-      console.error('🔌 MCP server started')
+    const httpServer = app.listen(config.mcpPort, () => {
+      console.error('🔌 HTTP server started')
       console.error(`   Port: ${config.mcpPort}`)
       console.error(`   Auth: ${config.mcpAuthToken ? 'enabled (token required)' : 'disabled (open access)'}`)
       if (config.scopePath) {
         console.error(`   Scope: ${config.scopePath} (static)`)
       }
-      resolve(server)
+
+      // Add SSH-WS endpoint if not disabled
+      let wsSshServer = null
+      if (!config.disableSshWs) {
+        wsSshServer = createWebSocketSSHServer(httpServer, {
+          rootDir: config.rootDir,
+          authToken: config.mcpAuthToken,
+          hostKeyPath: config.sshHostKey,
+          shell: config.shell
+        })
+        console.error('🔐 SSH-WS server started')
+        console.error(`   Endpoint: ws://0.0.0.0:${config.mcpPort}/ssh`)
+      }
+
+      resolve({ httpServer, wsSshServer })
     })
   })
 }
@@ -933,7 +1004,7 @@ USAGE:
   agent-backend <command> [options]
 
 COMMANDS:
-  daemon                 Start agentbe-daemon (MCP + SSH server)
+  daemon                 Start agentbe-daemon (MCP + SSH-WS server)
   start-docker [--build] Start Docker container with agentbe-daemon
   stop-docker            Stop Docker container
   version                Show version
@@ -942,41 +1013,45 @@ COMMANDS:
 DAEMON COMMAND:
   agent-backend daemon --rootDir <path> [OPTIONS]
 
-  Starts agentbe-daemon with MCP HTTP server (and optionally SSH daemon).
+  Starts agentbe-daemon with MCP HTTP server and SSH-over-WebSocket.
 
-  Two modes:
-  1. Local-only mode (--local-only): Stdio MCP server for local dev, works on any platform
-  2. Full mode: MCP + SSH, requires Linux and root privileges
+  Modes:
+  1. Local-only mode (--local-only): Stdio MCP server for local dev
+  2. Full mode (default): MCP + SSH-WS on single port, works on any platform
+  3. With conventional SSH (--conventional-ssh): Adds sshd, requires Linux + root
 
   Required Options:
     --rootDir <path>       Root directory to serve
 
   Optional - Mode:
-    --local-only           Run MCP server via stdio (no SSH, no HTTP). Works on any platform.
+    --local-only           Run MCP server via stdio (no HTTP, no SSH). Works on any platform.
                            Perfect for local development with LocalFilesystemBackend.
 
   Optional - Scoping:
     --scopePath <path>     Static scope path within rootDir. All operations are restricted
-                           to this subdirectory. For stdio mode, this is the only way to scope.
-                           For HTTP mode, this conflicts with dynamic X-Scope-Path header.
+                           to this subdirectory.
 
-  Optional - MCP Server:
-    --mcp-port <port>      HTTP server port (default: 3001)
-    --mcp-auth-token <tok> Bearer token for MCP endpoint authentication
+  Optional - Server:
+    --mcp-port <port>      HTTP/WebSocket server port (default: 3001)
+    --mcp-auth-token <tok> Bearer token for authentication (used for BOTH MCP and SSH-WS)
     --isolation <mode>     Command isolation: auto|bwrap|software|none (default: auto)
     --shell <shell>        Shell to use: bash|sh|auto (default: auto)
 
-  Optional - SSH (full mode only):
-    --ssh-port <port>      SSH daemon port (default: 22)
+  Optional - SSH-WS (enabled by default):
+    --disable-ssh-ws       Disable SSH-over-WebSocket endpoint
+    --ssh-host-key <path>  Path to SSH host key (auto-generated if not provided)
+
+  Optional - Conventional SSH (disabled by default, requires Linux + root):
+    --conventional-ssh     Enable conventional SSH daemon (sshd)
+    --ssh-port <port>      Conventional SSH port (default: 22)
     --ssh-users <users>    Comma-separated user:password pairs (default: root:agents)
-                           Example: alice:pass123,bob:pass456
     --ssh-public-key <key> SSH public key to add to authorized_keys
-    --ssh-authorized-keys <path>  Path to authorized_keys file to copy
+    --ssh-authorized-keys <path>  Path to authorized_keys file
 
 DOCKER MANAGEMENT:
   agent-backend start-docker [--build]
 
-  Starts Docker container with agentbe-daemon + SSH.
+  Starts Docker container with agentbe-daemon.
   Options:
     --build                Force rebuild the Docker image
 
@@ -985,39 +1060,48 @@ DOCKER MANAGEMENT:
   Stops Docker container.
 
 EXAMPLES:
-  # Local-only mode (stdio, works on any platform, no SSH)
-  agent-backend daemon --rootDir /tmp/workspace --local-only
+  # Default mode: MCP + SSH-WS on single port (works on any platform)
+  agent-backend daemon --rootDir /tmp/workspace
 
-  # Note: --local-only uses stdio, so auth tokens don't apply
-  # For HTTP with auth, omit --local-only:
+  # With authentication (same token for MCP and SSH-WS)
   agent-backend daemon --rootDir /tmp/workspace \\
     --mcp-auth-token secret123
 
-  # Full daemon with defaults (Linux only: root:agents, port 3001)
-  agent-backend daemon --rootDir /var/workspace
+  # Local-only mode (stdio, no HTTP)
+  agent-backend daemon --rootDir /tmp/workspace --local-only
 
-  # Full daemon with custom users (Linux only)
+  # With conventional SSH (Linux only, requires root)
   agent-backend daemon --rootDir /var/workspace \\
-    --ssh-users "alice:secret,bob:password"
+    --conventional-ssh --ssh-users "agent:secret"
 
-  # Full daemon with pubkey auth (Linux only)
+  # Disable SSH-WS, use only conventional SSH (Linux only)
   agent-backend daemon --rootDir /var/workspace \\
-    --ssh-public-key "ssh-rsa AAAAB3... user@host"
+    --disable-ssh-ws --conventional-ssh
 
-  # Full daemon on alternate SSH port (when port 22 is in use)
-  agent-backend daemon --rootDir /var/workspace --ssh-port 2222
+  # Custom port
+  agent-backend daemon --rootDir /tmp/workspace --mcp-port 8080
 
-  # Start Docker container (includes full daemon with SSH)
+  # Start Docker container
   agent-backend start-docker --build
 
+TRANSPORTS:
+  SSH-WS (default, recommended):
+  - Single port for everything (MCP + SSH over WebSocket)
+  - Works through HTTP load balancers and proxies
+  - Unified authentication (one token for all)
+  - Client: transport: 'ssh-ws' (default)
+
+  Conventional SSH (opt-in):
+  - Requires separate sshd process (Linux + root)
+  - Two ports (MCP on 3001, SSH on 22)
+  - Separate authentication (SSH users/keys)
+  - Client: transport: 'ssh'
+
 NOTES:
-  - Use --local-only for local development (stdio mode, works on any platform)
-  - Full daemon (with SSH) requires Linux and root privileges
-  - Default SSH user is root:agents (full mode only)
-  - MCP server runs on port 3001 by default
-  - Use --mcp-auth-token to secure MCP endpoints (recommended for production)
-  - LocalFilesystemBackend uses --local-only mode (stdio)
-  - RemoteFilesystemBackend uses full daemon mode (with SSH)
+  - SSH-WS is enabled by default and works on any platform
+  - Conventional SSH (--conventional-ssh) requires Linux and root privileges
+  - Use --mcp-auth-token to secure endpoints (recommended for production)
+  - RemoteFilesystemBackend defaults to ssh-ws transport
 `)
 }
 

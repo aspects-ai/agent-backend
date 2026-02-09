@@ -8,10 +8,18 @@
 #
 # Or use `make dev-remote` from monorepo root (recommended for development)
 #
+# Transport modes:
+#   - SSH-WS (default): SSH over WebSocket on MCP port (single port, unified auth)
+#   - Conventional SSH (opt-in): Traditional sshd on port 22 (CONVENTIONAL_SSH=true)
+#
 # Environment variables (set in .env or export):
+#   AUTH_TOKEN     - Unified auth token for MCP and SSH-WS (recommended)
+#   MCP_PORT       - MCP + SSH-WS server port (default: 3001)
+#   DISABLE_SSH_WS - Set to "true" to disable SSH-WS endpoint
+#
+# Conventional SSH (opt-in, requires CONVENTIONAL_SSH=true):
 #   SSH_HOST_PORT  - Host port for SSH (default: 2222)
 #   SSH_PORT       - Container SSH port (default: 22)
-#   MCP_PORT       - MCP server port (default: 3001)
 #   SSH_USERS      - Comma-separated user:pass pairs (default: root:agents)
 
 services:
@@ -22,17 +30,21 @@ services:
     image: agentbe-daemon:latest
     container_name: agentbe-daemon
     ports:
-      - "${SSH_HOST_PORT:-2222}:${SSH_PORT:-22}"
+      # MCP + SSH-WS (always exposed)
       - "${MCP_PORT:-3001}:${MCP_PORT:-3001}"
+      # Conventional SSH (only used if CONVENTIONAL_SSH=true)
+      - "${SSH_HOST_PORT:-2222}:${SSH_PORT:-22}"
     volumes:
       - ./var/workspace:/var/workspace
-      # Uncomment for SSH key auth:
+      # Uncomment for SSH key auth (conventional SSH only):
       # - ./keys:/keys:ro
     env_file:
       - ../../../.env
     environment:
-      - SSH_PORT=${SSH_PORT:-22}
       - MCP_PORT=${MCP_PORT:-3001}
+      # SSH-WS is enabled by default. Uncomment to enable conventional SSH:
+      # - CONVENTIONAL_SSH=true
+      # - SSH_PORT=${SSH_PORT:-22}
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:${MCP_PORT:-3001}/health" ]

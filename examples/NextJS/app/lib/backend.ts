@@ -62,12 +62,11 @@ class BackendManager {
         throw new Error('Remote backend requires host')
       }
 
-      if (!remote.sshAuth || !remote.sshAuth.credentials.username) {
-        throw new Error('Remote backend requires SSH credentials')
-      }
-
-      // RemoteFilesystemBackend will construct MCP server URL from host + mcpPort
-      this.backend = new RemoteFilesystemBackend(remote)
+      // SSH-WS transport with unified auth
+      this.backend = new RemoteFilesystemBackend({
+        ...remote,
+        transport: 'ssh-ws',
+      })
     } else {
       const local = config.local || {
         rootDir: '/tmp/workspace',

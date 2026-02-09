@@ -113,14 +113,15 @@ NextJS App
   └── VercelAIAdapter(RemoteFilesystemBackend)
       └── getTransport() → StreamableHTTPClientTransport
           └── HTTP → Remote:3001 (agentbe-daemon)
-              └── agentbe-daemon serves /var/workspace via HTTP MCP
+              └── agentbe-daemon serves /var/workspace via HTTP MCP + SSH-WS
 
-Remote machine runs TWO daemons:
-  1. sshd (SSH daemon) - port 2222 (for direct file operations)
-  2. agentbe-daemon (agent backend daemon) - port 3001 (for MCP tools)
-     Command: agent-backend daemon --rootDir /var/workspace --mcp-port 3001 --mcp-auth-token <token>
+Remote machine runs ONE daemon on ONE port:
+  agentbe-daemon - port 3001
+    - MCP tools via HTTP
+    - File operations via SSH-over-WebSocket (ws://host:3001/ssh)
+    - Unified auth token for both
 
-Both access the SAME filesystem (/var/workspace).
+Command: agent-backend daemon --rootDir /var/workspace --mcp-auth-token <token>
 ```
 
 **MCP Client Caching**: AI SDK MCP clients are cached per session to avoid spawning multiple processes.
@@ -135,7 +136,7 @@ The Settings UI configures how the **client** connects to a backend:
 2. **Choose backend type**: Local or Remote
 3. **Configure client settings**:
    - **Local**: Root directory, isolation mode (client spawns daemon subprocess)
-   - **Remote**: SSH host, ports, credentials, MCP auth token (client connects to existing daemon)
+   - **Remote**: Host, port, auth token (connects via SSH-WS)
 4. **Click "Save & Restart"** to apply changes
 
 Configuration is stored **in-memory only** and resets on server restart.
@@ -144,7 +145,7 @@ Configuration is stored **in-memory only** and resets on server restart.
 
 When using **remote mode**, the daemon runs separately and has its own configuration:
 - CLI args: `agent-backend daemon --rootDir /var/workspace --mcp-auth-token <token>`
-- Docker env vars: `MCP_PORT`, `SSH_USERS`, `MCP_AUTH_TOKEN`
+- Docker env vars: `AUTH_TOKEN`, `MCP_PORT`
 
 See [deploy README](../../typescript/deploy/README.md) for daemon configuration options.
 

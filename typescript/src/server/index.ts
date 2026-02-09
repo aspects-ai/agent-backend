@@ -11,3 +11,6 @@
 
 export { AgentBackendMCPServer } from './AgentBackendMCPServer.js'
 export { registerFilesystemTools, registerExecTool, DEFAULT_EXCLUDE_PATTERNS } from './tools.js'
+export { createWebSocketSSHServer } from './WebSocketSSHServer.js'
+export type { WebSocketSSHServerOptions, WebSocketSSHServerInstance } from './WebSocketSSHServer.js'
+export { createSFTPHandler } from './SFTPHandler.js'

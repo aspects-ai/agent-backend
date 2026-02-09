@@ -1,14 +1,24 @@
 # AgentBackend Remote Backend Service
-# Provides POSIX filesystem access via SSH and MCP server for AgentBackend
+# Provides POSIX filesystem access via MCP server with SSH-over-WebSocket
+#
+# Transport modes:
+#   - SSH-WS (default): SSH over WebSocket on MCP port (single port, unified auth)
+#   - Conventional SSH (opt-in): Traditional sshd on port 22 (requires CONVENTIONAL_SSH=true)
+#
+# Build args:
+#   - AGENTBE_VERSION: Package version or "local" for local build
+#   - INCLUDE_SSHD: Set to "true" to include openssh-server for conventional SSH
 
 FROM ubuntu:22.04
+
+# Build arg to include sshd (for conventional SSH support)
+ARG INCLUDE_SSHD=true
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install base packages and SSH server
+# Install base packages
 RUN apt-get update && apt-get install -y \
-    openssh-server \
     sudo \
     curl \
     wget \
@@ -19,6 +29,11 @@ RUN apt-get update && apt-get install -y \
     bindfs \
     libfuse2 \
     && rm -rf /var/lib/apt/lists/*
+
+# Optionally install openssh-server for conventional SSH support
+RUN if [ "$INCLUDE_SSHD" = "true" ]; then \
+      apt-get update && apt-get install -y openssh-server && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Install Chromium and dependencies for headless browser support
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -68,42 +83,31 @@ RUN if [ "$AGENTBE_VERSION" = "local" ]; then \
 RUN mkdir -p /var/workspace
 WORKDIR /var/workspace
 
-# Set up SSH configuration
-RUN mkdir /var/run/sshd && \
-    mkdir -p /run/sshd
-
-# Generate SSH host keys
-RUN ssh-keygen -A
-
-# Configure SSH daemon for AgentBackend
-RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#Port 22/Port 22/' /etc/ssh/sshd_config && \
-    sed -i 's/#AddressFamily any/AddressFamily any/' /etc/ssh/sshd_config && \
-    sed -i 's/#ListenAddress 0.0.0.0/ListenAddress 0.0.0.0/' /etc/ssh/sshd_config
-
-# SSH performance tuning for AgentBackend workloads
-RUN mkdir -p /etc/ssh/sshd_config.d && \
-    echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/agentbe.conf && \
-    echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config.d/agentbe.conf && \
-    echo 'ChallengeResponseAuthentication yes' >> /etc/ssh/sshd_config.d/agentbe.conf && \
-    echo 'MaxSessions 64' >> /etc/ssh/sshd_config.d/agentbe.conf && \
-    echo 'MaxStartups 10:30:100' >> /etc/ssh/sshd_config.d/agentbe.conf && \
-    echo 'ClientAliveInterval 60' >> /etc/ssh/sshd_config.d/agentbe.conf && \
-    echo 'ClientAliveCountMax 3' >> /etc/ssh/sshd_config.d/agentbe.conf
-
-# SSH login fix for PAM
-RUN sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
-
-# Set up SSH directory for root
-RUN mkdir -p /root/.ssh && \
-    chmod 700 /root/.ssh && \
-    touch /root/.ssh/authorized_keys && \
-    chmod 600 /root/.ssh/authorized_keys
-
-# Set default password (override with environment variables)
-RUN echo 'root:agents' | chpasswd
+# Set up SSH configuration (only if sshd is installed for conventional SSH)
+RUN if [ "$INCLUDE_SSHD" = "true" ]; then \
+      mkdir -p /var/run/sshd /run/sshd && \
+      ssh-keygen -A && \
+      sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+      sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+      sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
+      sed -i 's/#Port 22/Port 22/' /etc/ssh/sshd_config && \
+      sed -i 's/#AddressFamily any/AddressFamily any/' /etc/ssh/sshd_config && \
+      sed -i 's/#ListenAddress 0.0.0.0/ListenAddress 0.0.0.0/' /etc/ssh/sshd_config && \
+      mkdir -p /etc/ssh/sshd_config.d && \
+      echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/agentbe.conf && \
+      echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config.d/agentbe.conf && \
+      echo 'ChallengeResponseAuthentication yes' >> /etc/ssh/sshd_config.d/agentbe.conf && \
+      echo 'MaxSessions 64' >> /etc/ssh/sshd_config.d/agentbe.conf && \
+      echo 'MaxStartups 10:30:100' >> /etc/ssh/sshd_config.d/agentbe.conf && \
+      echo 'ClientAliveInterval 60' >> /etc/ssh/sshd_config.d/agentbe.conf && \
+      echo 'ClientAliveCountMax 3' >> /etc/ssh/sshd_config.d/agentbe.conf && \
+      sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd && \
+      mkdir -p /root/.ssh && \
+      chmod 700 /root/.ssh && \
+      touch /root/.ssh/authorized_keys && \
+      chmod 600 /root/.ssh/authorized_keys && \
+      echo 'root:agents' | chpasswd; \
+    fi
 
 # Copy startup script
 COPY typescript/deploy/docker/entrypoint.sh /entrypoint.sh
@@ -113,14 +117,18 @@ RUN chmod +x /entrypoint.sh
 RUN chmod 755 /var/workspace && \
     chown -R root:root /var/workspace
 
-# Default ports (can be overridden via SSH_PORT and MCP_PORT env vars)
+# Default ports:
+#   - 3001: MCP server (HTTP/WebSocket) + SSH-WS endpoint (ws://host:3001/ssh)
+#   - 22: Conventional SSH (only used if CONVENTIONAL_SSH=true)
 # EXPOSE is documentation only - actual ports are set by entrypoint
-EXPOSE 22 3001
+EXPOSE 3001 22
 
 # Health check for MCP server (uses default port 3001)
 # If using custom MCP_PORT, override with: --health-cmd "curl -f http://localhost:$MCP_PORT/health"
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${MCP_PORT:-3001}/health || exit 1
 
-# Start with custom entrypoint (daemon command handles everything)
+# Start agentbe-daemon
+# By default: MCP server + SSH-WS on port 3001
+# Optional: Conventional SSH on port 22 (set CONVENTIONAL_SSH=true)
 ENTRYPOINT ["/entrypoint.sh"]

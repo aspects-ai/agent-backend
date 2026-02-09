@@ -72,8 +72,30 @@ export interface RemoteFilesystemBackendConfig extends BaseFileBackendConfig {
   /** Default host for all services (required) */
   host: string
 
-  /** SSH authentication */
-  sshAuth: {
+  /**
+   * Transport type for SSH operations
+   * - 'ssh-ws': SSH over WebSocket (default, recommended) - single port, unified auth
+   * - 'ssh': Conventional SSH via sshd - requires separate sshd process
+   */
+  transport?: 'ssh-ws' | 'ssh'
+
+  /**
+   * Unified authentication token (used for both MCP and SSH-WS)
+   * Required when transport is 'ssh-ws' (unless server has auth disabled)
+   */
+  authToken?: string
+
+  /**
+   * Port for connection
+   * - For 'ssh-ws': WebSocket port (same as MCP, default: 3001)
+   * - For 'ssh': SSH daemon port (default: 22)
+   */
+  port?: number
+
+  /**
+   * SSH authentication (required when transport is 'ssh', ignored for 'ssh-ws')
+   */
+  sshAuth?: {
     type: 'password' | 'key'
     credentials: {
       username: string
@@ -82,7 +104,7 @@ export interface RemoteFilesystemBackendConfig extends BaseFileBackendConfig {
     }
   }
 
-  /** SSH port (defaults to 22) */
+  /** SSH port (defaults to 22) - deprecated, use 'port' instead */
   sshPort?: number
 
   /** Override host for SSH (if different from main host) */
@@ -94,7 +116,7 @@ export interface RemoteFilesystemBackendConfig extends BaseFileBackendConfig {
   /** Override host for MCP server (if different from main host) */
   mcpServerHostOverride?: string
 
-  /** MCP authentication (for remote MCP server) */
+  /** MCP authentication (for remote MCP server) - deprecated, use 'authToken' instead */
   mcpAuth?: {
     token: string
   }
@@ -140,6 +162,9 @@ const LocalFilesystemBackendConfigSchema = z.object({
 const RemoteFilesystemBackendConfigSchema = z.object({
   rootDir: z.string().min(1),
   host: z.string().min(1),
+  transport: z.enum(['ssh-ws', 'ssh']).optional(),
+  authToken: z.string().optional(),
+  port: z.number().positive().optional(),
   sshAuth: z.object({
     type: z.enum(['password', 'key']),
     credentials: z.object({
@@ -147,7 +172,7 @@ const RemoteFilesystemBackendConfigSchema = z.object({
       password: z.string().optional(),
       privateKey: z.string().optional(),
     }),
-  }),
+  }).optional(),
   isolation: z.enum(['auto', 'bwrap', 'software', 'none']).optional(),
   preventDangerous: z.boolean().optional(),
   onDangerousOperation: z.custom<(operation: string) => void>().optional(),

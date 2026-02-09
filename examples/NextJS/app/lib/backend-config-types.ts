@@ -14,18 +14,13 @@ export const DEFAULT_LOCAL_CONFIG: LocalFilesystemBackendConfig = {
   isolation: 'software',
 }
 
+// Default remote config uses SSH-WS (single port, unified auth)
 export const DEFAULT_REMOTE_CONFIG: RemoteFilesystemBackendConfig = {
   host: 'localhost',
-  sshPort: 2222,
-  mcpPort: 3001,
+  port: 3001,
   rootDir: '/var/workspace',
-  sshAuth: {
-    type: 'password',
-    credentials: {
-      username: 'root',
-      password: 'agents',
-    },
-  },
+  transport: 'ssh-ws',
+  authToken: '',
 }
 
 export const COOKIE_NAME = 'backend-config'

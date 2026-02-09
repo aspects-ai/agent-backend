@@ -5,8 +5,15 @@
 #
 # Environment variables (all optional, CLI has defaults):
 #   WORKSPACE_ROOT    - Root directory to serve (default: /var/workspace)
-#   MCP_PORT          - MCP server port (default: 3001)
-#   MCP_AUTH_TOKEN    - Bearer token for MCP authentication
+#   MCP_PORT          - HTTP/WebSocket server port (default: 3001)
+#   AUTH_TOKEN        - Bearer token for MCP and SSH-WS authentication (unified)
+#   MCP_AUTH_TOKEN    - (legacy) Alias for AUTH_TOKEN
+#   SSH_HOST_KEY      - Path to SSH host key for SSH-WS
+#   SHELL_TYPE        - Shell to use: bash, sh, auto
+#   DISABLE_SSH_WS    - Set to "true" to disable SSH-over-WebSocket
+#
+# Conventional SSH (opt-in, requires openssh-server):
+#   CONVENTIONAL_SSH  - Set to "true" to enable conventional sshd
 #   SSH_PORT          - SSH daemon port (default: 22)
 #   SSH_USERS         - Comma-separated user:pass pairs
 #   SSH_PUBLIC_KEY    - SSH public key to add to authorized_keys
@@ -30,32 +37,61 @@ DAEMON_ARGS=(--rootDir "$WORKSPACE_ROOT")
 
 if [ -n "$MCP_PORT" ]; then
   DAEMON_ARGS+=(--mcp-port "$MCP_PORT")
-  echo "  MCP Port: $MCP_PORT"
+  echo "  Port: $MCP_PORT"
 fi
 
-if [ -n "$MCP_AUTH_TOKEN" ]; then
+# Unified auth token (used for both MCP and SSH-WS)
+if [ -n "$AUTH_TOKEN" ]; then
+  DAEMON_ARGS+=(--mcp-auth-token "$AUTH_TOKEN")
+  echo "  Auth: enabled (unified token)"
+elif [ -n "$MCP_AUTH_TOKEN" ]; then
+  # Legacy env var name
   DAEMON_ARGS+=(--mcp-auth-token "$MCP_AUTH_TOKEN")
-  echo "  MCP Auth: enabled"
+  echo "  Auth: enabled (unified token)"
 fi
 
-if [ -n "$SSH_PORT" ]; then
-  DAEMON_ARGS+=(--ssh-port "$SSH_PORT")
-  echo "  SSH Port: $SSH_PORT"
+if [ -n "$SSH_HOST_KEY" ]; then
+  DAEMON_ARGS+=(--ssh-host-key "$SSH_HOST_KEY")
+  echo "  SSH Host Key: $SSH_HOST_KEY"
 fi
 
-if [ -n "$SSH_USERS" ]; then
-  DAEMON_ARGS+=(--ssh-users "$SSH_USERS")
-  echo "  SSH Users: $SSH_USERS"
+if [ -n "$SHELL_TYPE" ]; then
+  DAEMON_ARGS+=(--shell "$SHELL_TYPE")
+  echo "  Shell: $SHELL_TYPE"
 fi
 
-if [ -n "$SSH_PUBLIC_KEY" ]; then
-  DAEMON_ARGS+=(--ssh-public-key "$SSH_PUBLIC_KEY")
-  echo "  SSH Key: provided via env"
+# SSH-WS is enabled by default
+if [ "$DISABLE_SSH_WS" = "true" ]; then
+  DAEMON_ARGS+=(--disable-ssh-ws)
+  echo "  SSH-WS: disabled"
+else
+  echo "  SSH-WS: enabled (ws://0.0.0.0:${MCP_PORT:-3001}/ssh)"
 fi
 
-if [ -f /keys/authorized_keys ]; then
-  DAEMON_ARGS+=(--ssh-authorized-keys /keys/authorized_keys)
-  echo "  SSH Keys: /keys/authorized_keys"
+# Conventional SSH (opt-in)
+if [ "$CONVENTIONAL_SSH" = "true" ]; then
+  DAEMON_ARGS+=(--conventional-ssh)
+  echo "  Conventional SSH: enabled"
+
+  if [ -n "$SSH_PORT" ]; then
+    DAEMON_ARGS+=(--ssh-port "$SSH_PORT")
+    echo "    Port: $SSH_PORT"
+  fi
+
+  if [ -n "$SSH_USERS" ]; then
+    DAEMON_ARGS+=(--ssh-users "$SSH_USERS")
+    echo "    Users: $SSH_USERS"
+  fi
+
+  if [ -n "$SSH_PUBLIC_KEY" ]; then
+    DAEMON_ARGS+=(--ssh-public-key "$SSH_PUBLIC_KEY")
+    echo "    Key: provided via env"
+  fi
+
+  if [ -f /keys/authorized_keys ]; then
+    DAEMON_ARGS+=(--ssh-authorized-keys /keys/authorized_keys)
+    echo "    Keys: /keys/authorized_keys"
+  fi
 fi
 
 echo ""
