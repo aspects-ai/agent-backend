@@ -84,13 +84,3 @@ const resolved = validateWithinBoundary(userPath, boundary, pathModule)
 ```
 
 For SFTP operations (SSH-WS transport), the server-side `SFTPHandler.ts` also implements these conventions to ensure paths sent from clients are handled correctly.
-
-### Testing
-
-Path handling is tested comprehensively in:
-- `tests/unit/backends/pathValidation.test.ts` - Core validation logic (34 tests)
-- `tests/unit/backends/LocalFilesystemBackend.test.ts` - Path validation section
-- `tests/unit/backends/ScopedFilesystemBackend.test.ts` - Scope boundary tests
-- `tests/unit/backends/RemoteFilesystemBackend.test.ts` - Remote path handling
-
-When adding new backends or modifying path handling, ensure all three cases are covered by tests.
