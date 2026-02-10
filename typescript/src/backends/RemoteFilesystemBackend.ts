@@ -690,7 +690,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
         complete()
         if (err) {
           reject(new BackendError(
-            `Failed to read directory: ${relativePath}`,
+            `Failed to read directory: ${relativePath}: ${err.message}`,
             ERROR_CODES.LS_FAILED,
             'readdir'
           ))
@@ -736,7 +736,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
         complete()
         if (err) {
           reject(new BackendError(
-            `Failed to read directory: ${relativePath}`,
+            `Failed to read directory: ${relativePath}: ${err.message}`,
             ERROR_CODES.LS_FAILED,
             'readdirWithStats'
           ))
@@ -757,12 +757,12 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
    * Create directory
    */
   async mkdir(relativePath: string, options?: { recursive?: boolean }): Promise<void> {
-    const fullPath = this.resolvePath(relativePath)
-
     if (options?.recursive) {
-      // Use SSH command for recursive mkdir
+      // Use SSH command for recursive mkdir (exec uses full paths internally)
+      const fullPath = this.resolvePath(relativePath)
       await this.exec(`mkdir -p "${fullPath}"`)
     } else {
+      const fullPath = this.resolvePath(relativePath)
       const sftp = await this.getSFTPSession()
 
       return this.withChannelLimit(() => new Promise((resolve, reject) => {

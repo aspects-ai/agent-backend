@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryBackend } from '../../../src/backends/MemoryBackend.js'
+import { PathEscapeError } from '../../../src/types.js'
 
 // Mock the MCP SDK transport to capture options
 vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
@@ -89,6 +90,52 @@ describe('MemoryBackend (Unit Tests)', () => {
 
       const activeScopes = await backend.listActiveScopes()
       expect(activeScopes).not.toContain('scope1/')
+    })
+  })
+
+  describe('Scoped Path Handling', () => {
+    it('should resolve relative paths within scope', async () => {
+      const scoped = backend.scope('users/user1')
+      await scoped.write('file.txt', 'content')
+
+      // Verify the key is scoped correctly
+      const exists = await scoped.exists('file.txt')
+      expect(exists).toBe(true)
+    })
+
+    it('should treat absolute paths as relative to scope', async () => {
+      const scoped = backend.scope('users/user1')
+      await scoped.write('/file.txt', 'content')
+
+      // Should be stored under users/user1/file.txt
+      const exists = await scoped.exists('file.txt')
+      expect(exists).toBe(true)
+    })
+
+    it('should reject escape attempts via parent directory', async () => {
+      const scoped = backend.scope('users/user1')
+
+      await expect(scoped.write('../user2/secret', 'content'))
+        .rejects.toThrow(PathEscapeError)
+    })
+
+    it('should reject deep escape attempts', async () => {
+      const scoped = backend.scope('users/user1')
+
+      await expect(scoped.read('../../../etc/passwd'))
+        .rejects.toThrow(PathEscapeError)
+    })
+
+    it('should allow navigation within scope using ..', async () => {
+      const scoped = backend.scope('users/user1')
+
+      // Write using normalized path and read using path with ..
+      // Both should resolve to the same key
+      await scoped.write('dir/file.txt', 'content')
+
+      // dir/subdir/../file.txt should resolve to dir/file.txt
+      // This tests that .. within the scope is allowed
+      await expect(scoped.read('dir/subdir/../file.txt')).resolves.toBe('content')
     })
   })
 })

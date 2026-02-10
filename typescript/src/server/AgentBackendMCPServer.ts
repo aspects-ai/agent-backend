@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Backend } from '../types.js'
+import { isFileBasedBackend } from '../typing.js'
 import { registerExecTool, registerFilesystemTools } from './tools.js'
 
 /**
@@ -38,7 +39,7 @@ import { registerExecTool, registerFilesystemTools } from './tools.js'
  * ```
  */
 export class AgentBackendMCPServer {
-  public server: McpServer & { name: string; version: string; getTools(): Record<string, any> }
+  public server: McpServer
   private backend: Backend
   private tools: Map<string, any> = new Map()
 
@@ -69,7 +70,7 @@ export class AgentBackendMCPServer {
         handler
       })
       return originalRegisterTool(name, config, handler)
-    }) as any
+    })
 
     // Add getTools method and preserve name/version
     this.server = Object.assign(baseServer, {
@@ -83,7 +84,7 @@ export class AgentBackendMCPServer {
 
     // Conditionally register exec tool based on duck typing
     // If the backend has an exec method, it supports command execution
-    if (typeof (backend as any).exec === 'function') {
+    if (isFileBasedBackend(backend)) {
       registerExecTool(this.server, async () => this.backend)
     }
   }

@@ -9,13 +9,16 @@ import { PathEscapeError } from '../types.js'
  * Validate that a path stays within a boundary and return combined path
  * Used for validating operations against rootDir or scope boundaries
  *
- * Absolute paths (e.g., /file.txt) are treated as relative to the boundary.
- * This allows users to specify paths like "/file.txt" which resolves to "boundary/file.txt".
+ * Path handling conventions:
+ * 1. Relative paths (e.g., "file.txt", "subdir/file"): resolved relative to boundary
+ * 2. Absolute paths matching boundary (e.g., "/var/workspace/file" when boundary is "/var/workspace"):
+ *    used directly (already within workspace)
+ * 3. Absolute paths not matching boundary (e.g., "/other/file"): treated as relative to boundary
  *
  * @param relativePath - The path to validate (can be relative or absolute)
  * @param boundary - The boundary path (rootDir or scopePath)
  * @param pathModule - path or path.posix module
- * @returns Combined path (boundary + relativePath)
+ * @returns Combined path (boundary + relativePath) or the absolute path if it matches boundary
  * @throws {PathEscapeError} if path escapes boundary
  *
  * @example
@@ -24,19 +27,19 @@ import { PathEscapeError } from '../types.js'
  * // Throws: PathEscapeError
  *
  * @example
- * // Scope escape - throws
- * validateWithinBoundary('../user2/secret', 'users/user1', path.posix)
- * // Throws: PathEscapeError
+ * // Absolute path matching boundary - used directly
+ * validateWithinBoundary('/app/workspace/file.txt', '/app/workspace', path)
+ * // Returns: '/app/workspace/file.txt'
  *
  * @example
- * // Absolute path treated as relative to boundary
- * validateWithinBoundary('/file.txt', 'users/user1', path.posix)
- * // Returns: 'users/user1/file.txt'
+ * // Absolute path not matching boundary - treated as relative
+ * validateWithinBoundary('/file.txt', '/app/workspace', path)
+ * // Returns: '/app/workspace/file.txt'
  *
  * @example
  * // Valid relative path
- * validateWithinBoundary('subdir/file.txt', 'users/user1', path.posix)
- * // Returns: 'users/user1/subdir/file.txt'
+ * validateWithinBoundary('subdir/file.txt', '/app/workspace', path)
+ * // Returns: '/app/workspace/subdir/file.txt'
  */
 export function validateWithinBoundary(
   relativePath: string,
@@ -48,10 +51,24 @@ export function validateWithinBoundary(
     sep: string
   }
 ): string {
+  const boundaryResolved = pathModule.resolve('/', boundary)
+
+  // Check if path is absolute and already within boundary
+  if (pathModule.isAbsolute(relativePath)) {
+    const pathResolved = pathModule.resolve('/', relativePath)
+
+    // If absolute path starts with boundary, use it directly (after validation)
+    if (pathResolved.startsWith(boundaryResolved + pathModule.sep) ||
+        pathResolved === boundaryResolved) {
+      return pathResolved
+    }
+
+    // Absolute path doesn't match boundary - treat as relative (strip leading slashes)
+  }
+
   // Strip leading slash from absolute paths - treat as relative to boundary
   let normalizedPath = relativePath
   if (pathModule.isAbsolute(relativePath)) {
-    // Remove leading slash(es) to make it relative
     normalizedPath = relativePath.replace(/^\/+/, '')
   }
 
@@ -60,7 +77,6 @@ export function validateWithinBoundary(
 
   // Normalize (remove .. and .) by resolving from root
   const resolved = pathModule.resolve('/', combined)
-  const boundaryResolved = pathModule.resolve('/', boundary)
 
   // Validate stays within boundary
   // Must either start with boundary + separator, or equal the boundary exactly

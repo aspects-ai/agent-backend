@@ -250,7 +250,11 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
 
   /**
    * Combine scope path with key and validate scope boundary
-   * Uses shared validation utilities for DRY
+   *
+   * Path handling:
+   * - Relative keys: resolved relative to scope
+   * - Absolute keys matching rootDir: used directly
+   * - Absolute keys not matching: treated as relative to scope
    */
   private scopeKey(key: string): string {
     // Remove trailing / from scopePath for validation
@@ -258,12 +262,23 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
       ? this.scopePath.slice(0, -1)
       : this.scopePath
 
-    // Use shared validation utility
-    // This validates that key doesn't escape scope boundary
-    const combined = validateWithinBoundary(key, scopeForValidation, path.posix)
+    // Check if absolute key matches our full rootDir
+    if (path.posix.isAbsolute(key)) {
+      const normalized = path.posix.resolve(key)
+      const rootNormalized = path.posix.resolve(this.rootDir)
 
-    // Ensure result ends with / if it's a prefix, otherwise it's a key
-    return combined
+      // If key starts with our rootDir, extract the relative part
+      if (normalized.startsWith(rootNormalized + '/')) {
+        const relativePart = normalized.slice(rootNormalized.length + 1)
+        return path.posix.join(scopeForValidation, relativePart)
+      } else if (normalized === rootNormalized || normalized === rootNormalized + '/') {
+        return scopeForValidation
+      }
+      // Falls through: absolute key doesn't match rootDir, treat as relative
+    }
+
+    // Use shared validation utility for relative keys and non-matching absolute keys
+    return validateWithinBoundary(key, scopeForValidation, path.posix)
   }
 
   /**

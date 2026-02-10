@@ -89,6 +89,20 @@ describe('ScopedFilesystemBackend (Unit Tests)', () => {
       expect(mockParent.read).toHaveBeenCalledWith('users/user1/file.txt', undefined)
     })
 
+    it('should handle absolute paths matching full rootDir', async () => {
+      // Full absolute path /tmp/workspace/users/user1/file.txt should work
+      await scoped.read('/tmp/workspace/users/user1/file.txt')
+
+      expect(mockParent.read).toHaveBeenCalledWith('users/user1/file.txt', undefined)
+    })
+
+    it('should handle absolute path equal to rootDir', async () => {
+      // Path equal to rootDir should resolve to scope root
+      await scoped.readdir('/tmp/workspace/users/user1')
+
+      expect(mockParent.readdir).toHaveBeenCalledWith('users/user1')
+    })
+
     it('should block parent directory escapes', async () => {
       await expect(scoped.read('../../etc/passwd'))
         .rejects.toThrow(PathEscapeError)

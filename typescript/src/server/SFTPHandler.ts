@@ -73,14 +73,29 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
 
   /**
    * Resolve and validate path is within rootDir
+   *
+   * Path handling conventions:
+   * - Relative paths (e.g., ".", "subdir/file"): resolved relative to rootDir
+   * - Absolute paths matching rootDir (e.g., "/var/workspace/file" when rootDir is "/var/workspace"): used directly
+   * - Absolute paths not matching rootDir (e.g., "/other/file"): treated as relative to rootDir
    */
   function resolvePath(requestedPath: string): string {
-    // Normalize: treat absolute paths as relative to rootDir
-    const normalizedPath = requestedPath.replace(/^\/+/, '')
-    const resolved = resolve(rootDir, normalizedPath)
+    let resolved: string
+
+    // Normalize rootDir to ensure consistent comparison
+    const normalizedRoot = resolve(rootDir)
+
+    // Check if path already starts with rootDir (absolute path within workspace)
+    if (requestedPath.startsWith(normalizedRoot + '/') || requestedPath === normalizedRoot) {
+      resolved = resolve(requestedPath)
+    } else {
+      // Treat as relative to rootDir (strip leading slashes first)
+      const normalizedPath = requestedPath.replace(/^\/+/, '')
+      resolved = resolve(rootDir, normalizedPath)
+    }
 
     // Security: ensure path doesn't escape rootDir
-    if (!resolved.startsWith(rootDir)) {
+    if (!resolved.startsWith(normalizedRoot + '/') && resolved !== normalizedRoot) {
       throw new Error('Path escape attempt blocked')
     }
 

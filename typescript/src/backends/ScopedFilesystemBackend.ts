@@ -82,10 +82,29 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
   /**
    * Convert relative path to parent-relative path
    * Validates the path stays within the scope
-   * Uses shared validation utility for DRY
+   *
+   * Path handling:
+   * - Relative paths: resolved relative to scope
+   * - Absolute paths matching rootDir (e.g., /var/workspace/users/user1/file): used directly
+   * - Absolute paths not matching: treated as relative to scope
    */
   private toParentPath(relativePath: string): string {
-    // Use shared validation - strips leading slash if absolute, validates boundary
+    // Check if absolute path matches our full rootDir (parent.rootDir + scopePath)
+    if (path.isAbsolute(relativePath)) {
+      const normalized = path.resolve(relativePath)
+      const rootNormalized = path.resolve(this.rootDir)
+
+      // If path starts with our rootDir, extract the relative part
+      if (normalized.startsWith(rootNormalized + path.sep)) {
+        const relativePart = normalized.slice(rootNormalized.length + 1)
+        return path.join(this.scopePath, relativePart)
+      } else if (normalized === rootNormalized) {
+        return this.scopePath
+      }
+      // Falls through: absolute path doesn't match rootDir, treat as relative
+    }
+
+    // Use shared validation for relative paths and non-matching absolute paths
     return validateWithinBoundary(relativePath, this.scopePath, path)
   }
 
