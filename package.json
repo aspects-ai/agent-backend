@@ -12,5 +12,12 @@
   },
   "dependencies": {
     "diff": "^8.0.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "bufferutil",
+      "utf-8-validate",
+      "cpu-features"
+    ]
   }
 }

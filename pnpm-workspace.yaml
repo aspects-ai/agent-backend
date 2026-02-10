@@ -1,3 +1,5 @@
 packages:
-  - 'typescript'
-  - 'examples/NextJS'
+  - typescript
+  - examples/NextJS
+
+allowedBuilds: bufferutil,utf-8-validate

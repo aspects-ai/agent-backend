@@ -5,7 +5,7 @@ import type { Stats } from 'fs'
 import { clearTimeout, setTimeout } from 'node:timers'
 import * as path from 'path'
 import type { ConnectConfig, SFTPWrapper } from 'ssh2'
-import { Client as SSH2Client } from 'ssh2'
+import { SSH2Client, type SSH2ClientType } from '../utils/ssh2.js'
 import { ERROR_CODES } from '../constants.js'
 import { createBackendMCPTransport } from '../mcp/transport.js'
 import { isCommandSafe, isDangerous } from '../safety.js'
@@ -82,7 +82,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
   private wsTransport: WebSocketSSHTransport | null = null
 
   /** Conventional SSH client (used when transport is 'ssh') */
-  private sshClient: SSH2Client | null = null
+  private sshClient: SSH2ClientType | null = null
   private connectionPromise: Promise<void> | null = null
 
   /** Track pending operations so we can reject them on connection loss */
@@ -398,7 +398,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
         }
       }, this.operationTimeoutMs)
 
-      this.sshClient.exec(fullCommand, (err, stream) => {
+      this.sshClient.exec(fullCommand, (err: Error | undefined, stream: import('ssh2').ClientChannel) => {
         if (err) {
           if (completed) return
           complete()
@@ -1205,7 +1205,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
           return
         }
 
-        this.sshClient.sftp((err, sftp) => {
+        this.sshClient.sftp((err: Error | undefined, sftp: SFTPWrapper) => {
           if (err) {
             this.sftpSessionPromise = null
             reject(new BackendError(

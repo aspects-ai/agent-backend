@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
     "@ai-sdk/mcp",
     "ssh2",
     "cpu-features",
+    "ws",
+    "bufferutil",
+    "utf-8-validate",
   ],
 
   experimental: {
@@ -26,6 +29,9 @@ const nextConfig: NextConfig = {
       config.externals = config.externals || []
       config.externals.push({
         'ssh2': 'commonjs ssh2',
+        'ws': 'commonjs ws',
+        'bufferutil': 'commonjs bufferutil',
+        'utf-8-validate': 'commonjs utf-8-validate',
       })
     }
     return config

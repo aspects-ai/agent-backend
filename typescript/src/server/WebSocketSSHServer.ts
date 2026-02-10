@@ -13,8 +13,8 @@
 
 import type { Server as HTTPServer, IncomingMessage } from 'http'
 import { WebSocketServer, WebSocket } from 'ws'
-import { Server as SSH2Server, Connection } from 'ssh2'
-import type { AuthContext, Session, ServerChannel, ExecInfo, PseudoTtyInfo } from 'ssh2'
+import type { AuthContext, Session, ServerChannel, ExecInfo, PseudoTtyInfo, Connection } from 'ssh2'
+import { SSH2Server } from '../utils/ssh2.js'
 import { Duplex } from 'stream'
 import { spawn } from 'child_process'
 import { generateKeyPairSync } from 'crypto'

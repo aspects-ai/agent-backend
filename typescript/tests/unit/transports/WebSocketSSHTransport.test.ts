@@ -9,14 +9,14 @@ vi.mock('ws', () => {
   return { default: MockWebSocket, WebSocket: MockWebSocket }
 })
 
-// Mock ssh2 module
-vi.mock('ssh2', () => ({
-  Client: vi.fn()
+// Mock our SSH2 wrapper
+vi.mock('../../../src/utils/ssh2.js', () => ({
+  SSH2Client: vi.fn()
 }))
 
 import { WebSocketSSHTransport } from '../../../src/backends/transports/WebSocketSSHTransport.js'
 import WebSocket from 'ws'
-import { Client as SSHClient } from 'ssh2'
+import { SSH2Client as SSHClient } from '../../../src/utils/ssh2.js'
 
 // Helper to create a mock WebSocket with configurable behavior
 function createMockWebSocket(options: {

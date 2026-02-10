@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { RemoteFilesystemBackend } from '../../../src/backends/RemoteFilesystemBackend.js'
-import { Client } from 'ssh2'
 import { DangerousOperationError } from '../../../src/types.js'
 import { EventEmitter } from 'events'
 
-// Mock SSH2
-vi.mock('ssh2', () => ({
-  Client: vi.fn()
+// Mock our SSH2 wrapper
+vi.mock('../../../src/utils/ssh2.js', () => ({
+  SSH2Client: vi.fn()
 }))
+
+import { RemoteFilesystemBackend } from '../../../src/backends/RemoteFilesystemBackend.js'
+import { SSH2Client as Client } from '../../../src/utils/ssh2.js'
 
 // Test constants
 const TEST_ROOT_DIR = '/remote/workspace'

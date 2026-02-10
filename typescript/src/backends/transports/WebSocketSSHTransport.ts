@@ -11,8 +11,8 @@
  */
 
 import WebSocket from 'ws'
-import { Client as SSHClient, SFTPWrapper } from 'ssh2'
-import type { ClientChannel } from 'ssh2'
+import type { ClientChannel, SFTPWrapper } from 'ssh2'
+import { SSH2Client as SSHClient, type SSH2ClientType } from '../../utils/ssh2.js'
 import { Duplex } from 'stream'
 import { EventEmitter } from 'events'
 
@@ -45,7 +45,7 @@ export interface ExecResult {
  */
 export class WebSocketSSHTransport extends EventEmitter {
   private ws: WebSocket | null = null
-  private sshClient: SSHClient | null = null
+  private sshClient: SSH2ClientType | null = null
   private sftpSession: SFTPWrapper | null = null
   private sftpSessionPromise: Promise<SFTPWrapper> | null = null
   private _connected = false
@@ -138,7 +138,7 @@ export class WebSocketSSHTransport extends EventEmitter {
         resolve()
       })
 
-      this.sshClient.on('error', (err) => {
+      this.sshClient.on('error', (err: Error) => {
         reject(err)
       })
 
@@ -234,7 +234,7 @@ export class WebSocketSSHTransport extends EventEmitter {
         reject(new Error(`Command timed out after ${timeout}ms`))
       }, timeout)
 
-      this.sshClient!.exec(command, (err, channel: ClientChannel) => {
+      this.sshClient!.exec(command, (err: Error | undefined, channel: ClientChannel) => {
         if (err) {
           clearTimeout(timeoutId)
           reject(err)
@@ -278,7 +278,7 @@ export class WebSocketSSHTransport extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
-      this.sshClient!.exec(command, (err, channel: ClientChannel) => {
+      this.sshClient!.exec(command, (err: Error | undefined, channel: ClientChannel) => {
         if (err) {
           reject(err)
           return
@@ -318,7 +318,7 @@ export class WebSocketSSHTransport extends EventEmitter {
     }
 
     this.sftpSessionPromise = new Promise((resolve, reject) => {
-      this.sshClient!.sftp((err, sftp) => {
+      this.sshClient!.sftp((err: Error | undefined, sftp: SFTPWrapper) => {
         if (err) {
           this.sftpSessionPromise = null
           reject(err)
