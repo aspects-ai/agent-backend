@@ -157,20 +157,20 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
   const useLargeFileMode = fileSize > 1024 * 1024 // 1MB
 
   return (
-    <div className="w-[480px] border-l border-border-subtle bg-bg-surface flex flex-col">
-      <div className="border-b border-border-subtle p-3 flex items-center justify-between">
+    <div className="w-[480px] border-l border-border bg-background-surface flex flex-col">
+      <div className="border-b border-border p-3 flex items-center justify-between">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <FileCode className="w-4 h-4 text-text-tertiary flex-shrink-0" />
+          <FileCode className="w-4 h-4 text-foreground-muted flex-shrink-0" />
           {selectedFile ? (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-text-primary truncate">{selectedFile}</p>
-              <p className="text-xs text-text-tertiary">
+              <p className="text-sm font-medium text-foreground truncate">{selectedFile}</p>
+              <p className="text-xs text-foreground-muted">
                 {language} · {(fileSize / 1024).toFixed(1)} KB
                 {useLargeFileMode && ' · Large file mode'}
               </p>
             </div>
           ) : (
-            <span className="text-sm text-text-tertiary">No file selected</span>
+            <span className="text-sm text-foreground-muted">No file selected</span>
           )}
         </div>
 
@@ -178,7 +178,7 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
           {language === 'json' && selectedFile && (
             <button
               onClick={formatDocument}
-              className="px-3 py-1.5 text-xs bg-bg-elevated hover:bg-border-subtle rounded text-text-secondary transition-colors"
+              className="px-3 py-1.5 text-xs bg-background-elevated hover:bg-border rounded text-foreground-secondary transition-colors"
             >
               Format
             </button>
@@ -186,7 +186,7 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
           <button
             onClick={handleSave}
             disabled={!isDirty || saveState === 'saving'}
-            className="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 disabled:bg-bg-elevated disabled:text-text-tertiary rounded text-white text-sm font-medium transition-colors flex items-center gap-2"
+            className="px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:bg-background-elevated disabled:text-foreground-muted rounded text-white text-sm font-medium transition-colors flex items-center gap-2"
           >
             {saveState === 'saving' ? (
               <>
@@ -217,23 +217,23 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
         {!selectedFile ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <FileCode className="w-12 h-12 text-text-tertiary mx-auto mb-2" />
-              <p className="text-sm text-text-tertiary">Select a file to edit</p>
+              <FileCode className="w-12 h-12 text-foreground-muted mx-auto mb-2" />
+              <p className="text-sm text-foreground-muted">Select a file to edit</p>
             </div>
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center h-full">
-            <div className="w-8 h-8 border-2 border-primary-600/30 border-t-primary-600 rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
           </div>
         ) : error ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center max-w-md px-4">
-              <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-              <p className="text-sm font-medium text-text-primary mb-2">Failed to load file</p>
-              <p className="text-xs text-text-secondary mb-4">{error}</p>
+              <AlertCircle className="w-12 h-12 text-error mx-auto mb-3" />
+              <p className="text-sm font-medium text-foreground mb-2">Failed to load file</p>
+              <p className="text-xs text-foreground-secondary mb-4">{error}</p>
               <button
                 onClick={loadFile}
-                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 rounded text-white text-sm transition-colors"
+                className="px-4 py-2 bg-primary hover:bg-primary/90 rounded text-white text-sm transition-colors"
               >
                 Try Again
               </button>
@@ -243,7 +243,7 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
           <textarea
             value={content}
             onChange={(e) => handleEditorChange(e.target.value)}
-            className="w-full h-full p-4 bg-bg-app text-text-primary font-mono text-sm resize-none focus:outline-none"
+            className="w-full h-full p-4 bg-background text-foreground font-mono text-sm resize-none focus:outline-none"
             spellCheck={false}
           />
         ) : (
@@ -252,7 +252,7 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
             language={language}
             value={content}
             onChange={handleEditorChange}
-            theme="vs-dark"
+            theme="vs"
             options={{
               minimap: { enabled: false },
               fontSize: 13,
@@ -268,8 +268,8 @@ export default function Editor({ sessionId, selectedFile }: EditorProps) {
       </div>
 
       {isDirty && (
-        <div className="border-t border-border-subtle px-3 py-2 bg-accent-amber/10">
-          <p className="text-xs text-accent-amber">Unsaved changes · Press Cmd/Ctrl+S to save</p>
+        <div className="border-t border-border px-3 py-2 bg-warning/10">
+          <p className="text-xs text-warning">Unsaved changes · Press Cmd/Ctrl+S to save</p>
         </div>
       )}
     </div>

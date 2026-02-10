@@ -6,28 +6,24 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        background: 'hsl(var(--background))',
+        'background-surface': 'hsl(var(--background-surface))',
+        'background-elevated': 'hsl(var(--background-elevated))',
+        foreground: 'hsl(var(--foreground))',
+        'foreground-secondary': 'hsl(var(--foreground-secondary))',
+        'foreground-muted': 'hsl(var(--foreground-muted))',
         primary: {
-          600: '#2563EB',
-          700: '#1D4ED8',
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
         },
         accent: {
-          purple: '#8B5CF6',
-          green: '#10B981',
-          amber: '#F59E0B',
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
         },
-        bg: {
-          app: '#0F172A',
-          surface: '#1E293B',
-          elevated: '#334155',
-        },
-        text: {
-          primary: '#F1F5F9',
-          secondary: '#CBD5E1',
-          tertiary: '#94A3B8',
-        },
-        border: {
-          subtle: '#334155',
-        },
+        success: 'hsl(var(--success))',
+        warning: 'hsl(var(--warning))',
+        error: 'hsl(var(--error))',
+        border: 'hsl(var(--border))',
       },
     },
   },

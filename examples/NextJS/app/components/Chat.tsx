@@ -8,12 +8,14 @@ import { Bot, ChevronDown, ChevronUp, Send, User } from 'lucide-react'
 
 interface ChatProps {
   sessionId: string
+  onAgentFinished?: () => void
 }
 
-export default function Chat({ sessionId }: ChatProps) {
+export default function Chat({ sessionId, onAgentFinished }: ChatProps) {
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const prevStatusRef = useRef<typeof status>(undefined)
 
   const transport = useMemo(
     () =>
@@ -31,6 +33,18 @@ export default function Chat({ sessionId }: ChatProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Detect when agent finishes (streaming -> ready)
+  useEffect(() => {
+    const wasStreaming = prevStatusRef.current === 'streaming'
+    const isNowReady = status === 'ready' || status === undefined
+
+    if (wasStreaming && isNowReady) {
+      console.log('[Chat] Agent finished, triggering file refresh')
+      onAgentFinished?.()
+    }
+    prevStatusRef.current = status
+  }, [status, onAgentFinished])
 
   const isLoading = status === 'submitted' || status === 'streaming'
   const isButtonDisabled = !input.trim() || isLoading
@@ -56,15 +70,15 @@ export default function Chat({ sessionId }: ChatProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-bg-app">
+    <div className="flex-1 flex flex-col bg-background">
       <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4">
         {messages.length === 0 && !isLoading && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-600 to-accent-purple flex items-center justify-center mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center mb-4">
               <Bot className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-semibold text-text-primary mb-2">Welcome to Agent Backend</h2>
-            <p className="text-text-secondary max-w-md">
+            <h2 className="text-xl font-semibold text-foreground mb-2">Welcome to Agent Backend</h2>
+            <p className="text-foreground-secondary max-w-md">
               Ask me to create files, run commands, or help with your project. I have direct access to your workspace.
             </p>
           </div>
@@ -86,7 +100,7 @@ export default function Chat({ sessionId }: ChatProps) {
               className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {message.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-600 to-accent-purple flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
                   <Bot className="w-5 h-5 text-white" />
                 </div>
               )}
@@ -96,11 +110,11 @@ export default function Chat({ sessionId }: ChatProps) {
                   <div
                     className={`rounded-lg px-4 py-3 ${
                       message.role === 'user'
-                        ? 'bg-gradient-to-r from-primary-600 to-primary-700 text-white'
-                        : 'bg-bg-surface text-text-primary'
+                        ? 'bg-gradient-to-r from-primary to-primary/90 text-white'
+                        : 'bg-background-surface text-foreground'
                     }`}
                   >
-                    <div className="prose prose-invert prose-sm max-w-none">
+                    <div className="prose prose-sm max-w-none">
                       <ReactMarkdown>{textContent}</ReactMarkdown>
                     </div>
                   </div>
@@ -115,50 +129,50 @@ export default function Chat({ sessionId }: ChatProps) {
                       const isStreaming = tool.state === 'input-streaming' || tool.state === 'output-streaming'
 
                       return (
-                        <div key={toolKey} className="bg-bg-surface rounded-lg border border-border-subtle overflow-hidden">
+                        <div key={toolKey} className="bg-background-surface rounded-lg border border-border overflow-hidden">
                           <button
                             onClick={() => toggleToolExpand(toolKey)}
-                            className="w-full flex items-center justify-between p-3 hover:bg-bg-elevated transition-colors"
+                            className="w-full flex items-center justify-between p-3 hover:bg-background-elevated transition-colors"
                           >
                             <div className="flex items-center gap-2">
                               <div
                                 className={`w-2 h-2 rounded-full ${
-                                  hasOutput ? 'bg-accent-green' : isStreaming ? 'bg-accent-amber animate-pulse' : 'bg-accent-blue'
+                                  hasOutput ? 'bg-success' : isStreaming ? 'bg-warning animate-pulse' : 'bg-accent'
                                 }`}
                               />
-                              <span className="text-sm font-medium text-text-primary">{toolName}</span>
-                              {hasOutput && <span className="text-xs text-text-tertiary">(completed)</span>}
-                              {isStreaming && <span className="text-xs text-text-tertiary">(streaming)</span>}
+                              <span className="text-sm font-medium text-foreground">{toolName}</span>
+                              {hasOutput && <span className="text-xs text-foreground-muted">(completed)</span>}
+                              {isStreaming && <span className="text-xs text-foreground-muted">(streaming)</span>}
                             </div>
                             {expandedTools.has(toolKey) ? (
-                              <ChevronUp className="w-4 h-4 text-text-tertiary" />
+                              <ChevronUp className="w-4 h-4 text-foreground-muted" />
                             ) : (
-                              <ChevronDown className="w-4 h-4 text-text-tertiary" />
+                              <ChevronDown className="w-4 h-4 text-foreground-muted" />
                             )}
                           </button>
 
                           {expandedTools.has(toolKey) && (
-                            <div className="border-t border-border-subtle p-3 space-y-2 overflow-hidden">
+                            <div className="border-t border-border p-3 space-y-2 overflow-hidden">
                               {tool.input && (
                                 <div className="min-w-0">
-                                  <p className="text-xs font-medium text-text-tertiary mb-1">Input:</p>
-                                  <pre className="text-xs bg-bg-app rounded p-2 overflow-x-auto text-text-secondary whitespace-pre-wrap break-all">
+                                  <p className="text-xs font-medium text-foreground-muted mb-1">Input:</p>
+                                  <pre className="text-xs bg-background rounded p-2 overflow-x-auto text-foreground-secondary whitespace-pre-wrap break-all">
                                     {JSON.stringify(tool.input, null, 2)}
                                   </pre>
                                 </div>
                               )}
                               {tool.output && (
                                 <div className="min-w-0">
-                                  <p className="text-xs font-medium text-text-tertiary mb-1">Output:</p>
-                                  <pre className="text-xs bg-bg-app rounded p-2 overflow-x-auto text-text-secondary whitespace-pre-wrap break-all max-h-64">
+                                  <p className="text-xs font-medium text-foreground-muted mb-1">Output:</p>
+                                  <pre className="text-xs bg-background rounded p-2 overflow-x-auto text-foreground-secondary whitespace-pre-wrap break-all max-h-64">
                                     {JSON.stringify(tool.output, null, 2)}
                                   </pre>
                                 </div>
                               )}
                               {tool.errorText && (
                                 <div className="min-w-0">
-                                  <p className="text-xs font-medium text-text-red mb-1">Error:</p>
-                                  <pre className="text-xs bg-bg-app rounded p-2 overflow-x-auto text-text-red whitespace-pre-wrap break-all">
+                                  <p className="text-xs font-medium text-error mb-1">Error:</p>
+                                  <pre className="text-xs bg-background rounded p-2 overflow-x-auto text-error whitespace-pre-wrap break-all">
                                     {tool.errorText}
                                   </pre>
                                 </div>
@@ -173,8 +187,8 @@ export default function Chat({ sessionId }: ChatProps) {
               </div>
 
               {message.role === 'user' && (
-                <div className="w-8 h-8 rounded-lg bg-bg-elevated flex items-center justify-center flex-shrink-0">
-                  <User className="w-5 h-5 text-text-secondary" />
+                <div className="w-8 h-8 rounded-lg bg-background-elevated flex items-center justify-center flex-shrink-0">
+                  <User className="w-5 h-5 text-foreground-secondary" />
                 </div>
               )}
             </div>
@@ -184,7 +198,7 @@ export default function Chat({ sessionId }: ChatProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="border-t border-border-subtle p-4">
+      <div className="border-t border-border p-4">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <input
             type="text"
@@ -192,12 +206,12 @@ export default function Chat({ sessionId }: ChatProps) {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask me to create files, run commands..."
             disabled={isLoading}
-            className="flex-1 px-4 py-3 bg-bg-surface border border-border-subtle rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-primary-600 disabled:opacity-50"
+            className="flex-1 px-4 py-3 bg-background-surface border border-border rounded-lg text-foreground placeholder:text-foreground-muted focus:outline-none focus:border-primary disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={isButtonDisabled}
-            className="px-6 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-bg-elevated disabled:text-text-tertiary rounded-lg text-white font-medium transition-colors flex items-center gap-2"
+            className="px-6 py-3 bg-primary hover:bg-primary/90 disabled:bg-background-elevated disabled:text-foreground-muted rounded-lg text-white font-medium transition-colors flex items-center gap-2"
           >
             <Send className="w-4 h-4" />
             Send

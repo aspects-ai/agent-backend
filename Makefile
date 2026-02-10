@@ -1,4 +1,4 @@
-.PHONY: help install build test typecheck lint clean dev publish start-daemon stop-daemon
+.PHONY: help install build test typecheck lint clean dev publish start-daemon stop-daemon sync-assets
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -43,6 +43,14 @@ install: ## Install all dependencies (TypeScript + Python + dev tools)
 		fi; \
 	}
 	@echo "✓ All dependencies installed"
+
+##@ Assets
+
+sync-assets: ## Copy shared assets to example apps
+	@echo "Syncing shared assets..."
+	@mkdir -p examples/NextJS/public/assets
+	@cp -r assets/* examples/NextJS/public/assets/
+	@echo "✓ Assets synced to examples/NextJS/public/assets/"
 
 ##@ Build
 
@@ -120,14 +128,14 @@ lint-fix: ## Auto-fix linting issues
 
 ##@ Development
 
-dev: ## Start all dev processes with interactive TUI (local mode)
+dev: sync-assets ## Start all dev processes with interactive TUI (local mode)
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \
 		exit 1; \
 	}
 	mprocs
 
-dev-remote: ## Start dev with Docker-based daemon
+dev-remote: sync-assets ## Start dev with Docker-based daemon
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \
 		exit 1; \
