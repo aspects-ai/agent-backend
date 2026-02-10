@@ -35,24 +35,14 @@ function validateConfig(config: unknown): BackendConfig | null {
     result.local = DEFAULT_LOCAL_CONFIG
   }
 
-  // Merge remote config with defaults, ensuring sshAuth structure exists
+  // Merge remote config with defaults (SSH-WS style)
   if (c.remote && typeof c.remote === 'object') {
-    const sshAuth = c.remote.sshAuth && typeof c.remote.sshAuth === 'object'
-      ? {
-          type: 'password' as const,
-          credentials: {
-            username: c.remote.sshAuth.credentials?.username || DEFAULT_REMOTE_CONFIG.sshAuth.credentials.username,
-            password: c.remote.sshAuth.credentials?.password || DEFAULT_REMOTE_CONFIG.sshAuth.credentials.password,
-          },
-        }
-      : DEFAULT_REMOTE_CONFIG.sshAuth
-
     result.remote = {
       host: c.remote.host || DEFAULT_REMOTE_CONFIG.host,
-      sshPort: c.remote.sshPort ?? DEFAULT_REMOTE_CONFIG.sshPort,
-      mcpPort: c.remote.mcpPort ?? DEFAULT_REMOTE_CONFIG.mcpPort,
+      port: c.remote.port ?? DEFAULT_REMOTE_CONFIG.port,
       rootDir: c.remote.rootDir || DEFAULT_REMOTE_CONFIG.rootDir,
-      sshAuth,
+      transport: c.remote.transport || 'ssh-ws',
+      authToken: c.remote.authToken ?? '',
     }
   } else {
     result.remote = DEFAULT_REMOTE_CONFIG

@@ -9,7 +9,7 @@ export default function BackendSettings() {
   const [config, setConfig] = useState<BackendConfig | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
+  const [showToken, setShowToken] = useState(false)
 
   useEffect(() => {
     if (isOpen && !config) {
@@ -125,7 +125,7 @@ export default function BackendSettings() {
                 >
                   <Wifi className="w-6 h-6 mx-auto mb-2 text-foreground" />
                   <div className="text-sm font-medium text-foreground">Remote</div>
-                  <div className="text-xs text-foreground-muted mt-1">Connect via SSH</div>
+                  <div className="text-xs text-foreground-muted mt-1">Connect to daemon</div>
                 </button>
               </div>
             </div>
@@ -161,7 +161,7 @@ export default function BackendSettings() {
                         ...config,
                         local: {
                           rootDir: config.local?.rootDir || '/tmp/workspace',
-                          isolation: e.target.value as any,
+                          isolation: e.target.value as 'auto' | 'bwrap' | 'software' | 'none',
                         },
                       })
                     }
@@ -176,7 +176,7 @@ export default function BackendSettings() {
               </div>
             )}
 
-            {/* Remote Backend Settings */}
+            {/* Remote Backend Settings (SSH-WS) */}
             {config.type === 'remote' && (
               <div className="space-y-4">
                 <div>
@@ -197,114 +197,65 @@ export default function BackendSettings() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground-secondary mb-2">
-                      SSH Port
-                    </label>
-                    <input
-                      type="number"
-                      value={config.remote?.sshPort || ''}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          remote: {
-                            ...config.remote!,
-                            sshPort: e.target.value ? parseInt(e.target.value) : undefined,
-                          },
-                        })
-                      }
-                      className="w-full px-3 py-2 bg-background-elevated border border-border rounded-lg text-foreground focus:outline-none focus:border-primary"
-                      placeholder="2222"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-foreground-secondary mb-2">
-                      MCP Server Port
-                    </label>
-                    <input
-                      type="number"
-                      value={config.remote?.mcpPort || ''}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          remote: {
-                            ...config.remote!,
-                            mcpPort: e.target.value ? parseInt(e.target.value) : undefined,
-                          },
-                        })
-                      }
-                      className="w-full px-3 py-2 bg-background-elevated border border-border rounded-lg text-foreground focus:outline-none focus:border-primary"
-                      placeholder="3001"
-                    />
-                  </div>
-                </div>
-
                 <div>
                   <label className="block text-sm font-medium text-foreground-secondary mb-2">
-                    Username
+                    Port
                   </label>
                   <input
-                    type="text"
-                    value={config.remote?.sshAuth?.credentials?.username || ''}
+                    type="number"
+                    value={config.remote?.port || ''}
                     onChange={(e) =>
                       setConfig({
                         ...config,
                         remote: {
                           ...config.remote!,
-                          sshAuth: {
-                            type: 'password',
-                            credentials: {
-                              ...config.remote?.sshAuth?.credentials,
-                              username: e.target.value,
-                            },
-                          },
+                          port: e.target.value ? parseInt(e.target.value) : undefined,
                         },
                       })
                     }
                     className="w-full px-3 py-2 bg-background-elevated border border-border rounded-lg text-foreground focus:outline-none focus:border-primary"
-                    placeholder="root"
+                    placeholder="3001"
                   />
+                  <p className="mt-1 text-xs text-foreground-muted">
+                    Single port for MCP + SSH-over-WebSocket
+                  </p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-foreground-secondary mb-2">
-                    Password
+                    Auth Token
                   </label>
                   <div className="relative">
                     <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={config.remote?.sshAuth?.credentials?.password || ''}
+                      type={showToken ? 'text' : 'password'}
+                      value={config.remote?.authToken || ''}
                       onChange={(e) =>
                         setConfig({
                           ...config,
                           remote: {
                             ...config.remote!,
-                            sshAuth: {
-                              type: 'password',
-                              credentials: {
-                                ...config.remote?.sshAuth?.credentials,
-                                password: e.target.value,
-                              },
-                            },
+                            authToken: e.target.value,
                           },
                         })
                       }
                       className="w-full px-3 py-2 pr-10 bg-background-elevated border border-border rounded-lg text-foreground focus:outline-none focus:border-primary"
-                      placeholder="agents"
+                      placeholder="your-auth-token"
                     />
                     <button
                       type="button"
-                      onClick={() => setShowPassword(!showPassword)}
+                      onClick={() => setShowToken(!showToken)}
                       className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-foreground-muted hover:text-foreground-secondary transition-colors"
                     >
-                      {showPassword ? (
+                      {showToken ? (
                         <EyeOff className="w-4 h-4" />
                       ) : (
                         <Eye className="w-4 h-4" />
                       )}
                     </button>
                   </div>
+                  <p className="mt-1 text-xs text-foreground-muted">
+                    Unified token for both MCP and SSH-WS authentication
+                  </p>
                 </div>
 
                 <div>
