@@ -1,23 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import BackendSettings from './BackendSettings'
+import { useBackend } from '../lib/backend-context'
 
 interface HeaderProps {
   sessionId: string
 }
 
-export default function Header({ sessionId }: HeaderProps) {
-  const [backendType, setBackendType] = useState<'local' | 'remote'>('local')
+const statusDotClass: Record<string, string> = {
+  connected: 'bg-success',
+  connecting: 'bg-warning animate-pulse',
+  reconnecting: 'bg-warning animate-pulse',
+  disconnected: 'bg-error',
+  destroyed: 'bg-foreground-muted',
+}
 
-  useEffect(() => {
-    // Load current backend type
-    fetch('/api/backend-config')
-      .then(res => res.json())
-      .then(config => setBackendType(config.type))
-      .catch(err => console.error('Failed to load backend type:', err))
-  }, [])
+export default function Header({ sessionId }: HeaderProps) {
+  const { backendType, status } = useBackend()
+  const dotClass = statusDotClass[status] ?? 'bg-foreground-muted'
 
   return (
     <header className="h-[60px] border-b border-border bg-background-surface flex items-center justify-between px-6">
@@ -32,8 +33,10 @@ export default function Header({ sessionId }: HeaderProps) {
       <div className="flex items-center gap-4">
         {/* Backend Type Indicator */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background-elevated">
-          <div className="w-2 h-2 rounded-full bg-success" />
-          <span className="text-sm text-foreground-secondary capitalize">{backendType}</span>
+          <div className={`w-2 h-2 rounded-full ${dotClass}`} />
+          <span className="text-sm text-foreground-secondary capitalize">
+            {backendType}{status !== 'connected' ? ` (${status})` : ''}
+          </span>
         </div>
 
         {/* Backend Settings */}

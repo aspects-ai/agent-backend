@@ -7,6 +7,8 @@
 
 import { vi } from 'vitest'
 import type { ChildProcess } from 'child_process'
+import { ConnectionStatus } from '../../../src/backends/types.js'
+import type { StatusChangeCallback, Unsubscribe } from '../../../src/backends/types.js'
 import type { FileBasedBackend, MemoryBackend } from '../../../src/types.js'
 
 /**
@@ -95,11 +97,25 @@ export function createMockSpawn(options: MockSpawnOptions = {}): Partial<ChildPr
  * expect(mockBackend.read).toHaveBeenCalledWith('users/user1/file.txt')
  * ```
  */
-export function createMockFileBackend(overrides: Partial<FileBasedBackend> = {}): FileBasedBackend {
-  return {
+export function createMockFileBackend(overrides: Partial<FileBasedBackend> & { connected?: boolean } = {}): FileBasedBackend {
+  // Support legacy `connected` override for backward compatibility in tests
+  const { connected, ...rest } = overrides
+  const initialStatus = connected === false
+    ? ConnectionStatus.DISCONNECTED
+    : (rest.status ?? ConnectionStatus.CONNECTED)
+
+  let _status = initialStatus
+  const _listeners = new Set<StatusChangeCallback>()
+
+  const backend = {
     type: 'local',
     rootDir: '/test/workspace',
-    connected: true,
+    get status() { return _status },
+    set status(val: any) { _status = val },
+    onStatusChange: vi.fn((cb: StatusChangeCallback): Unsubscribe => {
+      _listeners.add(cb)
+      return () => { _listeners.delete(cb) }
+    }),
     read: vi.fn().mockResolvedValue('mock content'),
     write: vi.fn().mockResolvedValue(undefined),
     readdir: vi.fn().mockResolvedValue([]),
@@ -121,8 +137,10 @@ export function createMockFileBackend(overrides: Partial<FileBasedBackend> = {})
     getMCPTransport: vi.fn(),
     destroy: vi.fn().mockResolvedValue(undefined),
     onChildDestroyed: vi.fn().mockResolvedValue(undefined),
-    ...overrides
+    ...rest
   } as FileBasedBackend
+
+  return backend
 }
 
 /**
@@ -132,7 +150,8 @@ export function createMockMemoryBackend(overrides: Partial<MemoryBackend> = {}):
   return {
     type: 'memory',
     rootDir: '/test/memory',
-    connected: true,
+    status: ConnectionStatus.CONNECTED,
+    onStatusChange: vi.fn((_cb: StatusChangeCallback): Unsubscribe => () => {}),
     read: vi.fn().mockResolvedValue('mock content'),
     write: vi.fn().mockResolvedValue(undefined),
     readdir: vi.fn().mockResolvedValue([]),

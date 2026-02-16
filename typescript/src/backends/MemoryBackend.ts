@@ -24,22 +24,34 @@ import type {
 } from './config.js'
 import { validateMemoryBackendConfig } from './config.js'
 import { ScopedMemoryBackend } from './ScopedMemoryBackend.js'
+import { ConnectionStatusManager } from './ConnectionStatusManager.js'
 import type {
   Backend,
   FileBasedBackend,
-  ScopedBackend
+  ScopedBackend,
+  StatusChangeCallback,
+  Unsubscribe
 } from './types.js'
-import { BackendType } from './types.js'
+import { BackendType, ConnectionStatus } from './types.js'
 
 export class MemoryBackend implements FileBasedBackend {
   readonly type = BackendType.MEMORY
   readonly rootDir: string
-  readonly connected = true
+
+  private readonly statusManager = new ConnectionStatusManager(ConnectionStatus.CONNECTED)
 
   private store: Map<string, string | Buffer>
 
   /** Track active scoped backends for reference counting */
   private readonly _activeScopes = new Set<ScopedMemoryBackend>()
+
+  get status(): ConnectionStatus {
+    return this.statusManager.status
+  }
+
+  onStatusChange(cb: StatusChangeCallback): Unsubscribe {
+    return this.statusManager.onStatusChange(cb)
+  }
 
   constructor(config?: MemoryBackendConfig) {
     // Validate config if provided
@@ -416,6 +428,8 @@ export class MemoryBackend implements FileBasedBackend {
     // when the parent is explicitly destroyed
     this._activeScopes.clear()
     this.store.clear()
+    this.statusManager.setStatus(ConnectionStatus.DESTROYED)
+    this.statusManager.clearListeners()
   }
 
   /**

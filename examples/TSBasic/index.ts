@@ -19,13 +19,13 @@
  */
 
 import { openrouter } from '@openrouter/ai-sdk-provider'
-import { LocalFilesystemBackend, RemoteFilesystemBackend } from 'agent-backend'
+import { ConnectionStatus, LocalFilesystemBackend, RemoteFilesystemBackend } from 'agent-backend'
 import { VercelAIAdapter } from 'agent-backend/adapters'
 import { stepCountIs, streamText, type ModelMessage } from 'ai'
 import * as readline from 'node:readline'
 
 const BACKEND_TYPE = process.env.BACKEND_TYPE ?? 'local'
-const ROOT_DIR = process.env.ROOT_DIR ?? '/tmp/agentbe-workspace'
+const ROOT_DIR = process.env.ROOT_DIR ?? (BACKEND_TYPE === 'remote' ? '/var/workspace' : '/tmp/agentbe-workspace')
 const MODEL = process.env.MODEL ?? 'anthropic/claude-sonnet-4.5'
 
 function createBackend() {
@@ -51,10 +51,29 @@ async function main() {
   }
 
   console.log(`\nTSBasic — Agent Backend CLI Chat`)
-  console.log(`Backend: ${BACKEND_TYPE} | Root: ${ROOT_DIR} | Model: ${MODEL}\n`)
+  console.log(`Backend: ${BACKEND_TYPE} | Root: ${ROOT_DIR} | Model: ${MODEL}`)
+  if (BACKEND_TYPE === 'local') {
+    console.log(`\x1b[2mSwitch to remote: BACKEND_TYPE=remote make tsbasic\x1b[0m\n`)
+  } else {
+    console.log(`\x1b[2mSwitch to local:  make tsbasic\x1b[0m\n`)
+  }
+
+  const backend = createBackend()
+
+  backend.onStatusChange((event) => {
+    const labels: Record<string, string> = {
+      [ConnectionStatus.CONNECTED]: '\x1b[32m connected\x1b[0m',
+      [ConnectionStatus.CONNECTING]: '\x1b[33m connecting...\x1b[0m',
+      [ConnectionStatus.DISCONNECTED]: '\x1b[31m disconnected\x1b[0m',
+      [ConnectionStatus.RECONNECTING]: '\x1b[33m reconnecting...\x1b[0m',
+      [ConnectionStatus.DESTROYED]: '\x1b[90m destroyed\x1b[0m',
+    }
+    process.stderr.write(`\n[status]${labels[event.to] ?? ` ${event.to}`}`)
+    if (event.error) process.stderr.write(` (${event.error.message})`)
+    process.stderr.write('\n')
+  })
 
   process.stdout.write('Connecting to backend...')
-  const backend = createBackend()
   const adapter = new VercelAIAdapter(backend)
   const mcpClient = await adapter.getMCPClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

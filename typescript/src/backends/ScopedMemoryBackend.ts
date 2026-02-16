@@ -18,8 +18,11 @@ import { validateWithinBoundary } from './pathValidation.js'
 import type {
   Backend,
   BackendType,
+  ConnectionStatus,
   FileBasedBackend,
-  ScopedBackend
+  ScopedBackend,
+  StatusChangeCallback,
+  Unsubscribe
 } from './types.js'
 
 export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> implements ScopedBackend<T> {
@@ -27,9 +30,16 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
   readonly parent: T
   readonly scopePath: string
   readonly rootDir: string
-  readonly connected: boolean
 
   private readonly operationsLogger?: OperationsLogger
+
+  get status(): ConnectionStatus {
+    return this.parent.status
+  }
+
+  onStatusChange(cb: StatusChangeCallback): Unsubscribe {
+    return this.parent.onStatusChange(cb)
+  }
 
   constructor(
     parent: T,
@@ -38,7 +48,6 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
   ) {
     this.parent = parent
     this.type = parent.type
-    this.connected = parent.connected
     // Normalize scope path (ensure it ends with / for prefix matching)
     this.scopePath = scopePath.endsWith('/') ? scopePath : `${scopePath}/`
     this.rootDir = path.join(this.parent.rootDir, this.scopePath)

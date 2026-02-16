@@ -5,7 +5,7 @@ import * as path from 'path'
 import type { OperationsLogger } from '../logging/types.js'
 import type { ExecOptions, ReadOptions, ScopeConfig } from './config.js'
 import { validateWithinBoundary } from './pathValidation.js'
-import type { Backend, BackendType, FileBasedBackend, ScopedBackend } from './types.js'
+import type { Backend, BackendType, ConnectionStatus, FileBasedBackend, ScopedBackend, StatusChangeCallback, Unsubscribe } from './types.js'
 
 /**
  * Scoped filesystem backend implementation
@@ -66,8 +66,15 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
   /**
    * Get connection status from parent backend
    */
-  get connected(): boolean {
-    return this.parent.connected
+  get status(): ConnectionStatus {
+    return this.parent.status
+  }
+
+  /**
+   * Subscribe to status changes from parent backend
+   */
+  onStatusChange(cb: StatusChangeCallback): Unsubscribe {
+    return this.parent.onStatusChange(cb)
   }
 
   /**

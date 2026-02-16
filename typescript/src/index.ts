@@ -30,17 +30,20 @@ export type {
 // Types & Interfaces
 // ============================================================================
 
-export { BackendType } from './backends/types.js'
+export { BackendType, ConnectionStatus } from './backends/types.js'
 
 export type {
     Backend,
     FileBasedBackend,
     MCPTransport,
-    ScopedBackend
+    ScopedBackend,
+    StatusChangeCallback,
+    StatusChangeEvent,
+    Unsubscribe
 } from './backends/types.js'
 
 export type {
-    ExecOptions, LocalFilesystemBackendConfig, MemoryBackendConfig, ReadOptions, RemoteFilesystemBackendConfig, ScopeConfig
+    ExecOptions, LocalFilesystemBackendConfig, MemoryBackendConfig, ReadOptions, ReconnectionConfig, RemoteFilesystemBackendConfig, ScopeConfig
 } from './backends/config.js'
 
 // ============================================================================

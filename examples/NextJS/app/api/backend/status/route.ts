@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { ConnectionStatus } from 'agent-backend'
 import { backendManager } from '@/lib/backend'
 
 export async function GET() {
@@ -7,7 +8,8 @@ export async function GET() {
     const type = backendManager.getCurrentType()
 
     return NextResponse.json({
-      connected: backend.connected,
+      connected: backend.status === ConnectionStatus.CONNECTED,
+      status: backend.status,
       type,
       rootDir: 'rootDir' in backend ? backend.rootDir : undefined
     })
@@ -15,6 +17,7 @@ export async function GET() {
     return NextResponse.json(
       {
         connected: false,
+        status: ConnectionStatus.DISCONNECTED,
         error: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }

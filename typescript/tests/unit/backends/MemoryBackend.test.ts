@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ConnectionStatus } from '../../../src/backends/types.js'
 import { MemoryBackend } from '../../../src/backends/MemoryBackend.js'
 import { PathEscapeError } from '../../../src/types.js'
 
@@ -60,7 +61,7 @@ describe('MemoryBackend (Unit Tests)', () => {
     })
 
     it('should be connected by default', () => {
-      expect(backend.connected).toBe(true)
+      expect(backend.status).toBe('connected')
     })
 
     it('should read and write values', async () => {
@@ -136,6 +137,53 @@ describe('MemoryBackend (Unit Tests)', () => {
       // dir/subdir/../file.txt should resolve to dir/file.txt
       // This tests that .. within the scope is allowed
       await expect(scoped.read('dir/subdir/../file.txt')).resolves.toBe('content')
+    })
+  })
+
+  describe('Connection Status', () => {
+    it('should start with CONNECTED status', () => {
+      expect(backend.status).toBe(ConnectionStatus.CONNECTED)
+    })
+
+    it('should transition to DESTROYED after destroy()', async () => {
+      await backend.destroy()
+      expect(backend.status).toBe(ConnectionStatus.DESTROYED)
+    })
+
+    it('should notify listeners on destroy', async () => {
+      const listener = vi.fn()
+      backend.onStatusChange(listener)
+
+      await backend.destroy()
+
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+        from: ConnectionStatus.CONNECTED,
+        to: ConnectionStatus.DESTROYED,
+      }))
+    })
+
+    it('should support unsubscribe', async () => {
+      const listener = vi.fn()
+      const unsub = backend.onStatusChange(listener)
+      unsub()
+
+      await backend.destroy()
+
+      expect(listener).not.toHaveBeenCalled()
+    })
+
+    it('should reflect status in scoped backends', () => {
+      const scoped = backend.scope('test-scope')
+      expect(scoped.status).toBe(ConnectionStatus.CONNECTED)
+    })
+
+    it('should reflect status changes dynamically in scoped backends', async () => {
+      const scoped = backend.scope('test-scope')
+      expect(scoped.status).toBe(ConnectionStatus.CONNECTED)
+
+      await backend.destroy()
+      expect(scoped.status).toBe(ConnectionStatus.DESTROYED)
     })
   })
 })

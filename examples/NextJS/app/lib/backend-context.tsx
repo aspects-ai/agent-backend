@@ -7,6 +7,7 @@ type BackendType = 'local' | 'remote'
 interface BackendContextType {
   backendType: BackendType
   switchBackend: (type: BackendType) => Promise<void>
+  status: string
   isConnected: boolean
   isSwitching: boolean
   error: string | null
@@ -18,26 +19,30 @@ export function BackendProvider({ children }: { children: ReactNode }) {
   const [backendType, setBackendType] = useState<BackendType>(
     (process.env.NEXT_PUBLIC_BACKEND_TYPE as BackendType) || 'local'
   )
-  const [isConnected, setIsConnected] = useState(false)
+  const [status, setStatus] = useState<string>('disconnected')
   const [isSwitching, setIsSwitching] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Test connection on mount and when backend type changes
-  useEffect(() => {
-    testConnection()
-  }, [backendType])
+  const isConnected = status === 'connected'
 
-  async function testConnection() {
+  async function fetchStatus() {
     try {
       const response = await fetch('/api/backend/status')
       const data = await response.json()
-      setIsConnected(data.connected)
+      setStatus(data.status ?? (data.connected ? 'connected' : 'disconnected'))
       setError(null)
     } catch (err) {
-      setIsConnected(false)
+      setStatus('disconnected')
       setError(err instanceof Error ? err.message : 'Connection failed')
     }
   }
+
+  // Poll connection status on mount, when backend type changes, and every 10s
+  useEffect(() => {
+    fetchStatus()
+    const interval = setInterval(fetchStatus, 10_000)
+    return () => clearInterval(interval)
+  }, [backendType])
 
   async function switchBackend(type: BackendType) {
     setIsSwitching(true)
@@ -72,6 +77,7 @@ export function BackendProvider({ children }: { children: ReactNode }) {
       value={{
         backendType,
         switchBackend,
+        status,
         isConnected,
         isSwitching,
         error

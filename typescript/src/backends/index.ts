@@ -12,12 +12,15 @@ export { ScopedMemoryBackend } from './ScopedMemoryBackend.js'
 // Core Types & Interfaces
 // ============================================================================
 
-export { BackendType } from './types.js'
+export { BackendType, ConnectionStatus } from './types.js'
 export type {
     Backend,
     FileBasedBackend, // Legacy: FileBasedBackend
     ScopedBackend,
-    ScopedFileBasedBackend
+    ScopedFileBasedBackend,
+    StatusChangeCallback,
+    StatusChangeEvent,
+    Unsubscribe
 } from './types.js'
 
 // ============================================================================
@@ -26,7 +29,7 @@ export type {
 
 export type {
     BackendConfig, BaseFileBackendConfig, ExecOptions, // Legacy
-    LocalBackendConfig, LocalFilesystemBackendConfig, MemoryBackendConfig, ReadOptions, // Legacy
+    LocalBackendConfig, LocalFilesystemBackendConfig, MemoryBackendConfig, ReadOptions, ReconnectionConfig, // Legacy
     RemoteBackendConfig // Legacy
     , RemoteFilesystemBackendConfig, ScopeConfig
 } from './config.js'

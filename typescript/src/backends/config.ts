@@ -129,6 +129,29 @@ export interface RemoteFilesystemBackendConfig extends BaseFileBackendConfig {
 
   /** Number of missed keepalives before considering connection dead */
   keepaliveCountMax?: number
+
+  /** Auto-reconnection configuration */
+  reconnection?: ReconnectionConfig
+}
+
+/**
+ * Configuration for automatic reconnection
+ */
+export interface ReconnectionConfig {
+  /** Whether auto-reconnection is enabled (default: true) */
+  enabled?: boolean
+
+  /** Maximum number of reconnection attempts (default: 5, 0 = infinite) */
+  maxRetries?: number
+
+  /** Initial delay before first reconnect in milliseconds (default: 1000) */
+  initialDelayMs?: number
+
+  /** Maximum delay between reconnect attempts in milliseconds (default: 30000) */
+  maxDelayMs?: number
+
+  /** Multiplier for exponential backoff (default: 2) */
+  backoffMultiplier?: number
 }
 
 /**
@@ -159,6 +182,14 @@ const LocalFilesystemBackendConfigSchema = z.object({
   validateUtils: z.boolean().optional(),
 }).passthrough() // Allow functions to pass through without strict validation
 
+const ReconnectionConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  maxRetries: z.number().int().min(0).optional(),
+  initialDelayMs: z.number().positive().optional(),
+  maxDelayMs: z.number().positive().optional(),
+  backoffMultiplier: z.number().positive().optional(),
+})
+
 const RemoteFilesystemBackendConfigSchema = z.object({
   rootDir: z.string().min(1),
   host: z.string().min(1),
@@ -187,6 +218,7 @@ const RemoteFilesystemBackendConfigSchema = z.object({
   operationTimeoutMs: z.number().positive().optional(),
   keepaliveIntervalMs: z.number().positive().optional(),
   keepaliveCountMax: z.number().positive().optional(),
+  reconnection: ReconnectionConfigSchema.optional(),
 }).passthrough() // Allow functions to pass through without strict validation
 
 const MemoryBackendConfigSchema = z.object({

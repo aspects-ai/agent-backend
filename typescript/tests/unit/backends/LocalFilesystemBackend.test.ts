@@ -32,7 +32,7 @@ describe('LocalFilesystemBackend (Unit Tests)', () => {
     it('should create backend with correct config', () => {
       expect(backend.type).toBe('local-filesystem')
       expect(backend.rootDir).toBe('/test/workspace')
-      expect(backend.connected).toBe(true)
+      expect(backend.status).toBe('connected')
     })
 
     it('should accept explicit shell setting', () => {
@@ -669,11 +669,45 @@ describe('LocalFilesystemBackend (Unit Tests)', () => {
     })
 
     it('should be connected by default', () => {
-      expect(backend.connected).toBe(true)
+      expect(backend.status).toBe('connected')
     })
 
     it('should have rootDir property', () => {
       expect(backend.rootDir).toBe('/test/workspace')
+    })
+  })
+
+  describe('Connection Status', () => {
+    it('should start with CONNECTED status', () => {
+      expect(backend.status).toBe('connected')
+    })
+
+    it('should transition to DESTROYED after destroy()', async () => {
+      await backend.destroy()
+      expect(backend.status).toBe('destroyed')
+    })
+
+    it('should notify listeners on destroy', async () => {
+      const listener = vi.fn()
+      backend.onStatusChange(listener)
+
+      await backend.destroy()
+
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+        from: 'connected',
+        to: 'destroyed',
+      }))
+    })
+
+    it('should support unsubscribe', async () => {
+      const listener = vi.fn()
+      const unsub = backend.onStatusChange(listener)
+      unsub()
+
+      await backend.destroy()
+
+      expect(listener).not.toHaveBeenCalled()
     })
   })
 

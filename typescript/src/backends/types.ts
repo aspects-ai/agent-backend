@@ -21,6 +21,37 @@ export enum BackendType {
 }
 
 /**
+ * Connection status for backends
+ */
+export enum ConnectionStatus {
+  CONNECTED = 'connected',
+  CONNECTING = 'connecting',
+  DISCONNECTED = 'disconnected',
+  RECONNECTING = 'reconnecting',
+  DESTROYED = 'destroyed',
+}
+
+/**
+ * Event emitted when connection status changes
+ */
+export interface StatusChangeEvent {
+  from: ConnectionStatus
+  to: ConnectionStatus
+  timestamp: number
+  error?: Error
+}
+
+/**
+ * Callback for status change events
+ */
+export type StatusChangeCallback = (event: StatusChangeEvent) => void
+
+/**
+ * Function to unsubscribe from status changes
+ */
+export type Unsubscribe = () => void
+
+/**
  * Base interface for all backend types
  * Generic enough to support filesystems, databases, APIs, etc.
  */
@@ -28,8 +59,14 @@ export interface Backend {
   /** Backend type identifier */
   readonly type: BackendType
 
-  /** Whether backend connection is established */
-  readonly connected: boolean
+  /** Current connection status */
+  readonly status: ConnectionStatus
+
+  /**
+   * Subscribe to connection status changes.
+   * Returns an unsubscribe function.
+   */
+  onStatusChange(cb: StatusChangeCallback): Unsubscribe
 
   /**
    * Get MCP transport for this backend.

@@ -1,4 +1,4 @@
-.PHONY: help install build test typecheck lint clean dev dev-local publish start-daemon stop-daemon sync-assets nextjs tsbasic
+.PHONY: help install dev dev-local nextjs tsbasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -12,11 +12,11 @@ RESET := \033[0m
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
-	@awk 'BEGIN {FS = ":.*##"; printf "Available targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  $(CYAN)%-15s$(RESET) %s\n", $$1, $$2 } /^##@/ { printf "\n%s\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "Available targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  $(CYAN)%-22s$(RESET) %s\n", $$1, $$2 } /^##@/ { printf "\n%s\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-##@ Dependencies
+##@ Getting Started
 
-install: ## Install all dependencies (TypeScript + Python + dev tools)
+install: ## Install all dependencies
 	@echo "Installing TypeScript dependencies..."
 	pnpm install
 	@echo ""
@@ -44,91 +44,7 @@ install: ## Install all dependencies (TypeScript + Python + dev tools)
 	}
 	@echo "✓ All dependencies installed"
 
-##@ Assets
-
-sync-assets: ## Copy shared assets to example apps
-	@echo "Syncing shared assets..."
-	@mkdir -p examples/NextJS/public/assets
-	@cp -r assets/* examples/NextJS/public/assets/
-	@echo "✓ Assets synced to examples/NextJS/public/assets/"
-
-##@ Build
-
-build: build-typescript build-python ## Build all packages
-
-build-typescript: ## Build TypeScript packages only
-	@echo "Building TypeScript packages..."
-	pnpm -r build
-
-build-python: ## Build Python package only
-	@echo "Building Python package..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && python -m build || echo "⚠️  Python build failed (missing 'build' module? Run: pip install build)"; \
-	else \
-		echo "Python package not ready (skipping)"; \
-	fi
-
-##@ Testing
-
-test: test-typescript test-python ## Run all tests
-
-test-typescript: ## Run TypeScript tests only
-	@echo "Running TypeScript tests..."
-	pnpm -r test
-
-test-python: ## Run Python tests only
-	@echo "Running Python tests..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && pytest || echo "⚠️  Python tests failed or pytest not installed"; \
-	else \
-		echo "Python package not ready (skipping)"; \
-	fi
-
-test-unit: ## Run unit tests only
-	@echo "Running unit tests..."
-	pnpm -r run test:unit 2>/dev/null || echo "No unit tests configured"
-
-##@ Type Checking & Linting
-
-typecheck: typecheck-typescript typecheck-python ## Run type checking for all packages
-
-typecheck-typescript: ## Type check TypeScript packages only
-	@echo "Type checking TypeScript packages..."
-	pnpm -r typecheck
-
-typecheck-python: ## Type check Python package only
-	@echo "Type checking Python package..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && mypy . || echo "⚠️  Python typecheck failed or mypy not installed"; \
-	else \
-		echo "Python package not ready (skipping)"; \
-	fi
-
-lint: lint-typescript lint-python ## Lint all packages
-
-lint-typescript: ## Lint TypeScript packages only
-	@echo "Linting TypeScript packages..."
-	pnpm -r lint
-
-lint-python: ## Lint Python package only
-	@echo "Linting Python package..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && ruff check . || echo "⚠️  Python lint failed or ruff not installed"; \
-	else \
-		echo "Python package not ready (skipping)"; \
-	fi
-
-lint-fix: ## Auto-fix linting issues
-	@echo "Auto-fixing TypeScript..."
-	pnpm -r lint:fix || true
-	@echo "Auto-fixing Python..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && ruff check --fix . || true; \
-	fi
-
-##@ Development
-
-dev: sync-assets ## Start dev TUI with Docker daemon (simulates remote)
+dev: sync-assets ## Start dev environment (TS watch + NextJS + Docker daemon)
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \
 		exit 1; \
@@ -146,14 +62,16 @@ dev: sync-assets ## Start dev TUI with Docker daemon (simulates remote)
 		mprocs; \
 	fi
 
-dev-local: ## Start dev TUI with local daemon (no Docker)
+dev-local: ## Start dev environment (local only, no Docker)
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \
 		exit 1; \
 	}
 	LOCAL=1 mprocs
 
-nextjs: sync-assets build-typescript ## Start dev TUI with NextJS example app
+##@ Examples
+
+nextjs: sync-assets build-typescript ## Run NextJS demo app
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \
 		exit 1; \
@@ -170,10 +88,16 @@ nextjs: sync-assets build-typescript ## Start dev TUI with NextJS example app
 		NEXTJS=1 mprocs; \
 	fi
 
-tsbasic: build-typescript ## Run the TSBasic CLI example
+tsbasic: build-typescript ## Run TSBasic CLI example
 	cd examples/TSBasic && npx tsx index.ts
 
-clean: ## Clean build artifacts and dependencies
+##@ Build & Test
+
+build: build-typescript build-python ## Build all packages
+
+test: test-typescript test-python ## Run all tests
+
+clean: ## Remove build artifacts and dependencies
 	@echo "Cleaning TypeScript packages..."
 	rm -rf typescript/dist typescript/node_modules
 	rm -rf examples/NextJS/dist examples/NextJS/.next examples/NextJS/node_modules
@@ -188,54 +112,75 @@ clean: ## Clean build artifacts and dependencies
 	@echo "Cleaning lockfiles..."
 	rm -f pnpm-lock.yaml
 
-##@ Docker
+##@ Code Quality
 
-docker-build: build-typescript ## Build Docker image for daemon testing
-	@echo "Building agentbe-daemon Docker image..."
-	@cd typescript/deploy/docker && \
-		docker build -f Dockerfile.runtime -t agentbe-daemon:latest ../../..
+typecheck: typecheck-typescript typecheck-python ## Type check all packages
 
-docker-clean: ## Remove agentbe-daemon Docker images and containers
-	@echo "Stopping and removing containers..."
-	@docker stop agentbe-daemon 2>/dev/null || true
-	@docker rm agentbe-daemon 2>/dev/null || true
-	@echo "Removing images..."
-	@docker rmi agentbe-daemon:latest 2>/dev/null || true
+lint: lint-typescript lint-python ## Lint all packages
 
-start-daemon: ## Start agentbe-daemon Docker container in background
-	@command -v docker >/dev/null 2>&1 || { \
-		echo "Error: Docker not installed"; \
-		echo "Install: https://docs.docker.com/get-docker/"; \
-		exit 1; \
-	}
-	@if ! docker images | grep -q "agentbe-daemon.*latest"; then \
-		echo "Docker image not found. Building agentbe-daemon:latest..."; \
-		$(MAKE) docker-build; \
+lint-fix: ## Auto-fix lint issues
+	@echo "Auto-fixing TypeScript..."
+	pnpm -r lint:fix || true
+	@echo "Auto-fixing Python..."
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && ruff check --fix . || true; \
 	fi
-	@mkdir -p typescript/deploy/docker/var/workspace
-	@if docker ps -q -f name=agentbe-daemon | grep -q .; then \
-		echo "agentbe-daemon is already running"; \
+
+##@ Language-Specific
+
+build-typescript: ## Build TypeScript packages
+	@echo "Building TypeScript packages..."
+	pnpm -r build
+
+build-python: ## Build Python package
+	@echo "Building Python package..."
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && python -m build || echo "⚠️  Python build failed (missing 'build' module? Run: pip install build)"; \
 	else \
-		echo "Starting agentbe-daemon..."; \
-		docker run -d --name agentbe-daemon \
-			-p 2222:22 -p 3001:3001 \
-			-v $(PWD)/typescript/deploy/docker/var/workspace:/var/workspace \
-			--restart unless-stopped \
-			agentbe-daemon:latest; \
-		echo "✓ agentbe-daemon started (SSH: 2222, MCP: 3001)"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 
-stop-daemon: ## Stop agentbe-daemon Docker container
-	@if docker ps -q -f name=agentbe-daemon | grep -q .; then \
-		echo "Stopping agentbe-daemon..."; \
-		docker stop agentbe-daemon; \
-		docker rm agentbe-daemon; \
-		echo "✓ agentbe-daemon stopped"; \
+test-typescript: ## Run TypeScript tests
+	@echo "Running TypeScript tests..."
+	pnpm -r test
+
+test-python: ## Run Python tests
+	@echo "Running Python tests..."
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && pytest || echo "⚠️  Python tests failed or pytest not installed"; \
 	else \
-		echo "agentbe-daemon is not running"; \
+		echo "Python package not ready (skipping)"; \
 	fi
 
-##@ Publishing & Deployment
+test-unit: ## Run unit tests only
+	@echo "Running unit tests..."
+	pnpm -r run test:unit 2>/dev/null || echo "No unit tests configured"
+
+typecheck-typescript: ## Type check TypeScript packages
+	@echo "Type checking TypeScript packages..."
+	pnpm -r typecheck
+
+typecheck-python: ## Type check Python package
+	@echo "Type checking Python package..."
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && mypy . || echo "⚠️  Python typecheck failed or mypy not installed"; \
+	else \
+		echo "Python package not ready (skipping)"; \
+	fi
+
+lint-typescript: ## Lint TypeScript packages
+	@echo "Linting TypeScript packages..."
+	pnpm -r lint
+
+lint-python: ## Lint Python package
+	@echo "Linting Python package..."
+	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
+		cd python && ruff check . || echo "⚠️  Python lint failed or ruff not installed"; \
+	else \
+		echo "Python package not ready (skipping)"; \
+	fi
+
+##@ Publishing & CI
 
 publish-typescript: ## Publish TypeScript package to npm
 	@echo "Publishing TypeScript package..."
@@ -249,11 +194,22 @@ publish-python: ## Publish Python package to PyPI
 		echo "Python package not ready"; \
 	fi
 
-start-deploy-ui: ## Start deployment UI for cloud VM setup
+start-deploy-ui: ## Cloud VM deployment UI
 	./manage.sh start-deploy-ui
 
-##@ Continuous Integration
+ci: install typecheck lint test ## Full CI pipeline
 
-ci: install typecheck lint test ## Run full CI pipeline (install, typecheck, lint, test)
+ci-fast: typecheck test-unit ## Fast CI (typecheck + unit tests)
 
-ci-fast: typecheck test-unit ## Run fast CI checks (typecheck + unit tests only)
+# --- Internal targets (not shown in help) ---
+
+sync-assets:
+	@echo "Syncing shared assets..."
+	@mkdir -p examples/NextJS/public/assets
+	@cp -r assets/* examples/NextJS/public/assets/
+	@echo "✓ Assets synced to examples/NextJS/public/assets/"
+
+docker-build: build-typescript
+	@echo "Building agentbe-daemon Docker image..."
+	@cd typescript/deploy/docker && \
+		docker build -f Dockerfile.runtime -t agentbe-daemon:latest ../../..

@@ -11,12 +11,13 @@ import { createBackendMCPTransport } from '../mcp/transport.js'
 import { isCommandSafe, isDangerous } from '../safety.js'
 import { BackendError, DangerousOperationError } from '../types.js'
 import { getLogger } from '../utils/logger.js'
-import type { ExecOptions, ReadOptions, RemoteFilesystemBackendConfig, ScopeConfig } from './config.js'
+import type { ExecOptions, ReadOptions, ReconnectionConfig, RemoteFilesystemBackendConfig, ScopeConfig } from './config.js'
 import { validateRemoteFilesystemBackendConfig } from './config.js'
+import { ConnectionStatusManager } from './ConnectionStatusManager.js'
 import { validateWithinBoundary } from './pathValidation.js'
 import { ScopedFilesystemBackend } from './ScopedFilesystemBackend.js'
-import type { Backend, FileBasedBackend, ScopedBackend } from './types.js'
-import { BackendType } from './types.js'
+import type { Backend, FileBasedBackend, ScopedBackend, StatusChangeCallback, Unsubscribe } from './types.js'
+import { BackendType, ConnectionStatus } from './types.js'
 import { WebSocketSSHTransport } from './transports/WebSocketSSHTransport.js'
 
 /** Transport type for SSH operations */
@@ -72,7 +73,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
   readonly type = BackendType.REMOTE_FILESYSTEM
   readonly rootDir: string
 
-  private _connected = false
+  private readonly statusManager = new ConnectionStatusManager(ConnectionStatus.DISCONNECTED)
   private readonly config: RemoteFilesystemBackendConfig
 
   /** Transport type being used */
@@ -107,6 +108,26 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
   /** Track active scoped backends for reference counting */
   private readonly _activeScopes = new Set<ScopedFilesystemBackend>()
 
+  /** Reconnection configuration */
+  private readonly reconnectionConfig: Required<ReconnectionConfig>
+
+  /** Current reconnection attempt count */
+  private reconnectAttempts = 0
+
+  /** Timer for pending reconnection */
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** Whether this backend has been destroyed */
+  private destroyed = false
+
+  get status(): ConnectionStatus {
+    return this.statusManager.status
+  }
+
+  onStatusChange(cb: StatusChangeCallback): Unsubscribe {
+    return this.statusManager.onStatusChange(cb)
+  }
+
   constructor(config: RemoteFilesystemBackendConfig) {
     validateRemoteFilesystemBackendConfig(config)
 
@@ -137,12 +158,15 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
     this.keepaliveIntervalMs = config.keepaliveIntervalMs ?? DEFAULT_KEEPALIVE_INTERVAL_MS
     this.keepaliveCountMax = config.keepaliveCountMax ?? DEFAULT_KEEPALIVE_COUNT_MAX
 
-    // Transport will be created on first connection (lazy initialization)
-    this._connected = false
-  }
-
-  get connected(): boolean {
-    return this._connected
+    // Parse reconnection config with defaults
+    const rc = config.reconnection ?? {}
+    this.reconnectionConfig = {
+      enabled: rc.enabled ?? true,
+      maxRetries: rc.maxRetries ?? 5,
+      initialDelayMs: rc.initialDelayMs ?? 1000,
+      maxDelayMs: rc.maxDelayMs ?? 30000,
+      backoffMultiplier: rc.backoffMultiplier ?? 2,
+    }
   }
 
   /**
@@ -978,6 +1002,14 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
    * Clean up backend resources
    */
   async destroy(): Promise<void> {
+    this.destroyed = true
+
+    // Cancel pending reconnect
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+
     // Clear active scopes - they become orphaned but that's expected
     // when the parent is explicitly destroyed
     if (this._activeScopes.size > 0) {
@@ -1023,8 +1055,9 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
       this.sshClient = null
     }
 
-    this._connected = false
     this.connectionPromise = null
+    this.statusManager.setStatus(ConnectionStatus.DESTROYED)
+    this.statusManager.clearListeners()
     getLogger().debug(`RemoteFilesystemBackend destroyed for root: ${this.rootDir}`)
   }
 
@@ -1036,7 +1069,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
    * Ensure SSH connection is established (either ssh-ws or conventional ssh)
    */
   private async ensureSSHConnection(): Promise<void> {
-    if (this._connected) {
+    if (this.statusManager.status === ConnectionStatus.CONNECTED) {
       // Check if the appropriate transport is connected
       if (this.transportType === 'ssh-ws' && this.wsTransport?.connected) {
         return
@@ -1049,6 +1082,13 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
     if (this.connectionPromise) {
       return this.connectionPromise
     }
+
+    // Set status based on whether this is a first connect or reconnect
+    const connectingStatus = this.reconnectAttempts > 0
+      ? ConnectionStatus.RECONNECTING
+      : ConnectionStatus.CONNECTING
+
+    this.statusManager.setStatus(connectingStatus)
 
     if (this.transportType === 'ssh-ws') {
       this.connectionPromise = this.createWebSocketSSHConnection()
@@ -1076,7 +1116,6 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
 
     this.wsTransport.on('close', () => {
       getLogger().debug('[SSH-WS] Connection closed')
-      this._connected = false
       this.sftpSession = null
       this.sftpSessionPromise = null
 
@@ -1086,21 +1125,26 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
         op.reject(error)
       }
       this.pendingOperations.clear()
+
+      this.statusManager.setStatus(ConnectionStatus.DISCONNECTED)
+      this.scheduleReconnect()
     })
 
     try {
       await this.wsTransport.connect()
       getLogger().debug('[SSH-WS] Connection established')
-      this._connected = true
+      this.reconnectAttempts = 0
       this.connectionPromise = null
+      this.statusManager.setStatus(ConnectionStatus.CONNECTED)
     } catch (err: any) {
-      this._connected = false
       this.connectionPromise = null
       this.wsTransport = null
-      throw new BackendError(
+      const connectError = new BackendError(
         `SSH-WS connection failed: ${err.message}`,
         ERROR_CODES.EXEC_FAILED
       )
+      this.statusManager.setStatus(ConnectionStatus.DISCONNECTED, connectError)
+      throw connectError
     }
   }
 
@@ -1138,24 +1182,25 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
       sshClient.on('ready', () => {
         getLogger().debug('[SSH] Connection established')
         this.sshClient = sshClient
-        this._connected = true
+        this.reconnectAttempts = 0
         this.connectionPromise = null
+        this.statusManager.setStatus(ConnectionStatus.CONNECTED)
         resolve()
       })
 
       sshClient.on('error', (err: Error) => {
         getLogger().error('[SSH] Connection error:', err)
-        this._connected = false
         this.connectionPromise = null
-        reject(new BackendError(
+        const connectError = new BackendError(
           `SSH connection failed: ${err.message}`,
           ERROR_CODES.EXEC_FAILED
-        ))
+        )
+        this.statusManager.setStatus(ConnectionStatus.DISCONNECTED, connectError)
+        reject(connectError)
       })
 
       sshClient.on('close', () => {
         getLogger().debug('[SSH] Connection closed')
-        this._connected = false
         this.sshClient = null
         this.sftpSession = null
         this.sftpSessionPromise = null
@@ -1166,6 +1211,9 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
           op.reject(error)
         }
         this.pendingOperations.clear()
+
+        this.statusManager.setStatus(ConnectionStatus.DISCONNECTED)
+        this.scheduleReconnect()
       })
 
       sshClient.connect(connectConfig)
@@ -1279,5 +1327,39 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
           })
       }
     }
+  }
+
+  /**
+   * Schedule a reconnection attempt with exponential backoff
+   */
+  private scheduleReconnect(): void {
+    if (this.destroyed) return
+    if (!this.reconnectionConfig.enabled) return
+    if (this.reconnectionConfig.maxRetries > 0 &&
+        this.reconnectAttempts >= this.reconnectionConfig.maxRetries) {
+      getLogger().debug(`[Reconnect] Max retries (${this.reconnectionConfig.maxRetries}) reached, giving up`)
+      return
+    }
+
+    const delay = Math.min(
+      this.reconnectionConfig.initialDelayMs *
+        Math.pow(this.reconnectionConfig.backoffMultiplier, this.reconnectAttempts),
+      this.reconnectionConfig.maxDelayMs
+    )
+
+    this.reconnectAttempts++
+    getLogger().debug(`[Reconnect] Scheduling attempt ${this.reconnectAttempts} in ${delay}ms`)
+
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null
+      if (this.destroyed) return
+
+      try {
+        await this.ensureSSHConnection()
+      } catch (err) {
+        getLogger().debug(`[Reconnect] Attempt ${this.reconnectAttempts} failed:`, err)
+        // scheduleReconnect is called again from the close handler
+      }
+    }, delay)
   }
 }

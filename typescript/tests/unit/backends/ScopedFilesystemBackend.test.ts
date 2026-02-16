@@ -30,18 +30,15 @@ describe('ScopedFilesystemBackend (Unit Tests)', () => {
     })
 
     it('should inherit parent connection status', () => {
-      expect(scoped.connected).toBe(true)
+      expect(scoped.status).toBe('connected')
 
-      // Note: The scoped backend reads connected status from parent,
-      // but since mockParent uses a plain property (not a getter),
-      // we need to create a new scoped backend to see the change
       const disconnectedParent = createMockFileBackend({
         type: 'local-filesystem',
         rootDir: '/tmp/agentbe-workspace',
         connected: false
       })
       const disconnectedScoped = new ScopedFilesystemBackend(disconnectedParent, 'users/user1')
-      expect(disconnectedScoped.connected).toBe(false)
+      expect(disconnectedScoped.status).toBe('disconnected')
     })
 
     it('should reject absolute scopePaths', () => {
@@ -332,15 +329,15 @@ describe('ScopedFilesystemBackend (Unit Tests)', () => {
 
     it('should dynamically reflect parent connection status', () => {
       // Connection status should be read from parent dynamically
-      expect(scoped.connected).toBe(true)
+      expect(scoped.status).toBe('connected')
 
       // Change parent connection status
-      mockParent.connected = false
-      expect(scoped.connected).toBe(false)
+      ;(mockParent as any).status = 'disconnected'
+      expect(scoped.status).toBe('disconnected')
 
       // Change back
-      mockParent.connected = true
-      expect(scoped.connected).toBe(true)
+      ;(mockParent as any).status = 'connected'
+      expect(scoped.status).toBe('connected')
     })
   })
 })

@@ -145,7 +145,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
 
       expect(backend.type).toBe('remote-filesystem')
       expect(backend.rootDir).toBe(TEST_ROOT_DIR)
-      expect(backend.connected).toBe(false)
+      expect(backend.status).toBe('disconnected')
     })
 
     it('should validate required config fields', () => {
@@ -278,7 +278,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
         }
       })
 
-      expect(backend.connected).toBe(false)
+      expect(backend.status).toBe('disconnected')
     })
 
     it('should have rootDir property', () => {
@@ -315,7 +315,7 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
         }
       })
 
-      expect(backend.connected).toBe(false)
+      expect(backend.status).toBe('disconnected')
 
       await backend.exec('echo test')
 

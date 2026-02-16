@@ -4,6 +4,7 @@
  */
 
 import type { Backend } from './backends/index.js'
+import { ConnectionStatus } from './backends/types.js'
 import { getLogger } from './utils/logger.js'
 
 export interface PoolManagerConfig<T extends Backend> {
@@ -129,7 +130,7 @@ export class BackendPoolManager<T extends Backend> {
     // Pooled backend path
     let pooled = this.backends.get(key)
 
-    if (!pooled || !pooled.backend.connected) {
+    if (!pooled || pooled.backend.status !== ConnectionStatus.CONNECTED) {
       // Create new backend
       const mergedConfig = configOverride
         ? { ...this.config.defaultConfig, ...configOverride }

@@ -1,10 +1,13 @@
 // Re-export from backends module
-export { BackendType } from './backends/index.js'
+export { BackendType, ConnectionStatus } from './backends/index.js'
 export type {
   Backend,
   FileBasedBackend,
   ScopedBackend,
-  ScopedFileBasedBackend
+  ScopedFileBasedBackend,
+  StatusChangeCallback,
+  StatusChangeEvent,
+  Unsubscribe
 } from './backends/index.js'
 
 export {
@@ -13,7 +16,7 @@ export {
   validateLocalFilesystemBackendConfig, validateMemoryBackendConfig, validateRemoteFilesystemBackendConfig
 } from './backends/index.js'
 export type {
-  BackendConfig, ExecOptions, LocalBackendConfig, LocalFilesystemBackendConfig, MemoryBackendConfig, ReadOptions, RemoteBackendConfig, RemoteFilesystemBackendConfig, ScopeConfig
+  BackendConfig, ExecOptions, LocalBackendConfig, LocalFilesystemBackendConfig, MemoryBackendConfig, ReadOptions, ReconnectionConfig, RemoteBackendConfig, RemoteFilesystemBackendConfig, ScopeConfig
 } from './backends/index.js'
 
 /**

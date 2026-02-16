@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { BackendPoolManager } from '../../../src/BackendPoolManager.js'
+import { ConnectionStatus } from '../../../src/backends/types.js'
 import type { FileBasedBackend } from '../../../src/types.js'
 
 // Mock backend class for testing
@@ -8,7 +9,8 @@ class MockBackend implements Partial<FileBasedBackend> {
   instanceId: number
   type = 'local-filesystem' as const
   rootDir: string
-  connected = true
+  status = ConnectionStatus.CONNECTED
+  onStatusChange = vi.fn(() => () => {})
   destroy = vi.fn().mockResolvedValue(undefined)
   read = vi.fn().mockResolvedValue('content')
   write = vi.fn().mockResolvedValue(undefined)
