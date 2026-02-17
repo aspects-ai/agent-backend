@@ -8,7 +8,9 @@ Implementations SHOULD use idiomatic patterns for their language (e.g., Python m
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are used as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
-**Backend** -- A client-side object that provides file operations, command execution, and MCP tool access against a workspace (local directory or remote server).
+**Backend** -- A client-side object that provides file operations, command execution, and MCP tool access against a workspace (local directory or remote server). Implementations SHOULD define a base Backend interface that all backend types implement. Operations that only apply to file-based backends (e.g., exec) MAY be separated into a more specific interface.
+
+**Scoped Backend** -- A backend wrapper that restricts operations to a subdirectory of the parent's workspace. Scoped backends delegate operations to their parent after translating paths. Implementations SHOULD treat scoped backends as a distinct type from the backends they wrap, since they have different lifecycle semantics (e.g., destroy does not release resources, status is delegated).
 
 **Workspace** -- The root directory a backend operates within. All paths are relative to this root.
 
@@ -118,11 +120,15 @@ All file-based backends (local, remote, and memory) MUST support the following o
 
 ### Path Resolution
 
+Path handling follows the three-case resolution logic and escape prevention rules defined in [docs/filepaths.md](docs/filepaths.md), which is the source of truth for path behavior. In summary:
+
 - Relative paths MUST be resolved against the workspace root.
 - Absolute paths that match the workspace root MUST be used directly.
 - Absolute paths that do NOT match the workspace root MUST be treated as relative (leading slash stripped).
 - Paths containing `..` that would escape the workspace MUST be rejected with a path escape error.
 - These rules apply at every scope level for scoped backends.
+
+See [docs/filepaths.md](docs/filepaths.md) for detailed examples, backend-specific path module conventions, and scoped workspace behavior.
 
 ### read(path)
 
@@ -224,10 +230,33 @@ When dangerous command blocking is enabled (default):
 
 Implementations SHOULD support isolation modes for sandboxing command execution:
 
-- **auto** -- Detect the best available isolation method.
-- **bwrap** (Linux) -- Namespace isolation via bubblewrap. The workspace is mounted read-write; system paths are mounted read-only. Network access is preserved.
-- **software** -- Heuristic-based command and path validation only.
+- **auto** (default) -- Detect the best available isolation method. SHOULD use bwrap if available on Linux, falling back to software validation.
+- **bwrap** (Linux) -- Namespace isolation via bubblewrap. See [bwrap details](#bwrap-sandbox) below.
+- **software** -- Heuristic-based command and path validation only. Works on all platforms.
 - **none** -- No isolation. Trust mode for controlled environments.
+
+#### bwrap Sandbox
+
+When bwrap isolation is active, commands MUST be executed inside a bubblewrap sandbox with the following configuration:
+
+**Filesystem mounts:**
+- System directories (`/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`) MUST be mounted read-only.
+- The workspace root directory MUST be mounted read-write at a sandbox path (e.g., `/tmp/agentbe-workspace`).
+- `/dev`, `/proc` MUST be provided as isolated mounts.
+- `/tmp` MUST be provided as an isolated tmpfs.
+
+**Namespace isolation:**
+- All namespaces MUST be unshared (`--unshare-all`).
+- Network access MUST be preserved (`--share-net`).
+- The sandbox process MUST be killed if the parent process dies (`--die-with-parent`).
+
+**Working directory:**
+- The working directory inside the sandbox MUST correspond to the workspace root (or scope root for scoped backends), mapped to the sandbox mount path.
+- HOME MUST be set to the sandbox working directory.
+
+**Detection:**
+- When isolation mode is `auto`, implementations SHOULD check for bwrap availability (e.g., `command -v bwrap`) and fall back to `software` if not found.
+- When isolation mode is explicitly `bwrap`, implementations MUST throw an error if bwrap is not available.
 
 ---
 
@@ -399,45 +428,25 @@ Implementations SHOULD use consistent error codes across backends:
 
 ## Command Safety
 
-When dangerous command blocking is enabled, the following patterns MUST be rejected.
+When dangerous command blocking is enabled, commands MUST be checked against known dangerous patterns before execution. The full list of blocked patterns is defined in [docs/security.md](docs/security.md), which is the source of truth for command safety rules.
 
-### Destructive Operations
-- Recursive force deletion from root or home (`rm -rf /`, `rm -rf ~`)
-- Disk overwrite (`dd of=/dev/...`)
-- Filesystem formatting (`mkfs`)
-- Fork bombs
+The blocked patterns fall into these categories:
 
-### Privilege Escalation
-- `sudo`, `su`, `doas`
+- **Destructive operations** -- `rm -rf /`, disk overwrite, filesystem formatting, fork bombs
+- **Privilege escalation** -- `sudo`, `su`, `doas`
+- **Shell injection** -- command separators, chaining, substitution, pipe to shell
+- **Remote code execution** -- download-and-execute, `eval`
+- **Network tampering** -- firewall/network configuration changes
 
-### Shell Injection
-- Command separators (`;`)
-- Command chaining (`&&`, `||`)
-- Command substitution (backticks, `$()`)
-- Pipe to shell (`| sh`, `| bash`)
+Implementations SHOULD also block:
+- **Workspace escape** -- directory change commands, environment variable manipulation, home directory references, parent directory traversal
 
-### Remote Code Execution
-- Download-and-execute (`curl ... | sh`, `wget ... | bash`)
-- `eval`
-
-### Network Tampering
-- Firewall modification (`iptables`)
-- Network configuration changes (`ifconfig`)
-
-### System Modification
-- Broad permission changes (`chmod 777`)
-- Ownership changes (`chown root`)
-
-### Workspace Escape
-- Directory change commands (`cd`, `pushd`, `popd`)
-- Environment variable manipulation (`export PATH=`, `export HOME=`)
-- Home directory references (`~/`, `$HOME`)
-- Parent directory traversal (`../`)
-
-### Exceptions
+### Pre-processing
 
 - Heredoc content MUST be stripped before safety validation to prevent false positives.
 - Implementations MAY define allowed patterns that override specific blocked patterns (e.g., `gcloud rsync` is not the same as the `rsync` binary).
+
+See [docs/security.md](docs/security.md) for the complete list of dangerous patterns, isolation mode details, and security best practices.
 
 ---
 

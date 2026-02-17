@@ -9,11 +9,11 @@ Performance characteristics vary significantly between backend types based on th
 ## LocalFilesystemBackend
 
 ### Latency
-- **File operations:** 1-5ms (direct Node.js fs module)
+- **File operations:** 1-5ms (direct OS filesystem APIs)
 - **Command execution:** 5-50ms (local process spawn)
 
 ### Throughput
-- **File reads:** Limited by disk I/O and Node.js buffer sizes
+- **File reads:** Limited by disk I/O and buffer sizes
 - **Commands:** Limited by CPU and process spawn overhead
 
 ### Optimization Tips
@@ -67,11 +67,11 @@ Performance characteristics vary significantly between backend types based on th
 - **All operations:** < 1ms (in-memory hash map)
 
 ### Throughput
-- **Limited by:** JavaScript object access speed and memory allocation
+- **Limited by:** In-memory hash map access speed and memory allocation
 - **Typical:** 100K+ operations/second
 
 ### Memory Usage
-- All data stored in Node.js heap
+- All data stored in process memory
 - No persistence across restarts
 - Memory grows with stored data size
 
@@ -93,18 +93,18 @@ The `BackendPoolManager` significantly improves performance for stateless reques
 - **Automatic cleanup** - closes idle connections after timeout
 
 ### Configuration
-```typescript
-const pool = new BackendPoolManager({
-  backendClass: RemoteFilesystemBackend,
-  defaultConfig: { /* ... */ },
-  maxIdleTime: 30000,  // Close after 30s idle
-  cleanupInterval: 5000 // Check every 5s
-})
+```text
+pool = BackendPoolManager(
+  backendClass:    RemoteFilesystemBackend,
+  defaultConfig:   { ... },
+  maxIdleTime:     30000,    // Close after 30s idle
+  cleanupInterval: 5000      // Check every 5s
+)
 
 // Each request gets a pooled connection
-await pool.withBackend({ key: userId }, async (backend) => {
-  return await backend.exec('npm test')
-})
+pool.withBackend(key: userId, func(backend):
+    return backend.exec("npm test")
+)
 ```
 
 ### Performance Impact
@@ -193,10 +193,10 @@ Commands (MCP HTTP):
 ## Profiling Tips
 
 ### Measure your workload
-```typescript
-const start = Date.now()
-await backend.exec('npm install')
-console.log(`Took ${Date.now() - start}ms`)
+```text
+start = now()
+backend.exec("npm install")
+print("Took", now() - start, "ms")
 ```
 
 ### Identify bottlenecks
@@ -205,24 +205,22 @@ console.log(`Took ${Date.now() - start}ms`)
 - **Memory growth?** Connection leak or missing cleanup
 
 ### Use connection pooling
-```typescript
+```text
 // Before: New connection per request (~200ms overhead each)
-for (const user of users) {
-  const backend = new RemoteFilesystemBackend(config)
-  await backend.connect()
-  await backend.exec('command')
-  await backend.disconnect()
-}
+for user in users:
+    backend = RemoteFilesystemBackend(config)
+    backend.connect()
+    backend.exec("command")
+    backend.disconnect()
 
 // After: Pooled connections (~1ms overhead each)
-for (const user of users) {
-  await pool.withBackend({ key: user.id }, async (backend) => {
-    await backend.exec('command')
-  })
-}
+for user in users:
+    pool.withBackend(key: user.id, func(backend):
+        backend.exec("command")
+    )
 ```
 
 ### Monitor resource usage
 - SSH connections: `netstat -an | grep :22`
-- Memory: Node.js `process.memoryUsage()`
-- Event loop lag: `perf_hooks.monitorEventLoopDelay()`
+- Memory: Use your runtime's memory profiling tools
+- Event loop / async health: Use your runtime's latency monitoring

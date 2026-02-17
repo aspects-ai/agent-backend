@@ -15,7 +15,7 @@ Agent Backend provides secure, isolated filesystem access and command execution 
 ## Backend Types
 
 ### LocalFilesystemBackend
-- Direct filesystem access using Node.js APIs (fs, child_process)
+- Direct filesystem access using OS-level APIs
 - Optional MCP HTTP server for tool exposure to AI agents
 - Single-machine deployment (client and filesystem on same host)
 - Fast file operations with no network latency
@@ -112,7 +112,7 @@ graph TB
 
         App -.->|uses| LFB
         LFB -.->|creates| MCP_HTTP
-        LFB ==>|"Node.js fs module<br/>(direct)"| FS
+        LFB ==>|"OS filesystem APIs<br/>(direct)"| FS
         MCP_HTTP ==>|"HTTP<br/>localhost:3001"| MCP_Server
         MCP_Server ==>|executes| FS
     end
@@ -148,17 +148,17 @@ sequenceDiagram
 
     Note over App,FS: Direct Backend Operations (no MCP)
     App->>LFB: write('config.json', '{...}')
-    LFB->>FS: Node.js fs.writeFile('/tmp/agentbe-workspace/config.json')
+    LFB->>FS: writeFile('/tmp/agentbe-workspace/config.json')
     FS-->>LFB: Success
     LFB-->>App: Success
 
     App->>LFB: read('config.json')
-    LFB->>FS: Node.js fs.readFile('/tmp/agentbe-workspace/config.json')
+    LFB->>FS: readFile('/tmp/agentbe-workspace/config.json')
     FS-->>LFB: File contents
     LFB-->>App: File contents
 
     App->>LFB: exec('npm install')
-    LFB->>FS: Node.js child_process.spawn('npm install')
+    LFB->>FS: spawn('npm install')
     FS-->>LFB: {stdout, stderr, exitCode}
     LFB-->>App: {stdout, stderr, exitCode}
 
@@ -190,36 +190,30 @@ sequenceDiagram
 agent-backend daemon --rootDir /tmp/agentbe-workspace --local-only
 ```
 
-**Application code:**
-```typescript
-import { LocalFilesystemBackend } from 'agent-backend'
-
-const backend = new LocalFilesystemBackend({
-  rootDir: '/tmp/agentbe-workspace',
-  isolation: 'auto',
+**Application code (pseudocode):**
+```text
+backend = LocalFilesystemBackend(
+  rootDir:          "/tmp/agentbe-workspace",
+  isolation:        "auto",
   preventDangerous: true
-})
+)
 
 // Direct backend operations (no MCP)
-await backend.write('package.json', '{"name": "my-app"}')
-const files = await backend.readdir('src')
-const result = await backend.exec('npm install')
-console.log(result.stdout)
+backend.write("package.json", '{"name": "my-app"}')
+files  = backend.readdir("src")
+result = backend.exec("npm install")    // {stdout, stderr, exitCode}
 
 // OR: Get MCP client for AI agent integration
-const mcp = await backend.getMCPClient()
-const tools = await mcp.listTools()
+mcp   = backend.getMCPClient()
+tools = mcp.listTools()
 // Pass tools to AI agent (e.g., Claude, GPT) or invoke manually:
-const mcpResult = await mcp.callTool({
-  name: 'exec',
-  arguments: { command: 'npm test' }
-})
+mcp.callTool(name: "exec", arguments: {command: "npm test"})
 ```
 
 ### Key Characteristics
 
 - ✅ **Single machine** - Everything runs locally
-- ✅ **Direct file access** - No SSH, uses Node.js fs module
+- ✅ **Direct file access** - No SSH, uses OS filesystem APIs
 - ✅ **MCP for exec** - Commands run through MCP HTTP server
 - ✅ **Fast** - No network latency for file operations
 - ✅ **Simple** - No SSH setup, no remote configuration
@@ -368,45 +362,33 @@ docker run -d \
   agentbe/remote-backend:latest
 ```
 
-**Application code (client):**
-```typescript
-import { RemoteFilesystemBackend } from 'agent-backend'
-
-const backend = new RemoteFilesystemBackend({
-  host: 'build-server.com',
-  sshPort: 2222,
-  mcpPort: 3001,
-  rootDir: '/var/workspace',
-  sshAuth: {
-    type: 'password',
-    credentials: {
-      username: 'agent',
-      password: 'secure-password'
-    }
-  },
-  mcpAuthToken: 'your-secure-token'
-})
+**Application code (pseudocode):**
+```text
+backend = RemoteFilesystemBackend(
+  host:         "build-server.com",
+  sshPort:      2222,
+  mcpPort:      3001,
+  rootDir:      "/var/workspace",
+  sshAuth:      {type: "password", credentials: {username: "agent", password: "secure-password"}},
+  mcpAuthToken: "your-secure-token"
+)
 
 // Connect to remote server
-await backend.connect()
+backend.connect()
 
 // Direct backend operations (via SSH/SFTP)
-await backend.write('deploy.yml', 'version: 2...')
-const files = await backend.readdir('.')
-const result = await backend.exec('docker-compose up -d')
-console.log(result.stdout)
+backend.write("deploy.yml", "version: 2...")
+files  = backend.readdir(".")
+result = backend.exec("docker-compose up -d")    // {stdout, stderr, exitCode}
 
 // OR: Get MCP client for AI agent integration
-const mcp = await backend.getMCPClient()
-const tools = await mcp.listTools()
+mcp   = backend.getMCPClient()
+tools = mcp.listTools()
 // Pass tools to AI agent (e.g., Claude, GPT) or invoke manually:
-const mcpResult = await mcp.callTool({
-  name: 'read',
-  arguments: { path: 'logs/app.log' }
-})
+mcp.callTool(name: "read", arguments: {path: "logs/app.log"})
 
 // Cleanup
-await backend.disconnect()
+backend.disconnect()
 ```
 
 ### Key Characteristics
@@ -470,27 +452,25 @@ graph TB
     style fsLayer fill:#f1f8f4,stroke:#666,stroke-width:2px
 ```
 
-**Example:**
-```typescript
+**Example (pseudocode):**
+```text
 // Base backend
-const backend = new LocalFilesystemBackend({
-  rootDir: '/tmp/agentbe-workspace'
-})
+backend = LocalFilesystemBackend(rootDir: "/tmp/agentbe-workspace")
 
 // Create isolated scopes per user
-const aliceBackend = backend.scope('users/alice')
-const bobBackend = backend.scope('users/bob')
+aliceBackend = backend.scope("users/alice")
+bobBackend   = backend.scope("users/bob")
 
 // Alice can only access /tmp/agentbe-workspace/users/alice
-await aliceBackend.write('private.txt', 'Alice data')
-await aliceBackend.exec('npm install')  // Runs in /tmp/agentbe-workspace/users/alice
+aliceBackend.write("private.txt", "Alice data")
+aliceBackend.exec("npm install")    // Runs in /tmp/agentbe-workspace/users/alice
 
 // Bob can only access /tmp/agentbe-workspace/users/bob
-await bobBackend.write('private.txt', 'Bob data')
-await bobBackend.exec('npm install')  // Runs in /tmp/agentbe-workspace/users/bob
+bobBackend.write("private.txt", "Bob data")
+bobBackend.exec("npm install")      // Runs in /tmp/agentbe-workspace/users/bob
 
 // Path escape attempts are blocked
-await aliceBackend.write('../bob/steal.txt', 'data')  // Throws PathEscapeError
+aliceBackend.write("../bob/steal.txt", "data")    // ERROR: PathEscapeError
 ```
 
 ---

@@ -105,17 +105,11 @@ flowchart LR
 - [Quick Start](#quick-start)
 - [Usage](#usage)
   - [Scoped Access](#scoped-access)
-  - [MCP Integration](#mcp-integration)
   - [Security & Isolation](#security--isolation)
   - [Resource Cleanup](#resource-cleanup)
 - [Integration with Agent SDKs](#integration-with-agent-sdks)
-  - [Vercel AI SDK](#vercel-ai-sdk)
-- [Backend Connection Pooling](#backend-connection-pooling)
-- [Server Deployment](#server-deployment)
-- [Advanced Features](#advanced-features)
 - [Examples](#examples)
-- [Error Handling](#error-handling)
-- [TypeScript Support](#typescript-support)
+- [Deploying the Agent Backend Daemon](#deploying-the-agent-backend-daemon)
 - [Documentation](#documentation)
 - [Development](#development)
 - [License](#license)
@@ -350,288 +344,33 @@ backend.trackCloseable(myCustomResource)  // will be closed on destroy()
 
 ## Integration with Agent SDKs
 
-### Vercel AI SDK
+Agent Backend integrates with leading AI agent frameworks via adapters that expose backend tools in the format each SDK expects.
 
-Agent Backend provides seamless integration with Vercel's AI SDK through the `VercelAIAdapter`. The adapter automatically creates the appropriate MCP transport based on your backend type:
-
-- **LocalFilesystemBackend** → Stdio transport (spawns subprocess)
-- **RemoteFilesystemBackend** → HTTP transport (connects to remote MCP server)
-- **MemoryBackend** → Stdio transport (spawns subprocess)
-
-```typescript
-import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
-import { LocalFilesystemBackend, VercelAIAdapter } from 'agent-backend'
-import { generateText } from 'ai'
-import { openai } from '@ai-sdk/openai'
-
-// Create backend and adapter
-const backend = new LocalFilesystemBackend({ rootDir: '/tmp/agentbe-workspace' })
-const adapter = new VercelAIAdapter(backend)
-
-// Get transport and create AI SDK MCP client
-const mcp = await adapter.getMCPClient()
-
-// Tools are already in AI SDK format - no manual transformation needed
-const result = await generateText({
-  model: openai('gpt-5'),
-  tools: await mcp.tools(),
-  prompt: 'List all TypeScript files in src/'
-})
-
-// destroy() closes MCP clients, transports, and cleans up resources
-await backend.destroy()
-```
-
----
-
-## Backend Connection Pooling
-
-For stateless web servers, agent backend offers built-in backend pooling for managing connections with multiple hosts. This is particularly useful for distributed backend contexts (e.g. one host per user or organization).
-
-```typescript
-import { BackendPoolManager } from 'agent-backend'
-
-const pool = new BackendPoolManager({
-  backendClass: RemoteFilesystemBackend,
-  defaultConfig: {
-    rootDir: '/var/workspace',
-    host: 'build-server.example.com',
-    sshAuth: { type: 'password', credentials: { username: 'agent', password: 'pass' } }
-  }
-})
-
-// Callback pattern (automatic cleanup)
-app.post('/api/build', async (req, res) => {
-  const output = await pool.withBackend(
-    { userId: req.user.id },
-    async (backend) => {
-      const projectBackend = backend.scope(`projects/${req.body.projectId}`)
-      return await projectBackend.exec('npm run build')
-    }
-  )
-  res.json({ output })
-})
-
-// Graceful shutdown - closes all backends, their MCP clients, and connections
-process.on('SIGTERM', () => pool.destroyAll())
-```
-
----
-
-## Deploying the Agent Backend Daemon
-
-### Docker (Recommended)
-
-Start agentbe-daemon in Docker with a single command:
-
-```bash
-# Install agent-backend CLI
-npm install -g agent-backend
-
-# Start Docker container with agentbe-daemon
-agent-backend start-docker
-
-# Stop the container
-agent-backend stop-docker
-```
-
-This starts a container with:
-- **SSH daemon** on port 2222 (for direct file operations)
-- **MCP server** on port 3001 (for tool execution)
-- **Default credentials**: `root:agents`
-
-Connect from your application:
-
-```typescript
-import { RemoteFilesystemBackend } from 'agent-backend'
-
-const backend = new RemoteFilesystemBackend({
-  rootDir: '/var/workspace',
-  host: 'localhost',
-  sshPort: 2222,
-  mcpPort: 3001,
-  sshAuth: {
-    type: 'password',
-    credentials: { username: 'root', password: 'agents' }
-  }
-})
-
-await backend.connect()
-await backend.exec('npm install')
-```
-
-### Local-Only Mode
-
-For local development without Docker (works on macOS/Windows):
-
-```bash
-# Start agentbe-daemon in local-only mode (stdio MCP, no SSH)
-agent-backend daemon --rootDir /tmp/agentbe-workspace --local-only
-
-# With static scoping (all operations restricted to users/user1/)
-agent-backend daemon --rootDir /tmp/agentbe-workspace --scopePath users/user1 --local-only
-```
-
-### Daemon Scoping
-
-The daemon supports scoping to restrict operations to a subdirectory:
-
-- **Static scoping** (`--scopePath`): Set at daemon startup, used for stdio mode or single-tenant deployments
-- **Dynamic scoping** (`X-Scope-Path` header): Per-request scoping for HTTP mode, enables multi-tenant deployments
-
-See [docs/agentbe-daemon.md](./docs/agentbe-daemon.md) for complete daemon configuration options.
-
-### Cloud Deployment
-
-See [typescript/deploy/README.md](./typescript/deploy/README.md) for cloud VM deployment options.
-
----
-
-## Advanced Features
-
-### Environment Variables
-
-```typescript
-const scopedBackend = backend.scope('projects/my-app', {
-  env: {
-    NODE_ENV: 'production',
-    API_KEY: 'secret',
-    DATABASE_URL: 'postgres://...'
-  }
-})
-
-await scopedBackend.exec('npm run build')  // uses custom env
-```
-
-### Operations Logging
-
-```typescript
-import { ConsoleOperationsLogger } from 'agent-backend'
-
-const scopedBackend = backend.scope('project', {
-  operationsLogger: new ConsoleOperationsLogger()
-})
-
-await scopedBackend.exec('npm install')
-// Logs: [AgentBackend] exec: npm install
-```
-
-### Binary Data
-
-```typescript
-const imageData = await backend.read('logo.png', { encoding: 'buffer' })
-const tarball = await backend.exec('tar -czf - .', { encoding: 'buffer' })
-```
-
-### Timeouts
-
-```typescript
-const backend = new RemoteFilesystemBackend({
-  rootDir: '/tmp/agentbe-workspace',
-  host: 'server.com',
-  sshAuth: { ... },
-  operationTimeoutMs: 300000,  // 5 minutes
-  maxOutputLength: 10 * 1024 * 1024  // 10MB
-})
-```
+- **[Vercel AI SDK](docs/ai-sdk.md)** -- `VercelAIAdapter` wraps any backend and provides AI SDK-compatible MCP tools
 
 ---
 
 ## Examples
 
-### Code Execution Sandbox
-
-```typescript
-const sandbox = new LocalFilesystemBackend({
-  rootDir: '/tmp/agentbe-workspace',
-  isolation: 'auto'
-})
-
-const userCodeBackend = sandbox.scope(`users/${userId}`)
-await userCodeBackend.write('script.js', untrustedCode)
-const result = await userCodeBackend.exec('node script.js')
-```
-
-### Multi-tenant SaaS
-
-```typescript
-// Separate backend per organization
-const org1Backend = new RemoteFilesystemBackend({
-  rootDir: '/var/saas/org1',
-  host: 'org1-server.example.com',
-  sshAuth: { ... }
-})
-
-const org2Backend = new RemoteFilesystemBackend({
-  rootDir: '/var/saas/org2',
-  host: 'org2-server.example.com',
-  sshAuth: { ... }
-})
-
-// Scoped backends per user within each org
-const org1User1 = org1Backend.scope('users/user1')
-const org1User2 = org1Backend.scope('users/user2')
-
-const org2User1 = org2Backend.scope('users/user1')
-const org2User2 = org2Backend.scope('users/user2')
-```
-
-### Agent State Management
-
-```typescript
-const state = new MemoryBackend()
-
-await state.write('agents/agent1/current-task', 'building')
-await state.write('agents/agent1/progress', '50%')
-
-const allAgents = await state.list('agents/')
-```
+- **[NextJS Demo](examples/NextJS/README.md)** -- Full-featured web app with AI chat, file management, and code editing
+- **[TSBasic Demo](examples/TSBasic/README.md)** -- Minimal CLI chat with MCP tools in a terminal
 
 ---
 
-## Error Handling
+## Deploying the Agent Backend Daemon
 
-```typescript
-import { BackendError, DangerousOperationError } from 'agent-backend'
+For remote execution, the agentbe-daemon runs on a remote host and provides MCP and SSH access. It supports local-only mode (stdio, for development), full daemon mode (HTTP + SSH, for production), and Docker deployment.
 
-try {
-  await backend.exec('rm -rf /')
-} catch (error) {
-  if (error instanceof DangerousOperationError) {
-    console.log('Blocked:', error.operation)
-  } else if (error instanceof BackendError) {
-    console.log('Error:', error.message)
-  }
-}
-```
+See [docs/agentbe-daemon.md](./docs/agentbe-daemon.md) for setup, configuration, scoping, and deployment options.
 
 ---
 
-## TypeScript Support
-
-Full type definitions included:
-
-```typescript
-import type {
-  LocalFilesystemBackend,
-  RemoteFilesystemBackend,
-  MemoryBackend,
-  ScopedBackend
-} from 'agent-backend'
-
-const backend: LocalFilesystemBackend = new LocalFilesystemBackend({
-  rootDir: '/tmp/agentbe-workspace'
-})
-
-const scopedBackend: ScopedBackend<LocalFilesystemBackend> = backend.scope('project')
-```
-
----
-
-## Documentation
+## Additional Documentation
 
 - [Architecture](docs/architecture.md)
 - [Agent Backend Daemon](docs/agentbe-daemon.md)
+- [AI SDK Integration](docs/ai-sdk.md)
+- [Connection Pooling](docs/connection-pooling.md)
 - [Security & Isolation](docs/security.md)
 - [Performance](docs/performance.md)
 
@@ -656,8 +395,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development setup, workflows
 
 ## License
 
-MIT - see [LICENSE](LICENSE) file for details.
-
----
-
-**Agent Backend**: The right backend for every agent task.
+Apache 2.0 - see [LICENSE](LICENSE) file for details.

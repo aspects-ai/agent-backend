@@ -1,37 +1,32 @@
-# Agent Backend - Python Bindings
+# Python Development
 
-Python bindings for the Agent Backend library.
+Python-specific development guide for Agent Backend.
 
-## Status
+> Python support is under active development. The commands below work when the `python/` directory contains a valid `pyproject.toml`.
 
-🚧 **Work in Progress** - This package is currently a stub for testing monorepo tooling.
+## Commands
 
-## Installation
+| Task        | Command                    |
+|-------------|----------------------------|
+| Build       | `make build-python`        |
+| Test        | `make test-python`         |
+| Lint        | `make lint-python`         |
+| Typecheck   | `make typecheck-python`    |
+
+### Details
+
+- **Build** uses `python -m build` to produce distributable packages.
+- **Test** runs `pytest` from the `python/` directory.
+- **Lint** runs `ruff check .` from the `python/` directory.
+- **Typecheck** runs `mypy .` from the `python/` directory.
+
+### Install
+
+To install the Python package in development mode with dev dependencies:
 
 ```bash
-# Development installation
+cd python
 pip install -e .[dev]
 ```
 
-## Development
-
-```bash
-# Run tests
-pytest
-
-# Type checking
-mypy .
-
-# Linting
-ruff check .
-```
-
-## Future Plans
-
-This package will provide Python bindings to the TypeScript agent-backend functionality, enabling:
-- Direct Python API for backends (Local, Remote, Memory)
-- Native Python MCP integration
-- Async/await support
-- Type hints with mypy
-
-Stay tuned!
+Or use `make install` from the monorepo root, which handles both TypeScript and Python dependencies.

@@ -26,7 +26,7 @@ Use the feature request template. Explain the use case, the expected benefit, an
 - Node.js 18+
 - pnpm
 - Git
-- Docker (optional, for remote backend testing)
+- Docker (recommended, for remote backend testing)
 
 ### Initial Setup
 
@@ -43,7 +43,7 @@ Use the feature request template. Explain the use case, the expected benefit, an
    make install
    ```
 
-   This installs pnpm packages, Python packages (if available), and [mprocs](https://github.com/pvolok/mprocs).
+   This installs required packages and [mprocs](https://github.com/pvolok/mprocs).
 
 3. Start the dev environment:
 
@@ -51,13 +51,13 @@ Use the feature request template. Explain the use case, the expected benefit, an
    make dev
    ```
 
-   This launches the Docker-based remote daemon and TypeScript watch via the mprocs TUI. If Docker is not installed, it falls back to local mode automatically.
+   This launches the Docker-based agent-backend daemon via the mprocs TUI. If Docker is not installed, the daemon will be run in local mode automatically.
 
 ### Development Mode
 
 | Command          | Description                                           |
 |------------------|-------------------------------------------------------|
-| `make dev`       | Docker daemon + TypeScript watch (default)            |
+| `make dev`       | Docker daemon (default)            |
 | `make dev-local` | Local daemon only, no Docker                          |
 
 Both commands launch [mprocs](https://github.com/pvolok/mprocs), a terminal UI for managing multiple processes.
@@ -89,8 +89,16 @@ Language-specific commands use the pattern `make <command>-<language>`, for exam
 
 ### Language-Specific Docs
 
-- [TypeScript](./docs/typescript.md) -- package info, testing, code style, workflows, troubleshooting
-- [Python](./docs/python.md) -- build, test, lint commands
+- [TypeScript](./typescript/README.md) -- package info, testing, code style, workflows, troubleshooting
+- [Python](./python/README.md) -- build, test, lint commands
+
+## Spec-First Development
+
+[SPEC.md](SPEC.md) is the source of truth for all client library behavior. A developer should be able to reimplement a client library in any language by following the spec alone.
+
+**All changes to code that impacts client library functionality must start with an update to SPEC.md.** Update the spec first, then update the implementation to match. The only exceptions are small bug fixes or negligible tweaks that don't affect the documented API or behavioral contract.
+
+This applies to new features, behavioral changes, API modifications, error handling changes, and anything else a consumer of the library would observe. If it changes what the library does, it goes in the spec.
 
 ## Commit Messages
 
@@ -119,10 +127,10 @@ docs: update README with new examples
 Releases are handled by maintainers via:
 
 ```bash
-./manage.sh publish
+make publish
 ```
 
-This bumps the version (patch/minor/major), builds the package, publishes to npm, commits the version change, creates a git tag, and pushes to GitHub.
+This bumps the version (patch/minor/major), builds the packages, publishes to relevant registries, commits the version change, creates a git tag, and pushes to GitHub.
 
 ## License
 

