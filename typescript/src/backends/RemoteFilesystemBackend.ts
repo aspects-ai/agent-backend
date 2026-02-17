@@ -4,21 +4,21 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { Stats } from 'fs'
 import { clearTimeout, setTimeout } from 'node:timers'
 import * as path from 'path'
-import type { ConnectConfig, SFTPWrapper } from 'ssh2'
-import { SSH2Client, type SSH2ClientType } from '../utils/ssh2.js'
+import type { ClientChannel, ConnectConfig, SFTPWrapper } from 'ssh2'
 import { ERROR_CODES } from '../constants.js'
 import { createBackendMCPTransport } from '../mcp/transport.js'
 import { isCommandSafe, isDangerous } from '../safety.js'
 import { BackendError, DangerousOperationError } from '../types.js'
 import { getLogger } from '../utils/logger.js'
+import { SSH2Client, type SSH2ClientType } from '../utils/ssh2.js'
 import type { ExecOptions, ReadOptions, ReconnectionConfig, RemoteFilesystemBackendConfig, ScopeConfig } from './config.js'
 import { validateRemoteFilesystemBackendConfig } from './config.js'
 import { ConnectionStatusManager } from './ConnectionStatusManager.js'
 import { validateWithinBoundary } from './pathValidation.js'
 import { ScopedFilesystemBackend } from './ScopedFilesystemBackend.js'
+import { WebSocketSSHTransport } from './transports/WebSocketSSHTransport.js'
 import type { Backend, FileBasedBackend, ScopedBackend, StatusChangeCallback, Unsubscribe } from './types.js'
 import { BackendType, ConnectionStatus } from './types.js'
-import { WebSocketSSHTransport } from './transports/WebSocketSSHTransport.js'
 
 /** Transport type for SSH operations */
 type TransportType = 'ssh-ws' | 'ssh'
@@ -375,10 +375,10 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
           originalCommand
         )
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof BackendError) throw err
       throw new BackendError(
-        `SSH command failed: ${err.message}`,
+        `SSH command failed: ${err instanceof Error ? err.message : String(err)}`,
         ERROR_CODES.EXEC_FAILED,
         originalCommand
       )
@@ -429,7 +429,7 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
         }
       }, this.operationTimeoutMs)
 
-      this.sshClient.exec(fullCommand, (err: Error | undefined, stream: import('ssh2').ClientChannel) => {
+      this.sshClient.exec(fullCommand, (err: Error | undefined, stream: ClientChannel) => {
         if (err) {
           if (completed) return
           complete()
@@ -1154,11 +1154,11 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
       this.reconnectAttempts = 0
       this.connectionPromise = null
       this.statusManager.setStatus(ConnectionStatus.CONNECTED)
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.connectionPromise = null
       this.wsTransport = null
       const connectError = new BackendError(
-        `SSH-WS connection failed: ${err.message}`,
+        `SSH-WS connection failed: ${err instanceof Error ? err.message : String(err)}`,
         ERROR_CODES.EXEC_FAILED
       )
       this.statusManager.setStatus(ConnectionStatus.DISCONNECTED, connectError)

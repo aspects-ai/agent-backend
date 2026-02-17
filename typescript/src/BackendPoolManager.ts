@@ -3,16 +3,16 @@
  * Manages pooled backend connections with automatic cleanup and lifecycle management
  */
 
-import type { Backend } from './backends/index.js'
+import type { Backend, BackendConfig } from './backends/index.js'
 import { ConnectionStatus } from './backends/types.js'
 import { getLogger } from './utils/logger.js'
 
 export interface PoolManagerConfig<T extends Backend> {
   /** Backend class to instantiate */
-  backendClass: new (config: any) => T
+  backendClass: new (config: BackendConfig) => T
 
   /** Default configuration for backends */
-  defaultConfig: any
+  defaultConfig: BackendConfig
 
   /** Idle timeout in milliseconds (default: 5 minutes) */
   idleTimeoutMs?: number
@@ -106,7 +106,7 @@ export class BackendPoolManager<T extends Backend> {
    * }
    * ```
    */
-  async acquireBackend(options?: { key?: string; config?: any }): Promise<{ backend: T; release: () => void }> {
+  async acquireBackend(options?: { key?: string; config?: BackendConfig }): Promise<{ backend: T; release: () => void }> {
     const key = options?.key
     const configOverride = options?.config
 
@@ -178,7 +178,7 @@ export class BackendPoolManager<T extends Backend> {
    * ```
    */
   async withBackend<R>(
-    options: { key?: string; config?: any },
+    options: { key?: string; config?: BackendConfig },
     fn: (backend: T) => Promise<R>
   ): Promise<R> {
     const { backend, release } = await this.acquireBackend(options)

@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-local nextjs tsbasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
+.PHONY: help install dev dev-local nextjs tsbasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -142,7 +142,7 @@ build-python: ## Build Python package
 
 test-typescript: ## Run TypeScript tests
 	@echo "Running TypeScript tests..."
-	pnpm -r test
+	pnpm -r test:run
 
 test-python: ## Run Python tests
 	@echo "Running Python tests..."
@@ -170,7 +170,7 @@ typecheck-python: ## Type check Python package
 
 lint-typescript: ## Lint TypeScript packages
 	@echo "Linting TypeScript packages..."
-	pnpm -r lint
+	pnpm -r --filter '!nextjs-agent-backend-demo' lint
 
 lint-python: ## Lint Python package
 	@echo "Linting Python package..."
@@ -181,6 +181,9 @@ lint-python: ## Lint Python package
 	fi
 
 ##@ Publishing & CI
+
+publish: ## Bump versions, create release branch & PR (CI publishes on merge)
+	./manage.sh publish
 
 publish-typescript: ## Publish TypeScript package to npm
 	@echo "Publishing TypeScript package..."

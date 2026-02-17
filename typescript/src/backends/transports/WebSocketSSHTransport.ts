@@ -10,11 +10,11 @@
  * - Unified authentication (same token as MCP)
  */
 
-import WebSocket from 'ws'
-import type { ClientChannel, SFTPWrapper } from 'ssh2'
-import { SSH2Client as SSHClient, type SSH2ClientType } from '../../utils/ssh2.js'
-import { Duplex } from 'stream'
 import { EventEmitter } from 'events'
+import type { ClientChannel, SFTPWrapper } from 'ssh2'
+import { Duplex } from 'stream'
+import WebSocket from 'ws'
+import { SSH2Client as SSHClient, type SSH2ClientType } from '../../utils/ssh2.js'
 
 export interface WebSocketSSHTransportConfig {
   /** Remote host */
@@ -150,7 +150,7 @@ export class WebSocketSSHTransport extends EventEmitter {
       // Connect SSH client over WebSocket stream
       // Auth is via WebSocket token, so we use dummy credentials
       this.sshClient.connect({
-        sock: stream as any,
+        sock: stream,
         username: 'agent',
         password: 'agent',
         readyTimeout: this.config.timeout,

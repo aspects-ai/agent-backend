@@ -41,7 +41,7 @@ import { registerExecTool, registerFilesystemTools } from './tools.js'
 export class AgentBackendMCPServer {
   public server: McpServer
   private backend: Backend
-  private tools: Map<string, any> = new Map()
+  private tools: Map<string, object> = new Map()
 
   constructor(backend: Backend) {
     this.backend = backend
@@ -56,28 +56,29 @@ export class AgentBackendMCPServer {
 
     // Wrap the server to track tool registrations
     // This enables getTools() method for compatibility with clients that need tool metadata
-    const originalRegisterTool = baseServer.registerTool.bind(baseServer)
-    baseServer.registerTool = ((name: string, config: any, handler: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const originalRegisterTool: any = baseServer.registerTool.bind(baseServer)
+    baseServer.registerTool = ((name: string, config: Record<string, object>, cb: Function) => {
       // Ensure inputSchema has type field for JSON Schema compatibility
       const inputSchema = config.inputSchema
-        ? { type: 'object', ...config.inputSchema }
+        ? { type: 'object' as const, ...config.inputSchema }
         : undefined
 
       this.tools.set(name, {
         name,
         description: config.description,
         inputSchema,
-        handler
+        handler: cb
       })
-      return originalRegisterTool(name, config, handler)
-    })
+      return originalRegisterTool(name, config, cb)
+    }) as McpServer['registerTool']
 
     // Add getTools method and preserve name/version
     this.server = Object.assign(baseServer, {
       name: serverName,
       version: '1.0.0',
       getTools: () => Object.fromEntries(this.tools)
-    }) as any
+    })
 
     // Always register filesystem tools (read, write, directory operations, etc.)
     registerFilesystemTools(this.server, async () => this.backend)

@@ -5,21 +5,22 @@
  * Provides file operations (read, write, list, stat, etc.) over SFTP.
  */
 
-import type { SFTPWrapper, FileEntry, Attributes } from 'ssh2'
+import type { Stats } from 'fs'
+import { constants as fsConstants } from 'fs'
 import {
-  readdir,
-  stat,
+  open as fsOpen,
   lstat,
   mkdir,
-  rmdir,
-  unlink,
-  rename,
+  readdir,
   realpath,
-  open as fsOpen,
-  FileHandle
+  rename,
+  rmdir,
+  stat,
+  unlink,
+  type FileHandle
 } from 'fs/promises'
-import { constants as fsConstants } from 'fs'
-import { join, resolve, dirname } from 'path'
+import { dirname, join, resolve } from 'path'
+import type { Attributes, FileEntry, SFTPWrapper } from 'ssh2'
 
 // SFTP status codes
 const SFTP_STATUS = {
@@ -134,7 +135,7 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
   /**
    * Convert fs.Stats to SFTP Attributes
    */
-  function statsToAttrs(stats: import('fs').Stats): Attributes {
+  function statsToAttrs(stats: Stats): Attributes {
     return {
       mode: stats.mode,
       uid: stats.uid,
@@ -196,13 +197,17 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       })
 
       sftp.handle(reqid, handleBuf)
-    } catch (err: any) {
-      const status = err.code === 'ENOENT'
-        ? SFTP_STATUS.NO_SUCH_FILE
-        : err.code === 'EACCES'
-          ? SFTP_STATUS.PERMISSION_DENIED
-          : SFTP_STATUS.FAILURE
-      sftp.status(reqid, status, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const status = err.message.includes('ENOENT')
+          ? SFTP_STATUS.NO_SUCH_FILE
+          : err.message.includes('EACCES')
+            ? SFTP_STATUS.PERMISSION_DENIED
+            : SFTP_STATUS.FAILURE
+        sftp.status(reqid, status, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -222,8 +227,12 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       } else {
         sftp.data(reqid, buffer.subarray(0, bytesRead))
       }
-    } catch (err: any) {
-      sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -237,8 +246,12 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
 
       await handleData.handle.write(data, 0, data.length, offset)
       sftp.status(reqid, SFTP_STATUS.OK)
-    } catch (err: any) {
-      sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -250,8 +263,12 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       }
       freeHandle(handleBuf)
       sftp.status(reqid, SFTP_STATUS.OK)
-    } catch (err: any) {
-      sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -265,8 +282,12 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
 
       const stats = await handleData.handle.stat()
       sftp.attrs(reqid, statsToAttrs(stats))
-    } catch (err: any) {
-      sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -287,11 +308,15 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       })
 
       sftp.handle(reqid, handleBuf)
-    } catch (err: any) {
-      const status = err.code === 'ENOENT'
-        ? SFTP_STATUS.NO_SUCH_FILE
-        : SFTP_STATUS.FAILURE
-      sftp.status(reqid, status, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const status = err.message.includes('ENOENT')
+          ? SFTP_STATUS.NO_SUCH_FILE
+          : SFTP_STATUS.FAILURE
+        sftp.status(reqid, status, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -336,8 +361,12 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       )
 
       sftp.name(reqid, names)
-    } catch (err: any) {
-      sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -350,11 +379,15 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       const resolved = resolvePath(path)
       const stats = await stat(resolved)
       sftp.attrs(reqid, statsToAttrs(stats))
-    } catch (err: any) {
-      const status = err.code === 'ENOENT'
-        ? SFTP_STATUS.NO_SUCH_FILE
-        : SFTP_STATUS.FAILURE
-      sftp.status(reqid, status, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const status = err.message.includes('ENOENT')
+          ? SFTP_STATUS.NO_SUCH_FILE
+          : SFTP_STATUS.FAILURE
+        sftp.status(reqid, status, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -363,11 +396,15 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       const resolved = resolvePath(path)
       const stats = await lstat(resolved)
       sftp.attrs(reqid, statsToAttrs(stats))
-    } catch (err: any) {
-      const status = err.code === 'ENOENT'
-        ? SFTP_STATUS.NO_SUCH_FILE
-        : SFTP_STATUS.FAILURE
-      sftp.status(reqid, status, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const status = err.message.includes('ENOENT')
+          ? SFTP_STATUS.NO_SUCH_FILE
+          : SFTP_STATUS.FAILURE
+        sftp.status(reqid, status, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -394,8 +431,12 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
         longname: clientPath || '/',
         attrs: {} as Attributes
       }])
-    } catch (err: any) {
-      sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -404,11 +445,15 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       const resolved = resolvePath(path)
       await mkdir(resolved, { mode: attrs.mode ?? 0o755 })
       sftp.status(reqid, SFTP_STATUS.OK)
-    } catch (err: any) {
-      const status = err.code === 'EEXIST'
-        ? SFTP_STATUS.FAILURE
-        : SFTP_STATUS.FAILURE
-      sftp.status(reqid, status, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const status = err.message.includes('EEXIST')
+          ? SFTP_STATUS.FAILURE
+          : SFTP_STATUS.FAILURE
+        sftp.status(reqid, status, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -417,11 +462,15 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       const resolved = resolvePath(path)
       await rmdir(resolved)
       sftp.status(reqid, SFTP_STATUS.OK)
-    } catch (err: any) {
-      const status = err.code === 'ENOENT'
-        ? SFTP_STATUS.NO_SUCH_FILE
-        : SFTP_STATUS.FAILURE
-      sftp.status(reqid, status, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const status = err.message.includes('ENOENT')
+          ? SFTP_STATUS.NO_SUCH_FILE
+          : SFTP_STATUS.FAILURE
+        sftp.status(reqid, status, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -430,11 +479,15 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       const resolved = resolvePath(path)
       await unlink(resolved)
       sftp.status(reqid, SFTP_STATUS.OK)
-    } catch (err: any) {
-      const status = err.code === 'ENOENT'
-        ? SFTP_STATUS.NO_SUCH_FILE
-        : SFTP_STATUS.FAILURE
-      sftp.status(reqid, status, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const status = err.message.includes('ENOENT')
+          ? SFTP_STATUS.NO_SUCH_FILE
+          : SFTP_STATUS.FAILURE
+        sftp.status(reqid, status, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -448,11 +501,15 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
 
       await rename(resolvedOld, resolvedNew)
       sftp.status(reqid, SFTP_STATUS.OK)
-    } catch (err: any) {
-      const status = err.code === 'ENOENT'
-        ? SFTP_STATUS.NO_SUCH_FILE
-        : SFTP_STATUS.FAILURE
-      sftp.status(reqid, status, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const status = err.message.includes('ENOENT')
+          ? SFTP_STATUS.NO_SUCH_FILE
+          : SFTP_STATUS.FAILURE
+        sftp.status(reqid, status, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -490,8 +547,12 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       }
 
       sftp.status(reqid, SFTP_STATUS.OK)
-    } catch (err: any) {
-      sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 
@@ -518,8 +579,12 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
       }
 
       sftp.status(reqid, SFTP_STATUS.OK)
-    } catch (err: any) {
-      sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, err.message)
+      } else {
+        sftp.status(reqid, SFTP_STATUS.FAILURE, 'Unknown error')
+      }
     }
   })
 }
@@ -527,7 +592,7 @@ export function createSFTPHandler(sftp: SFTPWrapper, rootDir: string): void {
 /**
  * Format a long name for directory listing (ls -l style)
  */
-function formatLongname(name: string, stats: import('fs').Stats): string {
+function formatLongname(name: string, stats: Stats): string {
   const typeChar = stats.isDirectory() ? 'd' : stats.isSymbolicLink() ? 'l' : '-'
   const perms = formatPermissions(stats.mode)
   const nlink = stats.nlink.toString().padStart(3)

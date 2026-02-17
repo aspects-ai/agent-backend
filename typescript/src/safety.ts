@@ -25,8 +25,8 @@ const DEFAULT_ALLOWED_PATTERNS: RegExp[] = [
  */
 const DANGEROUS_PATTERNS = [
   // System-wide destructive rm operations
-  /\brm\b.*-rf?\b.*[\/~\*]/,  // rm with -r or -rf flag and dangerous paths
-  /\brm\b.*[\/~\*].*-rf?\b/,  // rm with dangerous paths then -r or -rf
+  /\brm\b.*-rf?\b.*[/~*]/,  // rm with -r or -rf flag and dangerous paths
+  /\brm\b.*[/~*].*-rf?\b/,  // rm with dangerous paths then -r or -rf
 
   // Disk wiping with dd
   /\bdd\b.*\bof=\/dev\//,
