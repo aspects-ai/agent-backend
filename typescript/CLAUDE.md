@@ -128,6 +128,7 @@ tests/unit/                     # Unit tests (Vitest)
 2. **Scoping for isolation** - Multi-tenancy via `.scope()`
 3. **Connection pooling** - `BackendPoolManager` for stateless servers
 4. **MCP integration** - `.getMCPClient()` for protocol support
+5. **Resource lifecycle** - `destroy()` auto-closes tracked MCP clients/transports; `trackCloseable()` registers external resources
 
 ## Usage Examples
 
@@ -270,7 +271,8 @@ await mcp.callTool({
   arguments: { command: 'npm install' }
 })
 
-await mcp.close()
+// destroy() auto-closes MCP clients, transports, and backend resources
+await backend.destroy()
 ```
 
 ### Scoped MCP
@@ -286,6 +288,7 @@ const mcp = await backend.getMCPClient('users/user123/projects/my-app')
 3. **Path escapes** - Absolute paths are treated as relative to scope, `..` blocked if escapes
 4. **BackendType enum** - Values are `'local-filesystem'`, `'remote-filesystem'`, `'memory'` (not `'local'`, `'remote'`)
 5. **MemoryBackend.exec()** - Throws NotImplementedError, not supported
+6. **Scoped trackCloseable** - Scoped backends delegate `trackCloseable()` to their parent, so resources are closed when the parent is destroyed
 
 ## Files Safe to Delete
 

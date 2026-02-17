@@ -86,7 +86,6 @@ async function main() {
     await runChat({ model: MODEL, tools })
   } finally {
     console.log('\nShutting down...')
-    await mcpClient.close()
     await backend.destroy()
   }
 }

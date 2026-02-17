@@ -45,12 +45,19 @@ export class MemoryBackend implements FileBasedBackend {
   /** Track active scoped backends for reference counting */
   private readonly _activeScopes = new Set<ScopedMemoryBackend>()
 
+  /** Track closeable resources (MCP clients/transports) for cleanup on destroy */
+  private readonly _closeables = new Set<{ close(): Promise<void> }>()
+
   get status(): ConnectionStatus {
     return this.statusManager.status
   }
 
   onStatusChange(cb: StatusChangeCallback): Unsubscribe {
     return this.statusManager.onStatusChange(cb)
+  }
+
+  trackCloseable(closeable: { close(): Promise<void> }): void {
+    this._closeables.add(closeable)
   }
 
   constructor(config?: MemoryBackendConfig) {
@@ -381,7 +388,9 @@ export class MemoryBackend implements FileBasedBackend {
    * @returns StdioClientTransport configured for this backend
    */
   async getMCPTransport(scopePath?: string): Promise<Transport> {
-    return createBackendMCPTransport(this, scopePath)
+    const transport = await createBackendMCPTransport(this, scopePath)
+    this._closeables.add(transport)
+    return transport
   }
 
   /**
@@ -417,6 +426,7 @@ export class MemoryBackend implements FileBasedBackend {
     )
 
     await client.connect(transport)
+    this._closeables.add(client)
     return client
   }
 
@@ -424,6 +434,14 @@ export class MemoryBackend implements FileBasedBackend {
    * Cleanup - clear all data
    */
   async destroy(): Promise<void> {
+    // Close all tracked closeables (MCP clients/transports) first
+    for (const closeable of this._closeables) {
+      try { await closeable.close() } catch {
+        // Ignore close errors during destroy
+      }
+    }
+    this._closeables.clear()
+
     // Clear active scopes - they become orphaned but that's expected
     // when the parent is explicitly destroyed
     this._activeScopes.clear()

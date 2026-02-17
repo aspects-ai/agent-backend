@@ -22,7 +22,7 @@
  * })
  *
  * // Remember to close when done
- * await mcpClient.close()
+ * await backend.destroy()
  * ```
  */
 
@@ -98,6 +98,7 @@ export class VercelAIAdapter {
         createMCPClient({ transport }),
         timeoutPromise
       ])
+      this.backend.trackCloseable(client)
       return client
     } catch (error) {
       // Enhance error message for common issues

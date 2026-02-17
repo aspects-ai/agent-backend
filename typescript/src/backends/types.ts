@@ -84,6 +84,13 @@ export interface Backend {
   getMCPClient(): Promise<Client>
 
   /**
+   * Track a closeable resource tied to this backend's lifecycle.
+   * Tracked resources are automatically closed when destroy() is called.
+   * @param closeable - Any object with a close() method (e.g., MCP Client, Transport)
+   */
+  trackCloseable(closeable: { close(): Promise<void> }): void
+
+  /**
    * Cleanup resources
    */
   destroy(): Promise<void>

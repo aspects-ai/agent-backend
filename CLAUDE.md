@@ -1,6 +1,6 @@
 # Agent Backend - Claude Development Guide
 
-Secure, isolated backend for AI agents supporting code execution, file operations, and persistent storage. **Formerly AgentBackend.**
+Secure, isolated backend for AI agents supporting code execution, file operations, and persistent storage.
 
 ## Project Structure
 
@@ -45,6 +45,7 @@ pnpm-workspace.yaml            # TypeScript workspace config
 2. **Pooling** - `BackendPoolManager` reuses connections for stateless servers
 3. **MCP Integration** - `.getMCPClient()` exposes tools via Model Context Protocol
 4. **Security Layers** - Command validation, path escape prevention, isolation modes
+5. **Resource Lifecycle** - `destroy()` auto-closes tracked MCP clients/transports; `trackCloseable()` registers external resources
 
 ### Isolation Modes
 - `'auto'` - Detects best available (bubblewrap → software)
@@ -149,6 +150,8 @@ Language-specific: `make build-typescript`, `make test-python`
 - BackendPoolManager supports per-request config overrides
 - AgentBackendMCPServer uses duck typing for exec capability detection
 - Single adaptive server replaces separate LocalFilesystem/Remote/Memory server classes
+- `destroy()` closes all tracked closeables (MCP clients, transports) before tearing down the backend
+- Scoped backends delegate `trackCloseable()` to their parent backend
 
 ## Key Files to Understand
 

@@ -77,6 +77,10 @@ export class ScopedFilesystemBackend<T extends FileBasedBackend = FileBasedBacke
     return this.parent.onStatusChange(cb)
   }
 
+  trackCloseable(closeable: { close(): Promise<void> }): void {
+    this.parent.trackCloseable(closeable)
+  }
+
   /**
    * Validate that scope path doesn't escape parent
    * Uses shared validation utility for DRY

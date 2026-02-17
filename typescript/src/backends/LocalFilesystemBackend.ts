@@ -39,12 +39,19 @@ export class LocalFilesystemBackend implements FileBasedBackend {
   /** Track active scoped backends for reference counting */
   private readonly _activeScopes = new Set<ScopedFilesystemBackend>()
 
+  /** Track closeable resources (MCP clients/transports) for cleanup on destroy */
+  private readonly _closeables = new Set<{ close(): Promise<void> }>()
+
   get status(): ConnectionStatus {
     return this.statusManager.status
   }
 
   onStatusChange(cb: StatusChangeCallback): Unsubscribe {
     return this.statusManager.onStatusChange(cb)
+  }
+
+  trackCloseable(closeable: { close(): Promise<void> }): void {
+    this._closeables.add(closeable)
   }
 
   constructor(config: LocalFilesystemBackendConfig) {
@@ -640,7 +647,9 @@ export class LocalFilesystemBackend implements FileBasedBackend {
    * @returns StdioClientTransport configured for this backend
    */
   async getMCPTransport(scopePath?: string): Promise<Transport> {
-    return createBackendMCPTransport(this, scopePath)
+    const transport = await createBackendMCPTransport(this, scopePath)
+    this._closeables.add(transport)
+    return transport
   }
 
   /**
@@ -685,6 +694,7 @@ export class LocalFilesystemBackend implements FileBasedBackend {
 
     try {
       await client.connect(transport)
+      this._closeables.add(client)
       return client
     } catch (error: any) {
       // Provide helpful error messages for common issues
@@ -717,6 +727,14 @@ export class LocalFilesystemBackend implements FileBasedBackend {
    * If there are active scopes, they are orphaned (removed from tracking).
    */
   async destroy(): Promise<void> {
+    // Close all tracked closeables (MCP clients/transports) first
+    for (const closeable of this._closeables) {
+      try { await closeable.close() } catch (e) {
+        getLogger().debug('Error closing tracked resource:', e)
+      }
+    }
+    this._closeables.clear()
+
     // Clear active scopes - they become orphaned but that's expected
     // when the parent is explicitly destroyed
     if (this._activeScopes.size > 0) {
