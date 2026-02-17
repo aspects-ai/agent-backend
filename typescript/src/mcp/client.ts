@@ -33,9 +33,9 @@ export interface AgentBeMCPClientOptions {
  *   name: 'read_text_file',
  *   arguments: { path: 'package.json' }
  * })
- *
- * // When done
- * await mcpClient.close()
+ * 
+ * // Client must be closed to terminate the connection (this should generally be handled by destroying the backend instance)
+ * mcpClient.close()
  * ```
  */
 /**

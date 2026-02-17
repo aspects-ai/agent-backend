@@ -107,6 +107,7 @@ flowchart LR
   - [Scoped Access](#scoped-access)
   - [MCP Integration](#mcp-integration)
   - [Security & Isolation](#security--isolation)
+  - [Resource Cleanup](#resource-cleanup)
 - [Integration with Agent SDKs](#integration-with-agent-sdks)
   - [Vercel AI SDK](#vercel-ai-sdk)
 - [Backend Connection Pooling](#backend-connection-pooling)
@@ -205,7 +206,8 @@ agent.run({
   ...
 })
 
-await mcp.close()
+// destroy() closes MCP clients, transports, and cleans up resources
+await backend.destroy()
 ```
 
 ### The Agent Backend Daemon
@@ -324,6 +326,26 @@ const backend = new LocalFilesystemBackend({
 })
 ```
 
+### Resource Cleanup
+
+Calling `backend.destroy()` automatically closes all MCP clients and transports created through `getMCPClient()`, `getMCPTransport()`, or `VercelAIAdapter.getMCPClient()`. No manual cleanup of those resources is needed.
+
+```typescript
+const backend = new LocalFilesystemBackend({ rootDir: '/tmp/agentbe-workspace' })
+const mcp = await backend.getMCPClient()
+
+// ... use MCP tools ...
+
+// Closes MCP clients, SSH/WS connections, and cleans up all resources
+await backend.destroy()
+```
+
+Register external closeable resources with `trackCloseable()`:
+
+```typescript
+backend.trackCloseable(myCustomResource)  // will be closed on destroy()
+```
+
 ---
 
 ## Integration with Agent SDKs
@@ -356,7 +378,8 @@ const result = await generateText({
   prompt: 'List all TypeScript files in src/'
 })
 
-await mcp.close()
+// destroy() closes MCP clients, transports, and cleans up resources
+await backend.destroy()
 ```
 
 ---
@@ -389,7 +412,7 @@ app.post('/api/build', async (req, res) => {
   res.json({ output })
 })
 
-// Graceful shutdown
+// Graceful shutdown - closes all backends, their MCP clients, and connections
 process.on('SIGTERM', () => pool.destroyAll())
 ```
 

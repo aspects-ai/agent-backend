@@ -41,6 +41,10 @@ export class ScopedMemoryBackend<T extends FileBasedBackend = FileBasedBackend> 
     return this.parent.onStatusChange(cb)
   }
 
+  trackCloseable(closeable: { close(): Promise<void> }): void {
+    this.parent.trackCloseable(closeable)
+  }
+
   constructor(
     parent: T,
     scopePath: string,

@@ -897,6 +897,91 @@ describe('RemoteFilesystemBackend (Unit Tests)', () => {
       // Should not throw when destroying without connecting
       await expect(backend.destroy()).resolves.toBeUndefined()
     })
+
+    it('should close all tracked closeables on destroy', async () => {
+      const mockClient = createMockSSHClient({
+        execResults: new Map([[expectedCommand('echo test'), { stdout: 'test', exitCode: 0 }]])
+      })
+      vi.mocked(Client).mockImplementation(() => mockClient as any)
+
+      const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
+        rootDir: TEST_ROOT_DIR,
+        host: 'example.com',
+        sshAuth: {
+          type: 'password',
+          credentials: { username: 'user', password: 'pass' }
+        }
+      })
+
+      const closeable1 = { close: vi.fn().mockResolvedValue(undefined) }
+      const closeable2 = { close: vi.fn().mockResolvedValue(undefined) }
+
+      backend.trackCloseable(closeable1)
+      backend.trackCloseable(closeable2)
+
+      await backend.exec('echo test')
+      await backend.destroy()
+
+      expect(closeable1.close).toHaveBeenCalledTimes(1)
+      expect(closeable2.close).toHaveBeenCalledTimes(1)
+      expect(backend.status).toBe('destroyed')
+    })
+
+    it('should tolerate errors from closeable.close()', async () => {
+      vi.mocked(Client).mockImplementation(() => createMockSSHClient() as any)
+
+      const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
+        rootDir: TEST_ROOT_DIR,
+        host: 'example.com',
+        sshAuth: {
+          type: 'password',
+          credentials: { username: 'user', password: 'pass' }
+        }
+      })
+
+      const closeable1 = { close: vi.fn().mockRejectedValue(new Error('close failed')) }
+      const closeable2 = { close: vi.fn().mockResolvedValue(undefined) }
+
+      backend.trackCloseable(closeable1)
+      backend.trackCloseable(closeable2)
+
+      await expect(backend.destroy()).resolves.toBeUndefined()
+
+      expect(closeable1.close).toHaveBeenCalledTimes(1)
+      expect(closeable2.close).toHaveBeenCalledTimes(1)
+    })
+
+    it('should close tracked closeables before SSH connection', async () => {
+      const mockClient = createMockSSHClient({
+        execResults: new Map([[expectedCommand('echo test'), { stdout: 'test', exitCode: 0 }]])
+      })
+      vi.mocked(Client).mockImplementation(() => mockClient as any)
+
+      const backend = new RemoteFilesystemBackend({
+        ...BASE_SSH_CONFIG,
+        rootDir: TEST_ROOT_DIR,
+        host: 'example.com',
+        sshAuth: {
+          type: 'password',
+          credentials: { username: 'user', password: 'pass' }
+        }
+      })
+
+      await backend.exec('echo test')
+
+      const callOrder: string[] = []
+      const closeable = {
+        close: vi.fn().mockImplementation(async () => { callOrder.push('closeable') })
+      }
+      mockClient.end = vi.fn().mockImplementation(() => { callOrder.push('ssh-end') })
+
+      backend.trackCloseable(closeable)
+      await backend.destroy()
+
+      expect(callOrder.indexOf('closeable')).toBeLessThan(callOrder.indexOf('ssh-end'))
+    })
   })
 
   describe('Environment Variables', () => {

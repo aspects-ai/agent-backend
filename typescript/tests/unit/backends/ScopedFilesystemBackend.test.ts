@@ -340,4 +340,31 @@ describe('ScopedFilesystemBackend (Unit Tests)', () => {
       expect(scoped.status).toBe('connected')
     })
   })
+
+  describe('Closeable Tracking Delegation', () => {
+    it('should delegate trackCloseable to parent', () => {
+      const closeable = { close: vi.fn().mockResolvedValue(undefined) }
+
+      scoped.trackCloseable(closeable)
+
+      expect(mockParent.trackCloseable).toHaveBeenCalledWith(closeable)
+    })
+
+    it('should delegate trackCloseable from nested scope to root parent', () => {
+      const nested = scoped.scope('projects/proj1')
+      const closeable = { close: vi.fn().mockResolvedValue(undefined) }
+
+      nested.trackCloseable(closeable)
+
+      expect(mockParent.trackCloseable).toHaveBeenCalledWith(closeable)
+    })
+  })
+
+  describe('Destroy', () => {
+    it('should call parent.onChildDestroyed on destroy', async () => {
+      await scoped.destroy()
+
+      expect(mockParent.onChildDestroyed).toHaveBeenCalledWith(scoped)
+    })
+  })
 })

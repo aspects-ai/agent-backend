@@ -186,4 +186,46 @@ describe('MemoryBackend (Unit Tests)', () => {
       expect(scoped.status).toBe(ConnectionStatus.DESTROYED)
     })
   })
+
+  describe('Closeable Tracking', () => {
+    it('should close all tracked closeables on destroy', async () => {
+      const closeable1 = { close: vi.fn().mockResolvedValue(undefined) }
+      const closeable2 = { close: vi.fn().mockResolvedValue(undefined) }
+
+      backend.trackCloseable(closeable1)
+      backend.trackCloseable(closeable2)
+
+      await backend.destroy()
+
+      expect(closeable1.close).toHaveBeenCalledTimes(1)
+      expect(closeable2.close).toHaveBeenCalledTimes(1)
+      expect(backend.status).toBe(ConnectionStatus.DESTROYED)
+    })
+
+    it('should tolerate errors from closeable.close()', async () => {
+      const closeable1 = { close: vi.fn().mockRejectedValue(new Error('close failed')) }
+      const closeable2 = { close: vi.fn().mockResolvedValue(undefined) }
+
+      backend.trackCloseable(closeable1)
+      backend.trackCloseable(closeable2)
+
+      await expect(backend.destroy()).resolves.toBeUndefined()
+
+      expect(closeable1.close).toHaveBeenCalledTimes(1)
+      expect(closeable2.close).toHaveBeenCalledTimes(1)
+    })
+
+    it('should clear closeables set after destroy', async () => {
+      const closeable = { close: vi.fn().mockResolvedValue(undefined) }
+      backend.trackCloseable(closeable)
+
+      await backend.destroy()
+      expect(closeable.close).toHaveBeenCalledTimes(1)
+    })
+
+    it('should handle destroy with no tracked closeables', async () => {
+      await expect(backend.destroy()).resolves.toBeUndefined()
+      expect(backend.status).toBe(ConnectionStatus.DESTROYED)
+    })
+  })
 })
