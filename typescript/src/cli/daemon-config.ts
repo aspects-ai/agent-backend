@@ -79,7 +79,7 @@ export function parseDaemonArgs(args: string[]): ParseResult {
         i++
         break
 
-      case '--mcp-port':
+      case '--mcp-port': { 
         if (!next || next.startsWith('--')) {
           return { error: '--mcp-port requires a value' }
         }
@@ -89,8 +89,8 @@ export function parseDaemonArgs(args: string[]): ParseResult {
         }
         config.mcpPort = port
         i++
-        break
-
+        break 
+      }
       case '--mcp-auth-token':
         if (!next || next.startsWith('--')) {
           return { error: '--mcp-auth-token requires a value' }
@@ -115,7 +115,7 @@ export function parseDaemonArgs(args: string[]): ParseResult {
             }
             return { username: username.trim(), password: password.trim() }
           })
-        } catch (e) {
+        } catch {
           return { error: `Invalid --ssh-users format. Expected user:pass,user:pass` }
         }
         i++

@@ -12,9 +12,9 @@ import { BackendError, DangerousOperationError } from '../types.js'
 import { getLogger } from '../utils/logger.js'
 import type { ExecOptions, LocalFilesystemBackendConfig, ReadOptions, ScopeConfig } from './config.js'
 import { validateLocalFilesystemBackendConfig } from './config.js'
+import { ConnectionStatusManager } from './ConnectionStatusManager.js'
 import { validateWithinBoundary } from './pathValidation.js'
 import { ScopedFilesystemBackend } from './ScopedFilesystemBackend.js'
-import { ConnectionStatusManager } from './ConnectionStatusManager.js'
 import type { Backend, FileBasedBackend, ScopedBackend, StatusChangeCallback, Unsubscribe } from './types.js'
 import { BackendType, ConnectionStatus } from './types.js'
 
@@ -696,9 +696,9 @@ export class LocalFilesystemBackend implements FileBasedBackend {
       await client.connect(transport)
       this._closeables.add(client)
       return client
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Provide helpful error messages for common issues
-      const errorMessage = error?.message || String(error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
 
       if (errorMessage.includes('ENOENT') || errorMessage.includes('not found') || errorMessage.includes('command not found')) {
         throw new BackendError(

@@ -1,9 +1,0 @@
-README.md
-pyproject.toml
-agent_backend/__init__.py
-agent_backend.egg-info/PKG-INFO
-agent_backend.egg-info/SOURCES.txt
-agent_backend.egg-info/dependency_links.txt
-agent_backend.egg-info/requires.txt
-agent_backend.egg-info/top_level.txt
-tests/test_version.py

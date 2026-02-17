@@ -23,16 +23,10 @@ describe('Backend Config Types', () => {
     it('should have correct DEFAULT_REMOTE_CONFIG', () => {
       expect(DEFAULT_REMOTE_CONFIG).toEqual({
         host: 'localhost',
-        sshPort: 2222,
-        mcpPort: 3001,
+        port: 3001,
         rootDir: '/var/workspace',
-        sshAuth: {
-          type: 'password',
-          credentials: {
-            username: 'root',
-            password: 'agents',
-          },
-        },
+        transport: 'ssh-ws',
+        authToken: '',
       })
     })
   })

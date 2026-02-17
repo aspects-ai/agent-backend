@@ -17,28 +17,23 @@ export class ConsoleOperationsLogger implements OperationsLogger {
     const mainLine = `${prefix} ${status} ${entry.operation}: ${entry.command} (${duration})`
 
     if (entry.success) {
-      // eslint-disable-next-line no-console
       console.log(mainLine)
     } else {
-      // eslint-disable-next-line no-console
       console.error(mainLine)
     }
 
     // Log stdout/stderr for exec operations if present
     if (entry.operation === 'exec') {
       if (entry.stdout) {
-        // eslint-disable-next-line no-console
         console.log(`  stdout: ${this.truncate(entry.stdout, 200)}`)
       }
       if (entry.stderr) {
-        // eslint-disable-next-line no-console
         console.error(`  stderr: ${this.truncate(entry.stderr, 200)}`)
       }
     }
 
     // Log error message if operation failed
     if (!entry.success && entry.error) {
-      // eslint-disable-next-line no-console
       console.error(`  error: ${entry.error}`)
     }
   }

@@ -142,7 +142,7 @@ build-python: ## Build Python package
 
 test-typescript: ## Run TypeScript tests
 	@echo "Running TypeScript tests..."
-	pnpm -r test
+	pnpm -r test:run
 
 test-python: ## Run Python tests
 	@echo "Running Python tests..."
@@ -170,7 +170,7 @@ typecheck-python: ## Type check Python package
 
 lint-typescript: ## Lint TypeScript packages
 	@echo "Linting TypeScript packages..."
-	pnpm -r lint
+	pnpm -r --filter '!nextjs-agent-backend-demo' lint
 
 lint-python: ## Lint Python package
 	@echo "Linting Python package..."

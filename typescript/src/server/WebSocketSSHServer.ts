@@ -11,15 +11,16 @@
  * - Simpler firewall and NetworkPolicy configuration
  */
 
-import type { Server as HTTPServer, IncomingMessage } from 'http'
-import { WebSocketServer, WebSocket } from 'ws'
-import type { AuthContext, Session, ServerChannel, ExecInfo, PseudoTtyInfo, Connection } from 'ssh2'
-import { SSH2Server } from '../utils/ssh2.js'
-import { Duplex } from 'stream'
 import { spawn } from 'child_process'
 import { generateKeyPairSync } from 'crypto'
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import type { Server as HTTPServer, IncomingMessage } from 'http'
+import type { Socket } from 'net'
 import { dirname } from 'path'
+import type { AuthContext, Connection, ExecInfo, PseudoTtyInfo, ServerChannel, Session } from 'ssh2'
+import { Duplex } from 'stream'
+import { WebSocket, WebSocketServer } from 'ws'
+import { SSH2Server } from '../utils/ssh2.js'
 import { createSFTPHandler } from './SFTPHandler.js'
 
 export interface WebSocketSSHServerOptions {
@@ -168,7 +169,7 @@ function handleSSHOverWebSocket(ws: WebSocket, ctx: SSHSessionContext): void {
   // The ssh2 Server's injectSocket method accepts a Duplex stream
   // that it will use for the SSH protocol communication
   try {
-    ;(sshServer as any).injectSocket(wsStream)
+    sshServer.injectSocket(wsStream as unknown as Socket)
   } catch (err) {
     console.error('[SSH-WS] Failed to inject socket:', err)
     ws.close(1011, 'SSH initialization failed')
@@ -290,13 +291,13 @@ async function trySpawnWithPty(
   ptyInfo: PseudoTtyInfo | null
 ): Promise<void> {
   // Dynamically require node-pty (optional dependency)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let nodePty: any
   try {
     // node-pty is optional - only required for interactive shell with PTY
     // Use dynamic require to avoid TypeScript module resolution
     const moduleName = 'node-pty'
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+     
     nodePty = require(moduleName)
   } catch {
     throw new Error('node-pty not available')
