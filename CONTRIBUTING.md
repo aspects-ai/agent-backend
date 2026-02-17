@@ -130,7 +130,16 @@ Releases are handled by maintainers via:
 make publish
 ```
 
-This bumps the version (patch/minor/major), builds the packages, publishes to relevant registries, commits the version change, creates a git tag, and pushes to GitHub.
+This command:
+
+1. Prompts for version bump type (patch/minor/major)
+2. Bumps versions in both `typescript/package.json` and `python/pyproject.toml` in sync
+3. Builds TypeScript to verify compilation
+4. Creates a `release/v<VERSION>` branch
+5. Commits the version changes and pushes the branch
+6. Opens a PR to main via `gh` CLI
+
+When the PR merges to main, a GitHub Action auto-publishes the package to npm.
 
 ## License
 

@@ -13,7 +13,7 @@ Agent Backend Management Script
 Usage: ./manage.sh <command>
 
 Commands:
-  publish           Publish package to npm (bump version, build, publish, tag)
+  publish           Bump versions, create release branch & PR (CI publishes on merge)
   start-deploy-ui   Start deployment UI for cloud VM setup
   help              Show this help message
 
@@ -25,26 +25,32 @@ EOF
 }
 
 publish_package() {
-  local PKG_DIR="$SCRIPT_DIR/typescript"
-  local PKG_JSON="$PKG_DIR/package.json"
+  local TS_DIR="$SCRIPT_DIR/typescript"
+  local TS_PKG="$TS_DIR/package.json"
+  local PY_TOML="$SCRIPT_DIR/python/pyproject.toml"
 
-  # Check for jq
+  # Check prerequisites
   if ! command -v jq >/dev/null 2>&1; then
     echo "Error: jq is required. Install with: brew install jq (macOS) or apt-get install jq (Linux)" >&2
     exit 1
   fi
-
-  # Check if package.json exists
-  if [[ ! -f "$PKG_JSON" ]]; then
-    echo "Error: package.json not found at $PKG_JSON" >&2
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "Error: gh CLI is required. Install with: brew install gh (macOS) or https://cli.github.com" >&2
+    exit 1
+  fi
+  if [[ ! -f "$TS_PKG" ]]; then
+    echo "Error: package.json not found at $TS_PKG" >&2
+    exit 1
+  fi
+  if [[ ! -f "$PY_TOML" ]]; then
+    echo "Error: pyproject.toml not found at $PY_TOML" >&2
     exit 1
   fi
 
-  cd "$PKG_DIR"
-
   # Show current version
-  VERSION=$(jq -r '.version' package.json)
-  echo "Current version: $VERSION"
+  local CURRENT_VERSION
+  CURRENT_VERSION=$(jq -r '.version' "$TS_PKG")
+  echo "Current version: $CURRENT_VERSION"
   echo ""
 
   # Choose bump type
@@ -56,15 +62,9 @@ publish_package() {
   read -p "Enter choice (1-3 or patch/minor/major): " BUMP_INPUT
 
   case "$BUMP_INPUT" in
-    1|patch)
-      BUMP_TYPE="patch"
-      ;;
-    2|minor)
-      BUMP_TYPE="minor"
-      ;;
-    3|major)
-      BUMP_TYPE="major"
-      ;;
+    1|patch) BUMP_TYPE="patch" ;;
+    2|minor) BUMP_TYPE="minor" ;;
+    3|major) BUMP_TYPE="major" ;;
     *)
       echo "Invalid choice. Use 1-3 or patch/minor/major." >&2
       exit 1
@@ -75,49 +75,62 @@ publish_package() {
   echo "Bumping version: $BUMP_TYPE"
   echo ""
 
-  # Bump version using npm
+  # 1. Bump TypeScript version
+  cd "$TS_DIR"
   npm version "$BUMP_TYPE" --no-git-tag-version
-
+  local NEW_VERSION
   NEW_VERSION=$(jq -r '.version' package.json)
   echo "New version: $NEW_VERSION"
   echo ""
 
-  # Build project
-  echo "Building package..."
+  # 2. Sync Python version
+  echo "Syncing Python version..."
+  cd "$SCRIPT_DIR"
+  sed -i '' "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$PY_TOML"
+  echo "Updated $PY_TOML to $NEW_VERSION"
+  echo ""
+
+  # 3. Build TypeScript to verify it compiles
+  echo "Building TypeScript to verify..."
+  cd "$TS_DIR"
   npm run build
   echo ""
 
-  # Confirm before publishing
-  read -p "Publish agent-backend@$NEW_VERSION to npm? (y/N): " CONFIRM
-  if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
-    echo "Aborted. Version was bumped but not published."
-    exit 1
-  fi
-
-  # Publish
-  echo ""
-  echo "Publishing package to npm..."
-  npm publish
-  echo ""
-
-  echo "✓ Successfully published agent-backend@$NEW_VERSION"
-  echo ""
-
-  # Commit and push
-  echo "Committing and pushing version bump to GitHub..."
+  # 4. Create release branch, commit, and open PR
   cd "$SCRIPT_DIR"
-  git add "$PKG_DIR/package.json" "$PKG_DIR/package-lock.json" 2>/dev/null || true
-  git commit -m "chore: bump agent-backend to v$NEW_VERSION"
-  git tag "agent-backend-v$NEW_VERSION"
-  git push origin HEAD
-  git push origin "agent-backend-v$NEW_VERSION"
+  local BRANCH="release/v$NEW_VERSION"
+
+  echo "Creating release branch: $BRANCH"
+  git checkout -b "$BRANCH"
+
+  git add "$TS_PKG" "$PY_TOML"
+  git commit -m "chore: bump version to v$NEW_VERSION"
+
+  echo "Pushing branch..."
+  git push -u origin "$BRANCH"
+  echo ""
+
+  echo "Creating pull request..."
+  gh pr create \
+    --title "chore: release v$NEW_VERSION" \
+    --body "$(cat <<EOF
+## Summary
+- Bump version to **v$NEW_VERSION** ($BUMP_TYPE)
+- TypeScript \`package.json\` updated
+- Python \`pyproject.toml\` synced
+
+## Post-merge
+CI will auto-publish to npm via the \`publish\` workflow.
+EOF
+)" \
+    --base main
   echo ""
 
   echo "✓ All done!"
   echo ""
-  echo "Published: agent-backend@$NEW_VERSION"
-  echo "Tagged: agent-backend-v$NEW_VERSION"
-  echo "Pushed to GitHub"
+  echo "Release branch: $BRANCH"
+  echo "Version: $NEW_VERSION"
+  echo "A PR has been opened — merge it to publish via CI."
 }
 
 start_deploy_ui() {
