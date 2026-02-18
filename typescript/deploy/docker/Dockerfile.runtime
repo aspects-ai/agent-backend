@@ -43,10 +43,12 @@ RUN npm i -g pnpm && \
 
 # Install agent-backend from local build (for development) or npm (for production)
 ARG AGENTBE_VERSION=local
-COPY typescript/package.json /tmp/agent-backend/package.json
-COPY typescript/dist /tmp/agent-backend/dist
-COPY typescript/bin /tmp/agent-backend/bin
-RUN if [ "$AGENTBE_VERSION" = "local" ]; then \
+RUN --mount=type=bind,source=typescript,target=/tmp/agent-backend-src \
+    if [ "$AGENTBE_VERSION" = "local" ]; then \
+      mkdir -p /tmp/agent-backend && \
+      cp /tmp/agent-backend-src/package.json /tmp/agent-backend/ && \
+      cp -r /tmp/agent-backend-src/dist /tmp/agent-backend/dist && \
+      cp -r /tmp/agent-backend-src/bin /tmp/agent-backend/bin && \
       cd /tmp/agent-backend && npm install && npm link; \
     else \
       npm i -g agent-backend@${AGENTBE_VERSION}; \
