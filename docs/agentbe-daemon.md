@@ -1,9 +1,9 @@
 # Agent Backend Daemon (agentbe-daemon)
 
-The **agentbe-daemon** is the server component that provides MCP (Model Context Protocol) access to a filesystem backend. It can run in two modes:
+The **agentbe-daemon** is the server component that provides MCP (Model Context Protocol) and SSH-over-Websockets access to a filesystem backend. It can run in two modes:
 
 1. **Local-only mode** (stdio) - For local development, spawned as a subprocess
-2. **Full daemon mode** (HTTP + SSH) - For production, serves multiple clients
+2. **Full daemon mode** (MCP + SSH) - For production, serves multiple clients
 
 ## Quick Start
 

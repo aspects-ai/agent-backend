@@ -25,9 +25,6 @@ RUN apt-get update && apt-get install -y \
     tree \
     ripgrep \
     git \
-    fuse \
-    bindfs \
-    libfuse2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Optionally install openssh-server for conventional SSH support
@@ -35,38 +32,14 @@ RUN if [ "$INCLUDE_SSHD" = "true" ]; then \
       apt-get update && apt-get install -y openssh-server && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# Install Chromium and dependencies for headless browser support
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium-browser || apt-get install -y --no-install-recommends chromium
-RUN apt-get update && apt-get install -y \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libnss3 \
-    libnspr4 \
-    libxss1 \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install Node.js 20
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install global npm packages (non-versioned)
+# Install global npm packages
 RUN npm i -g pnpm && \
-    npm i -g tsx && \
-    npm i -g @aspects-ai/workspace-cli && \
-    npm i -g @remotion/cli@4.0.356
+    npm i -g tsx
 
 # Install agent-backend from local build (for development) or npm (for production)
 ARG AGENTBE_VERSION=local
