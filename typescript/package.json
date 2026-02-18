@@ -1,6 +1,6 @@
 {
   "name": "agent-backend",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "description": "A distributed filesystem backend for your AI agent in a single API, just like a database or storage system.",
   "type": "module",
   "main": "dist/index.js",
