@@ -6,8 +6,8 @@
 export interface DaemonConfig {
   rootDir?: string
   scopePath?: string
-  mcpPort: number
-  mcpAuthToken?: string
+  port: number
+  authToken?: string
   localOnly: boolean
   sshUsers: Array<{ username: string; password: string }>
   sshPublicKey?: string
@@ -27,7 +27,7 @@ export interface ParseResult {
  */
 export function parseDaemonArgs(args: string[]): ParseResult {
   const config: DaemonConfig = {
-    mcpPort: 3001,
+    port: 3001,
     localOnly: false,
     sshUsers: [{ username: 'root', password: 'agents' }]
   }
@@ -79,23 +79,23 @@ export function parseDaemonArgs(args: string[]): ParseResult {
         i++
         break
 
-      case '--mcp-port': { 
+      case '--port': {
         if (!next || next.startsWith('--')) {
-          return { error: '--mcp-port requires a value' }
+          return { error: '--port requires a value' }
         }
         const port = parseInt(next, 10)
         if (isNaN(port) || port < 1024 || port > 65535) {
-          return { error: '--mcp-port must be between 1024-65535' }
+          return { error: '--port must be between 1024-65535' }
         }
-        config.mcpPort = port
+        config.port = port
         i++
-        break 
+        break
       }
-      case '--mcp-auth-token':
+      case '--auth-token':
         if (!next || next.startsWith('--')) {
-          return { error: '--mcp-auth-token requires a value' }
+          return { error: '--auth-token requires a value' }
         }
-        config.mcpAuthToken = next
+        config.authToken = next
         i++
         break
 
@@ -160,8 +160,8 @@ export function validateDaemonConfig(config: DaemonConfig): string | null {
     return '--rootDir is required'
   }
 
-  if (config.mcpPort < 1024 || config.mcpPort > 65535) {
-    return '--mcp-port must be between 1024-65535'
+  if (config.port < 1024 || config.port > 65535) {
+    return '--port must be between 1024-65535'
   }
 
   if (config.isolation && !['auto', 'bwrap', 'software', 'none'].includes(config.isolation)) {

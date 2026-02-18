@@ -190,7 +190,9 @@ sync-assets:
 	@cp -r assets/* examples/NextJS/public/assets/
 	@echo "✓ Assets synced to examples/NextJS/public/assets/"
 
-docker-build: build-typescript
+docker-build: ## Build agentbe-daemon Docker image
+	@echo "Building agent-backend TypeScript package..."
+	@pnpm --filter=agent-backend build
 	@echo "Building agentbe-daemon Docker image..."
-	@cd typescript/deploy/docker && \
-		docker build -f Dockerfile.runtime -t agentbe-daemon:latest ../../..
+	@cd daemon/docker && \
+		docker build -f Dockerfile -t agentbe-daemon:latest ../..

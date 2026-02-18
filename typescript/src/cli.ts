@@ -128,7 +128,7 @@ async function handleDaemon(args) {
   // Full daemon mode (MCP + SSH-WS, optionally conventional SSH)
   console.error('🌟 Starting agentbe-daemon...')
   console.error(`📁 Workspace: ${config.rootDir}`)
-  console.error(`🔌 Port: ${config.mcpPort}`)
+  console.error(`🔌 Port: ${config.port}`)
 
   // Check if conventional SSH is requested
   if (config.conventionalSsh) {
@@ -207,15 +207,15 @@ async function handleDaemon(args) {
 
     console.error('')
     console.error('✅ agentbe-daemon is running')
-    console.error(`   MCP endpoint: http://localhost:${config.mcpPort}/mcp`)
-    console.error(`   Health check: http://localhost:${config.mcpPort}/health`)
+    console.error(`   MCP endpoint: http://localhost:${config.port}/mcp`)
+    console.error(`   Health check: http://localhost:${config.port}/health`)
     if (!config.disableSshWs) {
-      console.error(`   SSH-WS endpoint: ws://localhost:${config.mcpPort}/ssh`)
+      console.error(`   SSH-WS endpoint: ws://localhost:${config.port}/ssh`)
     }
     if (config.conventionalSsh) {
       console.error(`   Conventional SSH: port ${config.sshPort}`)
     }
-    if (config.mcpAuthToken) {
+    if (config.authToken) {
       console.error(`   Auth: enabled (same token for MCP and SSH-WS)`)
     } else {
       console.error(`   Auth: disabled`)
@@ -233,7 +233,7 @@ async function handleDaemon(args) {
 
 function parseDaemonArgs(args) {
   const config = {
-    mcpPort: 3001,
+    port: 3001,
     sshPort: 22,
     localOnly: false,
     // SSH-WS is enabled by default
@@ -271,13 +271,13 @@ function parseDaemonArgs(args) {
         i++
         break
 
-      case '--mcp-port':
-        config.mcpPort = parseInt(next, 10)
+      case '--port':
+        config.port = parseInt(next, 10)
         i++
         break
 
-      case '--mcp-auth-token':
-        config.mcpAuthToken = next
+      case '--auth-token':
+        config.authToken = next
         i++
         break
 
@@ -343,8 +343,8 @@ function parseDaemonArgs(args) {
     process.exit(1)
   }
 
-  if (config.mcpPort < 1024 || config.mcpPort > 65535) {
-    console.error('❌ Error: --mcp-port must be between 1024-65535')
+  if (config.port < 1024 || config.port > 65535) {
+    console.error('❌ Error: --port must be between 1024-65535')
     process.exit(1)
   }
 
@@ -469,9 +469,9 @@ async function startDaemonHttpServerWithSSH(config) {
   // MCP endpoint - creates scoped backend per request
   app.post('/mcp', async (req, res) => {
     // Validate auth token if configured
-    if (config.mcpAuthToken) {
+    if (config.authToken) {
       const authHeader = req.headers.authorization
-      const expectedAuth = `Bearer ${config.mcpAuthToken}`
+      const expectedAuth = `Bearer ${config.authToken}`
 
       if (!authHeader || authHeader !== expectedAuth) {
         res.status(401).json({
@@ -534,10 +534,10 @@ async function startDaemonHttpServerWithSSH(config) {
   })
 
   return await new Promise((resolve) => {
-    const httpServer = app.listen(config.mcpPort, () => {
+    const httpServer = app.listen(config.port, () => {
       console.error('🔌 HTTP server started')
-      console.error(`   Port: ${config.mcpPort}`)
-      console.error(`   Auth: ${config.mcpAuthToken ? 'enabled (token required)' : 'disabled (open access)'}`)
+      console.error(`   Port: ${config.port}`)
+      console.error(`   Auth: ${config.authToken ? 'enabled (token required)' : 'disabled (open access)'}`)
       if (config.scopePath) {
         console.error(`   Scope: ${config.scopePath} (static)`)
       }
@@ -547,12 +547,12 @@ async function startDaemonHttpServerWithSSH(config) {
       if (!config.disableSshWs) {
         wsSshServer = createWebSocketSSHServer(httpServer, {
           rootDir: config.rootDir,
-          authToken: config.mcpAuthToken,
+          authToken: config.authToken,
           hostKeyPath: config.sshHostKey,
           shell: config.shell
         })
         console.error('🔐 SSH-WS server started')
-        console.error(`   Endpoint: ws://0.0.0.0:${config.mcpPort}/ssh`)
+        console.error(`   Endpoint: ws://0.0.0.0:${config.port}/ssh`)
       }
 
       resolve({ httpServer, wsSshServer })
@@ -703,7 +703,7 @@ async function runDockerCompose() {
 async function buildImage() {
   await runCommand([
     'docker', 'build',
-    '-f', join(DEPLOY_DIR, 'docker', 'Dockerfile.runtime'),
+    '-f', join(DEPLOY_DIR, 'docker', 'Dockerfile'),
     '-t', 'agentbe/remote-backend:latest',
     PACKAGE_ROOT
   ])
@@ -796,8 +796,8 @@ DAEMON COMMAND:
                            to this subdirectory.
 
   Optional - Server:
-    --mcp-port <port>      HTTP/WebSocket server port (default: 3001)
-    --mcp-auth-token <tok> Bearer token for authentication (used for BOTH MCP and SSH-WS)
+    --port <port>          HTTP/WebSocket server port (default: 3001)
+    --auth-token <tok>     Bearer token for authentication (used for BOTH MCP and SSH-WS)
     --isolation <mode>     Command isolation: auto|bwrap|software|none (default: auto)
     --shell <shell>        Shell to use: bash|sh|auto (default: auto)
 
@@ -829,7 +829,7 @@ EXAMPLES:
 
   # With authentication (same token for MCP and SSH-WS)
   agent-backend daemon --rootDir /tmp/agentbe-workspace \\
-    --mcp-auth-token secret123
+    --auth-token secret123
 
   # Local-only mode (stdio, no HTTP)
   agent-backend daemon --rootDir /tmp/agentbe-workspace --local-only
@@ -843,7 +843,7 @@ EXAMPLES:
     --disable-ssh-ws --conventional-ssh
 
   # Custom port
-  agent-backend daemon --rootDir /tmp/agentbe-workspace --mcp-port 8080
+  agent-backend daemon --rootDir /tmp/agentbe-workspace --port 8080
 
   # Start Docker container
   agent-backend start-docker --build
@@ -864,7 +864,7 @@ TRANSPORTS:
 NOTES:
   - SSH-WS is enabled by default and works on any platform
   - Conventional SSH (--conventional-ssh) requires Linux and root privileges
-  - Use --mcp-auth-token to secure endpoints (recommended for production)
+  - Use --auth-token to secure endpoints (recommended for production)
   - RemoteFilesystemBackend defaults to ssh-ws transport
 `)
 }

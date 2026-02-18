@@ -973,11 +973,10 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
 
     // Construct MCP server URL from host and port
     const mcpHost = this.config.mcpServerHostOverride || this.config.host
-    const mcpPort = this.config.port ?? this.config.mcpPort ?? 3001
+    const mcpPort = this.config.port ?? 3001
     const mcpServerUrl = `http://${mcpHost}:${mcpPort}`
 
-    // Use unified authToken or fallback to mcpAuth.token
-    const authToken = this.config.authToken ?? this.config.mcpAuth?.token
+    const authToken = this.config.authToken
 
     // Create HTTP transport to remote MCP server
     const transport = new StreamableHTTPClientTransport(
@@ -1121,13 +1120,13 @@ export class RemoteFilesystemBackend implements FileBasedBackend {
    * Create WebSocket SSH connection
    */
   private async createWebSocketSSHConnection(): Promise<void> {
-    const port = this.config.port ?? this.config.mcpPort ?? 3001
+    const port = this.config.port ?? 3001
 
     this.wsTransport = new WebSocketSSHTransport({
       host: this.config.sshHostOverride || this.config.host,
       port,
       path: '/ssh',
-      authToken: this.config.authToken ?? this.config.mcpAuth?.token,
+      authToken: this.config.authToken,
       timeout: this.operationTimeoutMs,
       keepaliveInterval: this.keepaliveIntervalMs
     })

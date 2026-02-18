@@ -107,12 +107,12 @@ async function createRemoteTransport(
 
   const { config } = rootBackend
   const mcpHost = config.mcpServerHostOverride || config.host
-  const mcpPort = config.mcpPort || 3001
+  const mcpPort = config.port || 3001
   const defaultRootDir = isFileBasedBackend(backend) ? backend.rootDir : '/'
 
   return createAgentBeMCPTransport({
     url: `http://${mcpHost}:${mcpPort}`,
-    authToken: config.mcpAuth?.token || '',
+    authToken: config.authToken || '',
     rootDir: defaultRootDir,
     scopePath
   })

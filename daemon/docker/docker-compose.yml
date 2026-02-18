@@ -1,7 +1,7 @@
 # agentbe-daemon Docker Compose
 #
 # Usage (from this directory):
-#   cp ../../../.env.example ../../../.env  # First time only
+#   cp ../../.env.example ../../.env  # First time only
 #   docker-compose up -d
 #   docker-compose logs -f
 #   docker-compose down
@@ -14,7 +14,7 @@
 #
 # Environment variables (set in .env or export):
 #   AUTH_TOKEN     - Unified auth token for MCP and SSH-WS (recommended)
-#   MCP_PORT       - MCP + SSH-WS server port (default: 3001)
+#   PORT           - MCP + SSH-WS server port (default: 3001)
 #   DISABLE_SSH_WS - Set to "true" to disable SSH-WS endpoint
 #
 # Conventional SSH (opt-in, requires CONVENTIONAL_SSH=true):
@@ -26,12 +26,12 @@ services:
   agentbe-daemon:
     build:
       context: ../..
-      dockerfile: deploy/docker/Dockerfile.runtime
+      dockerfile: daemon/docker/Dockerfile
     image: agentbe-daemon:latest
     container_name: agentbe-daemon
     ports:
       # MCP + SSH-WS (always exposed)
-      - "${MCP_PORT:-3001}:${MCP_PORT:-3001}"
+      - "${PORT:-3001}:${PORT:-3001}"
       # Conventional SSH (only used if CONVENTIONAL_SSH=true)
       - "${SSH_HOST_PORT:-2222}:${SSH_PORT:-22}"
     volumes:
@@ -39,15 +39,15 @@ services:
       # Uncomment for SSH key auth (conventional SSH only):
       # - ./keys:/keys:ro
     env_file:
-      - ../../../.env
+      - ../../.env
     environment:
-      - MCP_PORT=${MCP_PORT:-3001}
+      - PORT=${PORT:-3001}
       # SSH-WS is enabled by default. Uncomment to enable conventional SSH:
       # - CONVENTIONAL_SSH=true
       # - SSH_PORT=${SSH_PORT:-22}
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:${MCP_PORT:-3001}/health" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:${PORT:-3001}/health" ]
       interval: 30s
       timeout: 10s
       retries: 3

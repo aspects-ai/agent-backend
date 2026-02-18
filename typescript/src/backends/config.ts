@@ -110,16 +110,8 @@ export interface RemoteFilesystemBackendConfig extends BaseFileBackendConfig {
   /** Override host for SSH (if different from main host) */
   sshHostOverride?: string
 
-  /** MCP server port (defaults to 3001) */
-  mcpPort?: number
-
   /** Override host for MCP server (if different from main host) */
   mcpServerHostOverride?: string
-
-  /** MCP authentication (for remote MCP server) - deprecated, use 'authToken' instead */
-  mcpAuth?: {
-    token: string
-  }
 
   /** Operation timeout in milliseconds */
   operationTimeoutMs?: number
@@ -210,11 +202,7 @@ const RemoteFilesystemBackendConfigSchema = z.object({
   maxOutputLength: z.number().positive().optional(),
   sshPort: z.number().positive().optional(),
   sshHostOverride: z.string().optional(),
-  mcpPort: z.number().positive().optional(),
   mcpServerHostOverride: z.string().optional(),
-  mcpAuth: z.object({
-    token: z.string(),
-  }).optional(),
   operationTimeoutMs: z.number().positive().optional(),
   keepaliveIntervalMs: z.number().positive().optional(),
   keepaliveCountMax: z.number().positive().optional(),

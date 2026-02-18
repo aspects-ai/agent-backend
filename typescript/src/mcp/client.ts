@@ -20,7 +20,7 @@ export interface AgentBeMCPClientOptions {
  * ```typescript
  * const mcpClient = await createAgentBeMCPClient({
  *   url: 'http://backend.example.com:3000',
- *   authToken: process.env.MCP_AUTH_TOKEN,
+ *   authToken: process.env.AUTH_TOKEN,
  *   rootDir: '/tmp/agentbe-workspace',
  *   scopePath: 'users/123',
  * })

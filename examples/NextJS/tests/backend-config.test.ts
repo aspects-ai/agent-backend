@@ -169,7 +169,7 @@ describe('Cookie serialization', () => {
       remote: {
         host: 'custom-host.com',
         sshPort: 3333,
-        mcpPort: 4444,
+        port: 4444,
         rootDir: '/custom/remote',
         sshAuth: {
           type: 'key',

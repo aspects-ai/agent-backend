@@ -1,9 +1,10 @@
-# AgentBackend Remote Backend Service
-# Provides POSIX filesystem access via MCP server with SSH-over-WebSocket
+# agentbe-daemon
+# Extensible Docker image for the agent-backend daemon service.
 #
-# Transport modes:
-#   - SSH-WS (default): SSH over WebSocket on MCP port (single port, unified auth)
-#   - Conventional SSH (opt-in): Traditional sshd on port 22 (requires CONVENTIONAL_SSH=true)
+# Extension points:
+#   - FROM + RUN: Install additional packages (pip, npm, apt-get)
+#   - /docker-entrypoint.d/*.sh: Runtime init scripts (run before daemon starts)
+#   - CMD override: Replace the default command (e.g., docker run agentbe-daemon bash)
 #
 # Build args:
 #   - AGENTBE_VERSION: Package version or "local" for local build
@@ -17,7 +18,7 @@ ARG INCLUDE_SSHD=true
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install base packages
+# Install base packages (including Python 3 for AI agent workspaces)
 RUN apt-get update && apt-get install -y \
     sudo \
     curl \
@@ -25,6 +26,8 @@ RUN apt-get update && apt-get install -y \
     tree \
     ripgrep \
     git \
+    python3 \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Optionally install openssh-server for conventional SSH support
@@ -54,8 +57,8 @@ RUN --mount=type=bind,source=typescript,target=/tmp/agent-backend-src \
       npm i -g agent-backend@${AGENTBE_VERSION}; \
     fi
 
-# Create workspace directory
-RUN mkdir -p /var/workspace
+# Create workspace and entrypoint hooks directory
+RUN mkdir -p /var/workspace /docker-entrypoint.d
 WORKDIR /var/workspace
 
 # Set up SSH configuration (only if sshd is installed for conventional SSH)
@@ -84,9 +87,9 @@ RUN if [ "$INCLUDE_SSHD" = "true" ]; then \
       echo 'root:agents' | chpasswd; \
     fi
 
-# Copy startup script
-COPY typescript/deploy/docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Copy entrypoint
+COPY daemon/docker/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Set workspace permissions
 RUN chmod 755 /var/workspace && \
@@ -95,15 +98,12 @@ RUN chmod 755 /var/workspace && \
 # Default ports:
 #   - 3001: MCP server (HTTP/WebSocket) + SSH-WS endpoint (ws://host:3001/ssh)
 #   - 22: Conventional SSH (only used if CONVENTIONAL_SSH=true)
-# EXPOSE is documentation only - actual ports are set by entrypoint
 EXPOSE 3001 22
 
 # Health check for MCP server (uses default port 3001)
-# If using custom MCP_PORT, override with: --health-cmd "curl -f http://localhost:$MCP_PORT/health"
+# If using custom PORT, override with: --health-cmd "curl -f http://localhost:$PORT/health"
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${MCP_PORT:-3001}/health || exit 1
+    CMD curl -f http://localhost:${PORT:-3001}/health || exit 1
 
-# Start agentbe-daemon
-# By default: MCP server + SSH-WS on port 3001
-# Optional: Conventional SSH on port 22 (set CONVENTIONAL_SSH=true)
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["agent-backend", "daemon"]

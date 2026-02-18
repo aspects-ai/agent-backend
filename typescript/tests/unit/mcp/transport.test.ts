@@ -132,8 +132,8 @@ describe('MCP Transport (Unit Tests)', () => {
           rootDir: '/remote/workspace',
           config: {
             host: 'remote.example.com',
-            mcpPort: 3001,
-            mcpAuth: { token: 'test-token' },
+            port: 3001,
+            authToken: 'test-token',
           },
           getMCPTransport: vi.fn(),
           getMCPClient: vi.fn(),
@@ -172,8 +172,8 @@ describe('MCP Transport (Unit Tests)', () => {
           config: {
             host: 'original.example.com',
             mcpServerHostOverride: 'override.example.com',
-            mcpPort: 4000,
-            mcpAuth: { token: 'test-token' },
+            port: 4000,
+            authToken: 'test-token',
           },
           getMCPTransport: vi.fn(),
           getMCPClient: vi.fn(),

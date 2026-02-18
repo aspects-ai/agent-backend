@@ -195,7 +195,7 @@ backend.exec("ls; cat /etc/passwd")
 - Only accessible by processes on same machine
 
 **HTTP Mode (without `--local-only`):**
-- Optional: Bearer token authentication via `--mcp-auth-token`
+- Optional: Bearer token authentication via `--auth-token`
 - Recommended: No auth for localhost-only development
 - Should bind to `localhost` only (not `0.0.0.0`)
 
@@ -205,7 +205,7 @@ backend.exec("ls; cat /etc/passwd")
 agent-backend daemon --rootDir /tmp/agentbe-workspace --local-only
 
 # Optional auth for HTTP
-agent-backend daemon --rootDir /var/workspace --mcp-auth-token dev-secret-123
+agent-backend daemon --rootDir /var/workspace --auth-token dev-secret-123
 ```
 
 ### Production (Remote)
@@ -216,7 +216,7 @@ agent-backend daemon --rootDir /var/workspace --mcp-auth-token dev-secret-123
 - Certificate-based authentication (advanced)
 
 **MCP Authentication (Required):**
-- Bearer token via `--mcp-auth-token`
+- Bearer token via `--auth-token`
 - Sent as `Authorization: Bearer <token>` header
 - Tokens should be cryptographically random (32+ bytes)
 
@@ -226,7 +226,7 @@ agent-backend daemon --rootDir /var/workspace --mcp-auth-token dev-secret-123
 agent-backend daemon \
   --rootDir /var/workspace \
   --ssh-users "agent:$(openssl rand -base64 32)" \
-  --mcp-auth-token "$(openssl rand -base64 32)"
+  --auth-token "$(openssl rand -base64 32)"
 ```
 
 **Client configuration (pseudocode):**
@@ -234,9 +234,9 @@ agent-backend daemon \
 backend = RemoteFilesystemBackend(
   host:         "build-server.com",
   sshPort:      22,
-  mcpPort:      3001,
+  port:         3001,
   sshAuth:      {type: "key", credentials: {username: "agent", privateKey: readFile("/path/to/key")}},
-  mcpAuthToken: env("MCP_AUTH_TOKEN")    // Bearer token
+  authToken:    env("AUTH_TOKEN")    // Bearer token
 )
 ```
 

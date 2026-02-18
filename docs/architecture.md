@@ -358,7 +358,7 @@ docker run -d \
   -p 2222:22 \
   -p 3001:3001 \
   -e SSH_USERS="agent:secure-password" \
-  -e MCP_AUTH_TOKEN="your-secure-token" \
+  -e AUTH_TOKEN="your-secure-token" \
   agentbe/remote-backend:latest
 ```
 
@@ -367,10 +367,10 @@ docker run -d \
 backend = RemoteFilesystemBackend(
   host:         "build-server.com",
   sshPort:      2222,
-  mcpPort:      3001,
+  port:         3001,
   rootDir:      "/var/workspace",
   sshAuth:      {type: "password", credentials: {username: "agent", password: "secure-password"}},
-  mcpAuthToken: "your-secure-token"
+  authToken:    "your-secure-token"
 )
 
 // Connect to remote server

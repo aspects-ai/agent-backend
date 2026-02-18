@@ -7,8 +7,8 @@ set -e
 echo "=== AgentBackend Azure VM Setup Starting ==="
 
 # These are replaced by the deploy tool with actual values
-MCP_AUTH_TOKEN="__MCP_AUTH_TOKEN__"
-MCP_PORT="__MCP_PORT__"
+AUTH_TOKEN="__AUTH_TOKEN__"
+PORT="__PORT__"
 SSH_USERS="__SSH_USERS__"
 WORKSPACE_ROOT="__WORKSPACE_ROOT__"
 SSH_PORT="__SSH_PORT__"
@@ -40,10 +40,10 @@ docker run -d \
   --restart unless-stopped \
   --name agentbe-daemon \
   -p ${SSH_HOST_PORT}:${SSH_PORT} \
-  -p ${MCP_PORT}:${MCP_PORT} \
+  -p ${PORT}:${PORT} \
   -v /var/workspace:/var/workspace \
-  -e MCP_AUTH_TOKEN="${MCP_AUTH_TOKEN}" \
-  -e MCP_PORT="${MCP_PORT}" \
+  -e AUTH_TOKEN="${AUTH_TOKEN}" \
+  -e PORT="${PORT}" \
   -e SSH_PORT="${SSH_PORT}" \
   -e SSH_USERS="${SSH_USERS}" \
   -e WORKSPACE_ROOT="${WORKSPACE_ROOT}" \
@@ -66,5 +66,5 @@ echo ""
 echo "=== AgentBackend Azure VM Setup Complete ==="
 echo "Services available:"
 echo "  SSH: port ${SSH_HOST_PORT}"
-echo "  MCP: port ${MCP_PORT}"
+echo "  MCP: port ${PORT}"
 echo ""

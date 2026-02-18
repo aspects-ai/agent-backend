@@ -1,30 +1,30 @@
 # Agent Backend
 
-**A plug-and-play memory and code execution backend for deep AI agents.**
+**A distributed filesystem backend for deep AI agents.**
 
-Give your AI agents a single, unified interface to interact with a filesystem backend supporting:
+The secret sauce behind effective deep AI agents like Claude Code and Manus is a POSIX-compliant filesystem for memory, file manipulation, shell access, and code execution.
 
-- Code execution on a fully POSIX-compliant system
-- Persistent storage
-- Isolated sub-environments for multitenancy
-- Sync to remote storage options including S3.
+This is easy enough for agents running locally to a single machine. If you want to deploy a web agent, you have two options:
+
+1. **Run your agent in the same VM as the filesystem.** This sucks because:
+  * It's a scaling and security liability since you deploy your agent across thousands of VMs, and the code your agent writes is co-located with web server application code and secrets.
+  * You have to separate your agent and app server code. That means a lot more APIs and boilerplate.
+2. **Run your agent as part of your app server**, and have it talk to a virtual filesystem remotely.
+
+Agent Backend achieves a single API for agent-filesystem interaction. Use a scalable, distributed filesystem backend just as easily as you would use a MongoDB or ElasticSearch cluster.
+
+## What does Agent Backend do?
+
+- Single point of integration for local and remote filesystems. Write your code the same way, whether your agent is acting on your local machine or on a VM in a distributed Kubernetes cluster.
+- Code execution on a sandboxed, fully POSIX-compliant filesystem
+- Isolated sub-environments for multitenancy per backend instance
+- Sync to remote storage options including S3
 
 Also supports MCP (Model Context Protocol) and adapters for plug-and-play with leading AI agent SDKs.
 
 [![npm version](https://badge.fury.io/js/agent-backend.svg)](https://badge.fury.io/js/agent-backend)
+[![PyPI version](https://badge.fury.io/py/agent-backend.svg)](https://badge.fury.io/py/agent-backend)
 [![Apache 2.0 License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://choosealicense.com/licenses/apache-2.0/)
-
-## Why Use a Unified Backend?
-
-Deep agents that use long-running or background processes need a reliable way to persist state. Many agents also benefit from shell access for tools like grep and find, plus the ability to execute code for scripting. To get all this, you need a POSIX-compatible filesystem.
-
-There are two ways to do this:
-1. **Run your agent in the same VM as the filesystem.** This sucks because:
-  * It's a scaling and security liability since you deploy your agent across thousands of VMs
-  * You have to separate your agent and app server code. That means a lot more APIs and boilerplate.
-2. **Run your agent as part of your app server**, and have it talk to your VM remotely.
-
-Agent Backend achieves the latter, with a single API for filesystem operations. Use a scalable, distributed filesystem backend just like you would use a MongoDB or ElasticSearch cluster.
 
 <details open>
 <summary>TypeScript</summary>
@@ -75,9 +75,10 @@ await get_backend().exec(...)
 </details>
 
 **Available backends:**
-- **Filesystem** - Execute code, run commands, manage files
 - **Memory** - Fast in-memory key/value storage.
-- **Database** *(coming soon)* - Structured data and queries
+- **Local Filesystem** - Execute code, run commands, manage files
+- **Remote Filesystem** - Filesystem on a remote host or Docker container
+- **K8s** *(coming soon)* - Fully managed, multi-tenant filesystem backend in a VPC
 
 Agent Backends run in a sandboxed environment to ensure isolation and security, with options including Docker container and remote VM isolation.
 
@@ -128,8 +129,6 @@ flowchart LR
     style Tools fill:#f8fafc,stroke:#e2e8f0,stroke-width:1px
     style FS fill:#f8fafc,stroke:#e2e8f0,stroke-width:1px
 ```
-
-**Agent Backend abstracts the memory layer entirely** — your agent's tools interact with a single API while the backend handles file persistence, code execution, and automatic cloud sync.
 
 ## Table of Contents
 

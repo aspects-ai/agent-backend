@@ -36,7 +36,7 @@ app.get("/env-defaults", (req, res) => {
   res.json({
     sshUser: envConfig.SSH_USER || "",
     hasSshPassword: !!envConfig.SSH_PASSWORD,
-    hasMcpAuthToken: !!envConfig.MCP_AUTH_TOKEN,
+    hasMcpAuthToken: !!envConfig.AUTH_TOKEN,
   });
 });
 
@@ -500,7 +500,7 @@ app.post("/deploy", async (req, res) => {
   // Use env values if flagged
   const sshUser = envConfig.SSH_USER || formSshUser;
   const sshPassword = useEnvSshPassword ? envConfig.SSH_PASSWORD : formSshPassword;
-  const mcpAuthToken = useEnvMcpAuthToken ? envConfig.MCP_AUTH_TOKEN : formMcpAuthToken;
+  const mcpAuthToken = useEnvMcpAuthToken ? envConfig.AUTH_TOKEN : formMcpAuthToken;
 
   res.setHeader("Content-Type", "text/plain");
   res.setHeader("Transfer-Encoding", "chunked");
@@ -591,8 +591,8 @@ async function deployAzure({
 
   // Replace placeholders
   startupScript = startupScript
-    .replace(/__MCP_AUTH_TOKEN__/g, mcpAuthToken)
-    .replace(/__MCP_PORT__/g, mcpPort)
+    .replace(/__AUTH_TOKEN__/g, mcpAuthToken)
+    .replace(/__PORT__/g, mcpPort)
     .replace(/__SSH_USERS__/g, `${sshUser}:${sshPassword}`)
     .replace(/__SSH_PORT__/g, sshPort)
     .replace(/__SSH_HOST_PORT__/g, sshHostPort)
@@ -757,8 +757,8 @@ async function deployGCP({
 
   // Replace placeholders
   startupScript = startupScript
-    .replace(/__MCP_AUTH_TOKEN__/g, mcpAuthToken)
-    .replace(/__MCP_PORT__/g, mcpPort)
+    .replace(/__AUTH_TOKEN__/g, mcpAuthToken)
+    .replace(/__PORT__/g, mcpPort)
     .replace(/__SSH_USERS__/g, `${sshUser}:${sshPassword}`)
     .replace(/__SSH_PORT__/g, sshPort)
     .replace(/__SSH_HOST_PORT__/g, sshHostPort)

@@ -81,7 +81,7 @@ export class VercelAIAdapter {
           reject(new Error(
             `MCP client connection timed out after ${this.connectionTimeoutMs}ms. ` +
             'For remote backends, ensure the MCP server is running on the remote host. ' +
-            'Start the server with: agent-backend daemon --rootDir <path> --mcp-port <port>'
+            'Start the server with: agent-backend daemon --rootDir <path> --port <port>'
           ))
         } else {
           reject(new Error(

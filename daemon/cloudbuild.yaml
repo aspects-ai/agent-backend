@@ -5,7 +5,7 @@ steps:
       - '-t'
       - '$_IMAGE_URL'
       - '-f'
-      - 'remote/Dockerfile.runtime'
+      - 'daemon/docker/Dockerfile'
       - '.'
 
 images:

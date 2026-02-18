@@ -30,6 +30,9 @@ export function BackendProvider({ children }: { children: ReactNode }) {
       const response = await fetch('/api/backend/status')
       const data = await response.json()
       setStatus(data.status ?? (data.connected ? 'connected' : 'disconnected'))
+      if (data.type) {
+        setBackendType(data.type)
+      }
       setError(null)
     } catch (err) {
       setStatus('disconnected')

@@ -28,9 +28,9 @@ describe('Daemon Config Parsing', () => {
     })
 
     describe('Default Values', () => {
-      it('should use default mcpPort of 3001', () => {
+      it('should use default port of 3001', () => {
         const result = parseDaemonArgs(['--rootDir', '/tmp'])
-        expect(result.config?.mcpPort).toBe(3001)
+        expect(result.config?.port).toBe(3001)
       })
 
       it('should use default sshUsers of root:agents', () => {
@@ -44,30 +44,30 @@ describe('Daemon Config Parsing', () => {
       })
     })
 
-    describe('MCP Options', () => {
-      it('should parse --mcp-port', () => {
-        const result = parseDaemonArgs(['--rootDir', '/tmp', '--mcp-port', '8080'])
-        expect(result.config?.mcpPort).toBe(8080)
+    describe('Server Options', () => {
+      it('should parse --port', () => {
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--port', '8080'])
+        expect(result.config?.port).toBe(8080)
       })
 
       it('should reject port below 1024', () => {
-        const result = parseDaemonArgs(['--rootDir', '/tmp', '--mcp-port', '80'])
-        expect(result.error).toBe('--mcp-port must be between 1024-65535')
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--port', '80'])
+        expect(result.error).toBe('--port must be between 1024-65535')
       })
 
       it('should reject port above 65535', () => {
-        const result = parseDaemonArgs(['--rootDir', '/tmp', '--mcp-port', '70000'])
-        expect(result.error).toBe('--mcp-port must be between 1024-65535')
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--port', '70000'])
+        expect(result.error).toBe('--port must be between 1024-65535')
       })
 
       it('should reject non-numeric port', () => {
-        const result = parseDaemonArgs(['--rootDir', '/tmp', '--mcp-port', 'abc'])
-        expect(result.error).toBe('--mcp-port must be between 1024-65535')
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--port', 'abc'])
+        expect(result.error).toBe('--port must be between 1024-65535')
       })
 
-      it('should parse --mcp-auth-token', () => {
-        const result = parseDaemonArgs(['--rootDir', '/tmp', '--mcp-auth-token', 'secret123'])
-        expect(result.config?.mcpAuthToken).toBe('secret123')
+      it('should parse --auth-token', () => {
+        const result = parseDaemonArgs(['--rootDir', '/tmp', '--auth-token', 'secret123'])
+        expect(result.config?.authToken).toBe('secret123')
       })
     })
 
@@ -223,8 +223,8 @@ describe('Daemon Config Parsing', () => {
       it('should parse full daemon config', () => {
         const result = parseDaemonArgs([
           '--rootDir', '/var/workspace',
-          '--mcp-port', '3001',
-          '--mcp-auth-token', 'secret',
+          '--port', '3001',
+          '--auth-token', 'secret',
           '--isolation', 'software',
           '--shell', 'bash',
           '--ssh-users', 'root:agents,dev:devpass'
@@ -233,8 +233,8 @@ describe('Daemon Config Parsing', () => {
         expect(result.error).toBeUndefined()
         expect(result.config).toEqual({
           rootDir: '/var/workspace',
-          mcpPort: 3001,
-          mcpAuthToken: 'secret',
+          port: 3001,
+          authToken: 'secret',
           isolation: 'software',
           shell: 'bash',
           localOnly: false,
@@ -276,7 +276,7 @@ describe('Daemon Config Parsing', () => {
     it('should return null for valid config', () => {
       const config: DaemonConfig = {
         rootDir: '/tmp',
-        mcpPort: 3001,
+        port: 3001,
         localOnly: false,
         sshUsers: [{ username: 'root', password: 'agents' }]
       }
@@ -285,7 +285,7 @@ describe('Daemon Config Parsing', () => {
 
     it('should error for missing rootDir', () => {
       const config: DaemonConfig = {
-        mcpPort: 3001,
+        port: 3001,
         localOnly: false,
         sshUsers: []
       }
@@ -295,17 +295,17 @@ describe('Daemon Config Parsing', () => {
     it('should error for invalid port', () => {
       const config: DaemonConfig = {
         rootDir: '/tmp',
-        mcpPort: 80,
+        port: 80,
         localOnly: false,
         sshUsers: []
       }
-      expect(validateDaemonConfig(config)).toBe('--mcp-port must be between 1024-65535')
+      expect(validateDaemonConfig(config)).toBe('--port must be between 1024-65535')
     })
 
     it('should error for invalid isolation mode', () => {
       const config: DaemonConfig = {
         rootDir: '/tmp',
-        mcpPort: 3001,
+        port: 3001,
         localOnly: false,
         sshUsers: [],
         isolation: 'invalid' as any
@@ -316,7 +316,7 @@ describe('Daemon Config Parsing', () => {
     it('should error for invalid shell', () => {
       const config: DaemonConfig = {
         rootDir: '/tmp',
-        mcpPort: 3001,
+        port: 3001,
         localOnly: false,
         sshUsers: [],
         shell: 'zsh' as any

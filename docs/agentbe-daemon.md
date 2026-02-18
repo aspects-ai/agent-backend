@@ -21,7 +21,7 @@ agent-backend daemon --rootDir /tmp/agentbe-workspace --scopePath users/user1 --
 
 ```bash
 # Start full daemon (Linux only, requires root)
-agent-backend daemon --rootDir /var/workspace --mcp-auth-token secret123
+agent-backend daemon --rootDir /var/workspace --auth-token secret123
 
 # Or use Docker
 agent-backend start-docker
@@ -115,12 +115,12 @@ agent-backend daemon --rootDir <path> [OPTIONS]
 |--------|-------------|
 | `--scopePath <path>` | Static scope path within rootDir. All operations restricted to this subdirectory. |
 
-#### MCP Server Options
+#### Server Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--mcp-port <port>` | 3001 | HTTP server port (only used without `--local-only`) |
-| `--mcp-auth-token <token>` | none | Bearer token for MCP endpoint authentication |
+| `--port <port>` | 3001 | HTTP server port (only used without `--local-only`) |
+| `--auth-token <token>` | none | Bearer token for MCP endpoint authentication |
 | `--isolation <mode>` | auto | Command isolation: `auto`, `bwrap`, `software`, `none` |
 | `--shell <shell>` | auto | Shell to use: `bash`, `sh`, `auto` |
 
@@ -165,7 +165,7 @@ Used by `RemoteFilesystemBackend` for production:
 
 - Request/response model
 - Scoping can be static (CLI) or dynamic (per-request header)
-- Authentication via bearer token (`--mcp-auth-token`)
+- Authentication via bearer token (`--auth-token`)
 
 ## Examples
 
@@ -187,17 +187,17 @@ agent-backend daemon --rootDir /tmp/agentbe-workspace --scopePath users/testuser
 ```bash
 # Basic production setup
 agent-backend daemon --rootDir /var/workspace \
-  --mcp-auth-token "$(openssl rand -hex 32)"
+  --auth-token "$(openssl rand -hex 32)"
 
 # With static scoping (one daemon per tenant)
 agent-backend daemon --rootDir /var/workspace \
   --scopePath "tenant-123" \
-  --mcp-auth-token "secret"
+  --auth-token "secret"
 
 # Full configuration
 agent-backend daemon --rootDir /var/workspace \
-  --mcp-port 3001 \
-  --mcp-auth-token "secret" \
+  --port 3001 \
+  --auth-token "secret" \
   --isolation bwrap \
   --shell bash \
   --ssh-users "admin:adminpass,deploy:deploypass"
@@ -232,7 +232,7 @@ The Docker container runs:
 ### Authentication
 
 - **Stdio mode**: No authentication (relies on process-level security)
-- **HTTP mode**: Use `--mcp-auth-token` for bearer token authentication
+- **HTTP mode**: Use `--auth-token` for bearer token authentication
 - **SSH**: Password or public key authentication
 
 ### Isolation

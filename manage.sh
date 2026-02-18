@@ -140,7 +140,7 @@ EOF
 }
 
 start_deploy_ui() {
-  local DEPLOY_DIR="$SCRIPT_DIR/typescript/deploy/deploy-tool"
+  local DEPLOY_DIR="$SCRIPT_DIR/daemon/deploy-tool"
 
   if [[ ! -d "$DEPLOY_DIR" ]]; then
     echo "Error: Deploy tool directory not found at $DEPLOY_DIR" >&2
