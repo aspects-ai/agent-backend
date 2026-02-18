@@ -1,59 +1,67 @@
 [project]
 name = "agent-backend"
 version = "0.8.9"
-description = "Python bindings for Agent Backend"
+description = "Python client library for Agent Backend — file operations, command execution, and MCP tool access for AI agents"
 readme = "README.md"
-requires-python = ">=3.9"
-license = {text = "MIT"}
-authors = [
-    {name = "Agent Backend Contributors"}
-]
-keywords = ["ai", "agents", "backend", "filesystem"]
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Agent Backend Contributors" }]
+keywords = ["ai", "agents", "backend", "filesystem", "mcp"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache 2.0 License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
 ]
 
-dependencies = []
+dependencies = [
+    "websockets>=14.0",
+    "asyncssh>=2.17.0",
+    "mcp>=1.0.0",
+]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "mypy>=1.0.0",
-    "ruff>=0.1.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9.0",
 ]
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["agent_backend*"]
+[tool.hatch.build.targets.wheel]
+packages = ["agent_backend"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+asyncio_mode = "auto"
+markers = ["integration: marks tests as integration tests (require Docker)"]
 
-[tool.mypy]
-python_version = "3.9"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
+[tool.coverage.run]
+omit = [
+    "agent_backend/backends/remote.py",
+    "agent_backend/backends/transports/websocket_ssh.py",
+    "agent_backend/mcp_integration/client.py",
+]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py311"
+fix = true
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
-ignore = []
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
+ignore = ["E501", "SIM105"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent_backend"]

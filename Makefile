@@ -22,7 +22,7 @@ install: ## Install all dependencies
 	@echo ""
 	@echo "Installing Python dependencies..."
 	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && pip install -e .[dev] || echo "⚠️  Python install failed"; \
+		cd python && uv sync || echo "⚠️  Python install failed (is uv installed?)"; \
 	else \
 		echo "Python package not ready (skipping)"; \
 	fi
@@ -123,7 +123,7 @@ lint-fix: ## Auto-fix lint issues
 	pnpm -r lint:fix || true
 	@echo "Auto-fixing Python..."
 	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && ruff check --fix . || true; \
+		cd python && uv run ruff check --fix . || true; \
 	fi
 
 ##@ Language-Specific
@@ -135,7 +135,7 @@ build-typescript: ## Build TypeScript packages
 build-python: ## Build Python package
 	@echo "Building Python package..."
 	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && python -m build || echo "⚠️  Python build failed (missing 'build' module? Run: pip install build)"; \
+		cd python && uv build || echo "⚠️  Python build failed (is uv installed?)"; \
 	else \
 		echo "Python package not ready (skipping)"; \
 	fi
@@ -147,7 +147,7 @@ test-typescript: ## Run TypeScript tests
 test-python: ## Run Python tests
 	@echo "Running Python tests..."
 	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && pytest || echo "⚠️  Python tests failed or pytest not installed"; \
+		cd python && uv run pytest -m "not integration" --cov=agent_backend --cov-report=term-missing --cov-fail-under=80 || echo "⚠️  Python tests failed"; \
 	else \
 		echo "Python package not ready (skipping)"; \
 	fi
@@ -163,7 +163,7 @@ typecheck-typescript: ## Type check TypeScript packages
 typecheck-python: ## Type check Python package
 	@echo "Type checking Python package..."
 	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && mypy . || echo "⚠️  Python typecheck failed or mypy not installed"; \
+		cd python && uv run ty check || echo "⚠️  Python typecheck failed"; \
 	else \
 		echo "Python package not ready (skipping)"; \
 	fi
@@ -175,7 +175,7 @@ lint-typescript: ## Lint TypeScript packages
 lint-python: ## Lint Python package
 	@echo "Linting Python package..."
 	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && ruff check . || echo "⚠️  Python lint failed or ruff not installed"; \
+		cd python && uv run ruff check . || echo "⚠️  Python lint failed"; \
 	else \
 		echo "Python package not ready (skipping)"; \
 	fi

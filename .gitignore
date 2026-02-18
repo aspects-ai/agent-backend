@@ -41,6 +41,7 @@ remote/deploy-tool/.env
 
 # Development
 *__pycache__
+__pycache__/
 *.egg-info
 tmp/
-tmp/deploy
+.coverage
