@@ -50,6 +50,9 @@ jobs:
         with:
           version: 9
 
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         working-directory: typescript
         run: pnpm install --frozen-lockfile
