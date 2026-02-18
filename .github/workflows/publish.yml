@@ -65,6 +65,8 @@ jobs:
       - name: Publish to npm
         working-directory: typescript
         run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-python:
     needs: check-version
