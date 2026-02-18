@@ -76,10 +76,14 @@ publish_package() {
   echo ""
 
   # 1. Bump TypeScript version
-  cd "$TS_DIR"
-  npm version "$BUMP_TYPE" --no-git-tag-version
   local NEW_VERSION
-  NEW_VERSION=$(jq -r '.version' package.json)
+  cd "$TS_DIR"
+  NEW_VERSION=$(jq -r '.version' package.json | awk -F. -v bump="$BUMP_TYPE" '{
+    if (bump == "major") printf "%d.0.0", $1+1
+    else if (bump == "minor") printf "%s.%d.0", $1, $2+1
+    else printf "%s.%s.%d", $1, $2, $3+1
+  }')
+  jq --arg v "$NEW_VERSION" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json
   echo "New version: $NEW_VERSION"
   echo ""
 
@@ -93,7 +97,7 @@ publish_package() {
   # 3. Build TypeScript to verify it compiles
   echo "Building TypeScript to verify..."
   cd "$TS_DIR"
-  npm run build
+  pnpm run build
   echo ""
 
   # 4. Create release branch, commit, and open PR
