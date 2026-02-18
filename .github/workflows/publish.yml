@@ -12,32 +12,28 @@ jobs:
   check-version:
     runs-on: ubuntu-latest
     outputs:
-      changed: ${{ steps.check.outputs.changed }}
+      should_publish: ${{ steps.check.outputs.should_publish }}
       version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
-      - name: Check for version change
+      - name: Check if version is already published
         id: check
         run: |
-          CURRENT=$(jq -r '.version' typescript/package.json)
-          PREVIOUS=$(git show HEAD~1:typescript/package.json 2>/dev/null | jq -r '.version' 2>/dev/null || echo "")
+          VERSION=$(jq -r '.version' typescript/package.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          if [ "$CURRENT" != "$PREVIOUS" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
-            echo "Version changed: $PREVIOUS -> $CURRENT"
+          if npm view "agent-backend@$VERSION" version 2>/dev/null; then
+            echo "v$VERSION already published to npm — skipping"
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
           else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
-            echo "Version unchanged: $CURRENT"
+            echo "v$VERSION not yet on npm — will publish"
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
           fi
 
   publish-typescript:
     needs: check-version
-    if: needs.check-version.outputs.changed == 'true'
+    if: needs.check-version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -70,7 +66,7 @@ jobs:
 
   publish-python:
     needs: check-version
-    if: needs.check-version.outputs.changed == 'true'
+    if: needs.check-version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Python publish placeholder
@@ -78,7 +74,7 @@ jobs:
 
   tag-release:
     needs: [check-version, publish-typescript, publish-python]
-    if: needs.check-version.outputs.changed == 'true'
+    if: needs.check-version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
