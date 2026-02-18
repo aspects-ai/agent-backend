@@ -72,8 +72,12 @@ async function main() {
     process.stderr.write('\n')
   })
 
-  // We can now execute file operations simply via ssh-over-websockets
-  backend.writeFile("test.txt", "Hello World")
+  // Smoke-test file operations (exercises ssh-over-ws for remote backends)
+  await backend.writeFile("test.txt", "Hello World")
+  const cwd = await backend.exec("pwd")
+  const files = await backend.readdir(".")
+  console.log(`Workspace: ${cwd.toString().trim()}`)
+  console.log(`Files: ${files.join(', ') || '(empty)'}`)
 
   // Or we can use the MCP client to get tools for our agent
   const adapter = new VercelAIAdapter(backend)

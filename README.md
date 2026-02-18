@@ -26,6 +26,9 @@ There are two ways to do this:
 
 Agent Backend achieves the latter, with a single API for filesystem operations. Use a scalable, distributed filesystem backend just like you would use a MongoDB or ElasticSearch cluster.
 
+<details open>
+<summary>TypeScript</summary>
+
 ```typescript
 function getBackend() {
   if (environment.isDevelopment) {
@@ -42,6 +45,34 @@ function getBackend() {
 }
 await getBackend().exec(...);
 ```
+
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+from agent_backend import (
+    LocalFilesystemBackend, LocalFilesystemBackendConfig,
+    RemoteFilesystemBackend, RemoteFilesystemBackendConfig,
+)
+
+def get_backend():
+    if environment.is_development:
+        return LocalFilesystemBackend(LocalFilesystemBackendConfig(
+            root_dir="/tmp/agentbe-workspace"
+        ))
+    else:
+        return RemoteFilesystemBackend(RemoteFilesystemBackendConfig(
+            root_dir="/var/workspace",
+            host="host1.yoursite.com",
+            ...
+        ))
+
+await get_backend().exec(...)
+```
+
+</details>
 
 **Available backends:**
 - **Filesystem** - Execute code, run commands, manage files
@@ -118,13 +149,30 @@ flowchart LR
 
 ## Quick Start
 
+<details open>
+<summary>TypeScript</summary>
+
 ```bash
 npm install agent-backend
 ```
 
+</details>
+
+<details>
+<summary>Python</summary>
+
+```bash
+pip install agent-backend
+```
+
+</details>
+
 ### Memory Backend
 
 Perfect for agent state, caching, and temporary data:
+
+<details open>
+<summary>TypeScript</summary>
 
 ```typescript
 import { MemoryBackend } from 'agent-backend'
@@ -136,9 +184,29 @@ const state = await memory.read('session/user123/state')
 const sessions = await memory.list('session/')
 ```
 
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+from agent_backend import MemoryBackend
+
+memory = MemoryBackend()
+
+await memory.write("session/user123/state", '{"step": 2}')
+state = await memory.read("session/user123/state")
+sessions = await memory.list_keys("session/")
+```
+
+</details>
+
 ### Filesystem Backend - Local
 
 Execute code and manage files locally:
+
+<details open>
+<summary>TypeScript</summary>
 
 ```typescript
 import { LocalFilesystemBackend } from 'agent-backend'
@@ -155,9 +223,34 @@ await backend.write('config.json', JSON.stringify({ version: '1.0' }))
 const files = await backend.readdir('src')
 ```
 
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+from agent_backend import LocalFilesystemBackend, LocalFilesystemBackendConfig
+
+backend = LocalFilesystemBackend(LocalFilesystemBackendConfig(
+    root_dir="/tmp/agentbe-workspace"
+))
+
+await backend.exec("git clone https://github.com/user/repo.git .")
+await backend.exec("pip install -r requirements.txt")
+output = await backend.exec("python -m pytest")
+
+await backend.write("config.yaml", "version: '1.0'")
+files = await backend.readdir("src")
+```
+
+</details>
+
 ### Filesystem Backend - Remote
 
 Same API, operations run on a remote server via SSH:
+
+<details open>
+<summary>TypeScript</summary>
 
 ```typescript
 import { RemoteFilesystemBackend } from 'agent-backend'
@@ -175,9 +268,32 @@ const backend = new RemoteFilesystemBackend({
 await backend.exec('python script.py')
 ```
 
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+from agent_backend import RemoteFilesystemBackend, RemoteFilesystemBackendConfig
+
+backend = RemoteFilesystemBackend(RemoteFilesystemBackendConfig(
+    root_dir="/var/workspace",
+    host="build-server.example.com",
+    auth_token="secure-token",
+))
+
+# Same operations, executed remotely
+await backend.exec("python script.py")
+```
+
+</details>
+
 ### MCP Integration
 
 Use Model Context Protocol for standardized agent integration. Each backend offers the option to create an MCP client to provide the full set of tools for backend access to the agent.
+
+<details open>
+<summary>TypeScript</summary>
 
 ```typescript
 const backend = new LocalFilesystemBackend({
@@ -203,6 +319,34 @@ agent.run({
 // destroy() closes MCP clients, transports, and cleans up resources
 await backend.destroy()
 ```
+
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+from agent_backend import LocalFilesystemBackend, LocalFilesystemBackendConfig
+
+backend = LocalFilesystemBackend(LocalFilesystemBackendConfig(
+    root_dir="/tmp/agentbe-workspace"
+))
+
+# Get MCP client
+mcp = await backend.get_mcp_client()
+
+# Use MCP tools
+result = await mcp.call_tool("exec", {"command": "pip install -r requirements.txt"})
+
+# Expose tools to the agent
+tools_result = await mcp.list_tools()
+backend_tools = tools_result.tools
+
+# destroy() closes MCP clients, transports, and cleans up resources
+await backend.destroy()
+```
+
+</details>
 
 ### The Agent Backend Daemon
 
@@ -254,6 +398,9 @@ The daemon can run in Docker or directly on a VM. See [Deploying the Agent Backe
 
 Create isolated scopes for multi-tenancy:
 
+<details open>
+<summary>TypeScript</summary>
+
 ```typescript
 const backend = new LocalFilesystemBackend({
   rootDir: '/var/workspace'
@@ -271,6 +418,32 @@ const project = user1.scope('projects/my-app')
 await project.exec('npm test')
 ```
 
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+from agent_backend import LocalFilesystemBackend, LocalFilesystemBackendConfig
+
+backend = LocalFilesystemBackend(LocalFilesystemBackendConfig(
+    root_dir="/var/workspace"
+))
+
+# Each user gets an isolated scope
+user1 = backend.scope("users/user1")
+user2 = backend.scope("users/user2")
+
+await user1.exec("pip install -r requirements.txt")  # isolated to users/user1/
+await user2.exec("git init")                         # isolated to users/user2/
+
+# Scopes can be nested
+project = user1.scope("projects/my-app")
+await project.exec("python -m pytest")
+```
+
+</details>
+
 **Scopes provide:**
 - Path convenience (operations are relative)
 - Safety (can't escape the scope)
@@ -278,10 +451,24 @@ await project.exec('npm test')
 
 **Scoped MCP Access:**
 
+<details open>
+<summary>TypeScript</summary>
+
 ```typescript
 // MCP client scoped to specific directory
 const mcp = await backend.getMCPClient('users/user1/projects/my-app')
 ```
+
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+mcp = await backend.get_mcp_client("users/user1/projects/my-app")
+```
+
+</details>
 
 ### Security & Isolation
 
@@ -294,6 +481,9 @@ By default, `isolation: 'auto'` detects and uses the best available method:
 1. **Bubblewrap** (Linux) - OS-level namespace isolation, no root needed
 2. **Software** - Heuristics-based protection using path validation and dangerous operation blocking
 
+<details open>
+<summary>TypeScript</summary>
+
 ```typescript
 const backend = new LocalFilesystemBackend({
   rootDir: '/var/workspace',
@@ -301,9 +491,28 @@ const backend = new LocalFilesystemBackend({
 })
 ```
 
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+from agent_backend import LocalFilesystemBackend, LocalFilesystemBackendConfig, IsolationMode
+
+backend = LocalFilesystemBackend(LocalFilesystemBackendConfig(
+    root_dir="/var/workspace",
+    isolation=IsolationMode.AUTO,  # default - uses bubblewrap if available
+))
+```
+
+</details>
+
 **Dangerous Operation Protection:**
 
 Dangerous commands are blocked by default:
+
+<details open>
+<summary>TypeScript</summary>
 
 ```typescript
 await backend.exec('rm -rf /')      // ❌ Blocked
@@ -311,7 +520,23 @@ await backend.exec('sudo apt-get')  // ❌ Blocked
 await backend.exec('curl ... | sh') // ❌ Blocked
 ```
 
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+await backend.exec("rm -rf /")      # Blocked
+await backend.exec("sudo apt-get")  # Blocked
+await backend.exec("curl ... | sh") # Blocked
+```
+
+</details>
+
 Disable for trusted environments:
+
+<details open>
+<summary>TypeScript</summary>
 
 ```typescript
 const backend = new LocalFilesystemBackend({
@@ -320,9 +545,26 @@ const backend = new LocalFilesystemBackend({
 })
 ```
 
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+backend = LocalFilesystemBackend(LocalFilesystemBackendConfig(
+    root_dir="/var/workspace",
+    prevent_dangerous=False,  # allow all operations
+))
+```
+
+</details>
+
 ### Resource Cleanup
 
 Calling `backend.destroy()` automatically closes all MCP clients and transports created through `getMCPClient()`, `getMCPTransport()`, or `VercelAIAdapter.getMCPClient()`. No manual cleanup of those resources is needed.
+
+<details open>
+<summary>TypeScript</summary>
 
 ```typescript
 const backend = new LocalFilesystemBackend({ rootDir: '/tmp/agentbe-workspace' })
@@ -334,11 +576,46 @@ const mcp = await backend.getMCPClient()
 await backend.destroy()
 ```
 
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+from agent_backend import LocalFilesystemBackend, LocalFilesystemBackendConfig
+
+backend = LocalFilesystemBackend(LocalFilesystemBackendConfig(
+    root_dir="/tmp/agentbe-workspace"
+))
+mcp = await backend.get_mcp_client()
+
+# ... use MCP tools ...
+
+# Closes MCP clients, SSH/WS connections, and cleans up all resources
+await backend.destroy()
+```
+
+</details>
+
 Register external closeable resources with `trackCloseable()`:
+
+<details open>
+<summary>TypeScript</summary>
 
 ```typescript
 backend.trackCloseable(myCustomResource)  // will be closed on destroy()
 ```
+
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+backend.track_closeable(my_custom_resource)  # will be closed on destroy()
+```
+
+</details>
 
 ---
 
@@ -353,7 +630,8 @@ Agent Backend integrates with leading AI agent frameworks via adapters that expo
 ## Examples
 
 - **[NextJS Demo](examples/NextJS/README.md)** -- Full-featured web app with AI chat, file management, and code editing
-- **[TSBasic Demo](examples/TSBasic/README.md)** -- Minimal CLI chat with MCP tools in a terminal
+- **[TSBasic Demo](examples/TSBasic/README.md)** -- Minimal CLI chat with MCP tools in a terminal (TypeScript)
+- **[PyBasic Demo](examples/PyBasic/README.md)** -- Minimal CLI chat with MCP tools in a terminal (Python)
 
 ---
 
@@ -373,6 +651,8 @@ See [docs/agentbe-daemon.md](./docs/agentbe-daemon.md) for setup, configuration,
 - [Connection Pooling](docs/connection-pooling.md)
 - [Security & Isolation](docs/security.md)
 - [Performance](docs/performance.md)
+- [TypeScript Client Library](typescript/README.md)
+- [Python Client Library](python/README.md)
 
 ---
 

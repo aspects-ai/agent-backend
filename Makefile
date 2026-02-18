@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-local nextjs tsbasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
+.PHONY: help install dev dev-local nextjs tsbasic pybasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -21,11 +21,7 @@ install: ## Install all dependencies
 	pnpm install
 	@echo ""
 	@echo "Installing Python dependencies..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && pip install -e .[dev] || echo "⚠️  Python install failed"; \
-	else \
-		echo "Python package not ready (skipping)"; \
-	fi
+	uv sync || echo "⚠️  Python install failed (is uv installed?)"
 	@echo ""
 	@echo "Installing dev tools..."
 	@command -v mprocs >/dev/null 2>&1 || { \
@@ -91,6 +87,9 @@ nextjs: sync-assets build-typescript ## Run NextJS demo app
 tsbasic: build-typescript ## Run TSBasic CLI example
 	cd examples/TSBasic && npx tsx index.ts
 
+pybasic: build-python ## Run PyBasic CLI example
+	cd examples/PyBasic && uv run python main.py
+
 ##@ Build & Test
 
 build: build-typescript build-python ## Build all packages
@@ -103,9 +102,10 @@ clean: ## Remove build artifacts and dependencies
 	rm -rf examples/NextJS/dist examples/NextJS/.next examples/NextJS/node_modules
 	rm -rf examples/TSBasic/node_modules
 	rm -rf node_modules
-	@echo "Cleaning Python package..."
+	@echo "Cleaning Python packages..."
+	rm -rf .venv dist
 	@if [ -d "python" ]; then \
-		cd python && rm -rf dist build *.egg-info .pytest_cache .mypy_cache __pycache__; \
+		cd python && rm -rf build *.egg-info .pytest_cache .mypy_cache __pycache__; \
 	fi
 	@echo "Cleaning development artifacts..."
 	rm -rf tmp/
@@ -122,9 +122,7 @@ lint-fix: ## Auto-fix lint issues
 	@echo "Auto-fixing TypeScript..."
 	pnpm -r lint:fix || true
 	@echo "Auto-fixing Python..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && ruff check --fix . || true; \
-	fi
+	cd python && uv run ruff check --fix . || true
 
 ##@ Language-Specific
 
@@ -134,11 +132,7 @@ build-typescript: ## Build TypeScript packages
 
 build-python: ## Build Python package
 	@echo "Building Python package..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && python -m build || echo "⚠️  Python build failed (missing 'build' module? Run: pip install build)"; \
-	else \
-		echo "Python package not ready (skipping)"; \
-	fi
+	uv build --package agent-backend
 
 test-typescript: ## Run TypeScript tests
 	@echo "Running TypeScript tests..."
@@ -146,11 +140,7 @@ test-typescript: ## Run TypeScript tests
 
 test-python: ## Run Python tests
 	@echo "Running Python tests..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && pytest || echo "⚠️  Python tests failed or pytest not installed"; \
-	else \
-		echo "Python package not ready (skipping)"; \
-	fi
+	cd python && uv run pytest -m "not integration" --cov=agent_backend --cov-report=term-missing --cov-fail-under=80
 
 test-unit: ## Run unit tests only
 	@echo "Running unit tests..."
@@ -162,11 +152,7 @@ typecheck-typescript: ## Type check TypeScript packages
 
 typecheck-python: ## Type check Python package
 	@echo "Type checking Python package..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && mypy . || echo "⚠️  Python typecheck failed or mypy not installed"; \
-	else \
-		echo "Python package not ready (skipping)"; \
-	fi
+	cd python && uv run ty check
 
 lint-typescript: ## Lint TypeScript packages
 	@echo "Linting TypeScript packages..."
@@ -174,11 +160,7 @@ lint-typescript: ## Lint TypeScript packages
 
 lint-python: ## Lint Python package
 	@echo "Linting Python package..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && ruff check . || echo "⚠️  Python lint failed or ruff not installed"; \
-	else \
-		echo "Python package not ready (skipping)"; \
-	fi
+	cd python && uv run ruff check .
 
 ##@ Publishing & CI
 
@@ -189,13 +171,9 @@ publish-typescript: ## Publish TypeScript package to npm
 	@echo "Publishing TypeScript package..."
 	./manage.sh publish
 
-publish-python: ## Publish Python package to PyPI
+publish-python: build-python ## Publish Python package to PyPI
 	@echo "Publishing Python package..."
-	@if [ -d "python" ] && [ -f "python/pyproject.toml" ]; then \
-		cd python && python -m twine upload dist/*; \
-	else \
-		echo "Python package not ready"; \
-	fi
+	uv run twine upload dist/agent_backend-*
 
 start-deploy-ui: ## Cloud VM deployment UI
 	./manage.sh start-deploy-ui

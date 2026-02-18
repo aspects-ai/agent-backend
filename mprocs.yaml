@@ -4,6 +4,7 @@
 #   agentbe-local   - Daemon on host via tsx --watch (no Docker)
 #   agentbe-daemon  - Daemon in Docker container via tsx --watch (simulates remote)
 #   nextjs          - NextJS example app
+#   pybasic         - PyBasic CLI example app
 #
 # Usage:
 #   make dev                 - Docker daemon (default)
@@ -14,6 +15,7 @@
 #   mprocs                           - agentbe-daemon (Docker)
 #   LOCAL=1 mprocs                   - agentbe-local (no Docker)
 #   NEXTJS=1 mprocs                  - agentbe-daemon + NextJS
+#   PYBASIC=1 mprocs                 - agentbe-daemon + PyBasic
 #   LOCAL=1 NEXTJS=1 mprocs          - agentbe-local + NextJS
 #
 # TUI shortcuts:
@@ -89,6 +91,17 @@ procs:
       [ -z "$NEXTJS" ] && echo "Skipped (set NEXTJS=1 to enable)" && exit 0
       exec pnpm run dev
     cwd: "examples/NextJS"
+    stop: "SIGTERM"
+    env:
+      FORCE_COLOR: "1"
+
+  # PyBasic CLI example app
+  # Skipped by default; enable with PYBASIC=1
+  pybasic:
+    shell: |
+      [ -z "$PYBASIC" ] && echo "Skipped (set PYBASIC=1 to enable)" && exit 0
+      cd examples/PyBasic
+      exec uv run python main.py
     stop: "SIGTERM"
     env:
       FORCE_COLOR: "1"

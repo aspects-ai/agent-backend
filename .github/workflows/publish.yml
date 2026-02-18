@@ -69,9 +69,29 @@ jobs:
     needs: check-version
     if: needs.check-version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Required for PyPI OIDC trusted publishing
     steps:
-      - name: Python publish placeholder
-        run: echo "Python publish not yet implemented — skipping"
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Build
+        run: uv build --package agent-backend
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
 
   tag-release:
     needs: [check-version, publish-typescript, publish-python]

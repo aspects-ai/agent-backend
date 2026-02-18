@@ -1,0 +1,12 @@
+[project]
+name = "pybasic-example"
+version = "0.1.0"
+description = "PyBasic — minimal CLI chat example using agent-backend Python library"
+requires-python = ">=3.11"
+dependencies = [
+    "agent-backend",
+    "openai>=1.0.0",
+]
+
+[tool.uv.sources]
+agent-backend = { workspace = true }

@@ -87,11 +87,13 @@ publish_package() {
   echo "New version: $NEW_VERSION"
   echo ""
 
-  # 2. Sync Python version
+  # 2. Sync Python version (pyproject.toml + __init__.py)
   echo "Syncing Python version..."
   cd "$SCRIPT_DIR"
   sed -i '' "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$PY_TOML"
-  echo "Updated $PY_TOML to $NEW_VERSION"
+  local PY_INIT="$SCRIPT_DIR/python/agent_backend/__init__.py"
+  sed -i '' "s/^__version__ = \".*\"/__version__ = \"$NEW_VERSION\"/" "$PY_INIT"
+  echo "Updated $PY_TOML and $PY_INIT to $NEW_VERSION"
   echo ""
 
   # 3. Build TypeScript to verify it compiles
@@ -107,7 +109,7 @@ publish_package() {
   echo "Creating release branch: $BRANCH"
   git checkout -b "$BRANCH"
 
-  git add "$TS_PKG" "$PY_TOML"
+  git add "$TS_PKG" "$PY_TOML" "$PY_INIT"
   git commit -m "chore: bump version to v$NEW_VERSION"
 
   echo "Pushing branch..."
@@ -121,10 +123,10 @@ publish_package() {
 ## Summary
 - Bump version to **v$NEW_VERSION** ($BUMP_TYPE)
 - TypeScript \`package.json\` updated
-- Python \`pyproject.toml\` synced
+- Python \`pyproject.toml\` + \`__init__.py\` synced
 
 ## Post-merge
-CI will auto-publish to npm via the \`publish\` workflow.
+CI will auto-publish to npm and PyPI via the \`publish\` workflow.
 EOF
 )" \
     --base main

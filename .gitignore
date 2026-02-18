@@ -39,8 +39,16 @@ logs/
 .env
 remote/deploy-tool/.env
 
-# Development
+# Python
+.venv/
+uv.lock
 *__pycache__
+__pycache__/
 *.egg-info
+.coverage
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Misc
 tmp/
-tmp/deploy
