@@ -1,10 +1,20 @@
-# Agent Backend
+<p align="center">
+  <img src="assets/full_logo.svg" alt="Agent Backend" />
+</p>
 
-**A distributed filesystem backend for deep AI agents.**
+<p align="center">
+  <b>--An open-source remote filesystem backend for deep AI agents--</b>
+</p>
+
+---
 
 The secret sauce behind effective deep AI agents like Claude Code and Manus is a POSIX-compliant filesystem for memory, file manipulation, shell access, and code execution.
 
 **Agent Backend is a client library + server-side daemon that provides a single API for agent-filesystem interaction within a remote sandbox.** It allows usage of a scalable, distributed filesystem backend just as easily as using MongoDB or Postgres - and it's just as easy to self-host.
+
+[![npm version](https://badge.fury.io/js/agent-backend.svg)](https://badge.fury.io/js/agent-backend)
+[![PyPI version](https://badge.fury.io/py/agent-backend.svg)](https://badge.fury.io/py/agent-backend)
+[![Apache 2.0 License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://choosealicense.com/licenses/apache-2.0/)
 
 ## How do I use it?
 
@@ -34,10 +44,6 @@ Agent Backend supports:
 - Isolated sub-environments for multitenancy per backend instance
 - MCP (Model Context Protocol) filesystem API (based on the official Filesystem MCP by Anthropic) + direct SSH access
 - Adapters for plug-and-play with leading AI agent SDKs.
-
-[![npm version](https://badge.fury.io/js/agent-backend.svg)](https://badge.fury.io/js/agent-backend)
-[![PyPI version](https://badge.fury.io/py/agent-backend.svg)](https://badge.fury.io/py/agent-backend)
-[![Apache 2.0 License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://choosealicense.com/licenses/apache-2.0/)
 
 **Available backends:**
 - **Memory** - Fast in-memory key/value storage with filesystem semantics
