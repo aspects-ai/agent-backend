@@ -46,10 +46,13 @@ Agent Backend supports:
 - Adapters for plug-and-play with leading AI agent SDKs.
 
 **Available backends:**
-- **Memory** - Fast in-memory key/value storage with filesystem semantics
-- **Local Filesystem** - Execute code, run commands, manage files
-- **Remote Filesystem** - Filesystem on a remote host or Docker container
-- **K8s** *(coming soon)* - Fully managed, multi-tenant filesystem backend in a VPC
+
+| Backend | Description |
+|---------|-------------|
+| **Memory** | Fast in-memory key/value storage with filesystem semantics |
+| **Local Filesystem** | Execute code, run commands, manage files |
+| **Remote Filesystem** | Filesystem on a remote host or Docker container |
+| **K8s** *(coming soon)* | Fully managed, multi-tenant filesystem backend in a VPC |
 
 Agent Backends run in a sandboxed environment to ensure isolation and security, with options including Docker container and remote VM isolation.
 
@@ -58,7 +61,7 @@ Agent Backends run in a sandboxed environment to ensure isolation and security, 
   'fontSize':'14px',
   'fontFamily':'system-ui, -apple-system, sans-serif',
   'lineColor':'#64748b'
-}}}%%
+}, 'flowchart': {'padding': 20}}}%%
 flowchart LR
     subgraph Agent["Financial Analyst Agent"]
         direction TB
@@ -391,7 +394,7 @@ For remote execution, the **agentbe-daemon** runs on a remote host and provides 
   'fontSize':'14px',
   'fontFamily':'system-ui, -apple-system, sans-serif',
   'lineColor':'#64748b'
-}}}%%
+}, 'flowchart': {'padding': 20}}}%%
 flowchart LR
     subgraph Client["Your Server"]
         App["<b>Your App</b>"]:::neutral
