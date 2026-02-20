@@ -113,34 +113,18 @@ graph LR
 
 ### Dangerous Patterns Blocked
 
-When `preventDangerous: true` (default), these patterns are rejected:
+When `preventDangerous: true` (default), commands are checked against known dangerous patterns before execution.
 
-**Destructive Operations:**
+The complete list of blocked regex patterns (including destructive operations, privilege escalation, network tools, command substitution, workspace escape, and more) is defined in [spec/safety.md](../spec/safety.md), which is the source of truth for command safety rules.
+
+Common examples of blocked commands:
+
 - `rm -rf /` - Recursive force delete from root
-- `dd of=/dev/sda` - Disk overwrite
-- `mkfs` - Format filesystem
-- `:(){ :|:& };:` - Fork bomb
-
-**Privilege Escalation:**
-- `sudo` - Superuser execution
-- `su` - Switch user
-- `doas` - Privilege elevation
-
-**Shell Injection:**
-- `;` - Command separator
-- `&&`, `||` - Command chaining
-- Backticks - Command substitution
-- `$()` - Command substitution
-- `|` - Pipe to other commands
-
-**Remote Execution:**
+- `sudo`, `su` - Privilege escalation
 - `curl ... | sh` - Download and execute
-- `wget ... | bash` - Download and execute
 - `eval` - Dynamic code execution
-
-**Network Tampering:**
 - `iptables` - Firewall modification
-- `ifconfig` - Network configuration
+- `cd`, `pushd` - Directory change (workspace escape)
 
 ### Isolation Modes
 

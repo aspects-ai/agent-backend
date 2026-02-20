@@ -5,6 +5,8 @@ The **agentbe-daemon** is the server component that provides MCP (Model Context 
 1. **Local-only mode** (stdio) - For local development, spawned as a subprocess
 2. **Full daemon mode** (MCP + SSH) - For production, serves multiple clients
 
+For the full behavioral specification (endpoints, authentication, transport details, Docker image, shutdown semantics, etc.), see [spec/daemon.md](../spec/daemon.md). This document covers usage and configuration.
+
 ## Quick Start
 
 ### Local Development (stdio mode)
@@ -124,13 +126,22 @@ agent-backend daemon --rootDir <path> [OPTIONS]
 | `--isolation <mode>` | auto | Command isolation: `auto`, `bwrap`, `software`, `none` |
 | `--shell <shell>` | auto | Shell to use: `bash`, `sh`, `auto` |
 
-#### SSH Options (full daemon mode only)
+#### SSH-over-WebSocket Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| `--disable-ssh-ws` | false | Disable the SSH-over-WebSocket endpoint (`/ssh`) |
+| `--ssh-host-key <path>` | none | Path to SSH host key file. Auto-generated if not provided. |
+
+#### Conventional SSH Options (full daemon mode only, Linux)
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--conventional-ssh` | false | Enable conventional sshd alongside the HTTP server |
+| `--ssh-port <port>` | 22 | Conventional SSH port |
 | `--ssh-users <users>` | `root:agents` | Comma-separated `user:password` pairs |
-| `--ssh-public-key <key>` | none | SSH public key to add to authorized_keys |
-| `--ssh-authorized-keys <path>` | none | Path to authorized_keys file to copy |
+| `--ssh-public-key <key>` | none | SSH public key to add to authorized_keys (first user) |
+| `--ssh-authorized-keys <path>` | none | Path to authorized_keys file (first user) |
 
 ## Transport Modes
 
@@ -217,29 +228,21 @@ agent-backend stop-docker
 ```
 
 The Docker container runs:
-- SSH daemon on port 2222
-- MCP server on port 3001
+- MCP server + SSH-over-WebSocket on port 3001
+- Conventional SSH on port 22 (when `CONVENTIONAL_SSH=true`)
 - Default credentials: `root:agents`
 
-## Security Considerations
+See [spec/daemon.md](../spec/daemon.md#docker-image) for the full Docker image specification including build arguments, environment variables, and entrypoint behavior.
 
-### Path Validation
+## Security
 
-- `--scopePath` cannot contain `..` (path traversal)
-- Leading slashes are stripped from scopePath
-- All paths are validated to stay within the scoped directory
+For detailed security documentation, see [docs/security.md](security.md). For implementation-level security contracts (authentication, path jailing, command safety patterns), see the [daemon spec](../spec/daemon.md#security-considerations) and [safety spec](../spec/safety.md).
 
-### Authentication
-
-- **Stdio mode**: No authentication (relies on process-level security)
-- **HTTP mode**: Use `--auth-token` for bearer token authentication
-- **SSH**: Password or public key authentication
-
-### Isolation
-
-- Use `--isolation bwrap` for OS-level namespace isolation (Linux only)
-- Use `--isolation software` for heuristics-based path/command validation
-- Use `--isolation none` only in trusted environments
+Quick summary:
+- **Path validation**: All operations are confined to `rootDir`. `--scopePath` cannot contain `..`.
+- **Authentication**: Stdio mode needs none; HTTP mode uses `--auth-token` for bearer token auth; SSH uses password or public key auth.
+- **Isolation**: Use `--isolation bwrap` for Linux namespace isolation, `software` for heuristic validation, or `none` in trusted environments.
+- **Command safety**: Dangerous commands (privilege escalation, pipe-to-shell, etc.) are blocked by default in full daemon mode.
 
 ## Troubleshooting
 
