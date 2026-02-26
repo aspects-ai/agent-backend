@@ -359,31 +359,7 @@ Backends MUST provide a way to obtain an MCP (Model Context Protocol) client or 
 
 ### MCP Server Tools
 
-When a backend is served via MCP (through the agentbe-daemon), the following tools MUST be registered:
-
-**File reading:**
-- Read a text file (with optional head/tail line limits)
-- Read a media file as base64
-- Read multiple files at once
-
-**File writing:**
-- Write/overwrite a file
-- Edit a file with selective replacements (with optional dry-run mode)
-
-**Directory operations:**
-- Create a directory (recursive)
-- List directory contents (with file/directory type indicators)
-- List directory with file sizes and stats
-- Directory tree (recursive JSON structure with configurable exclude patterns)
-
-**File management:**
-- Move/rename a file
-- Search for files by glob pattern
-- Get detailed file metadata
-- List the workspace boundary (allowed directories)
-
-**Execution:**
-- Execute a shell command (only registered if the backend supports execution)
+When a backend is served via MCP (through the agentbe-daemon), the daemon registers filesystem and execution tools. See the [MCP Server Tools](daemon.md#mcp-server-tools) section of the daemon spec for the full tool list and compatibility requirements.
 
 ---
 
@@ -471,25 +447,20 @@ Implementations SHOULD use consistent error codes across backends:
 
 ## Command Safety
 
-When dangerous command blocking is enabled, commands MUST be checked against known dangerous patterns before execution. The full list of blocked patterns is defined in [docs/security.md](docs/security.md), which is the source of truth for command safety rules.
+When dangerous command blocking is enabled, commands MUST be checked against known dangerous patterns before execution. The complete list of blocked patterns, pre-processing rules, and response format is defined in [spec/safety.md](safety.md), which is the source of truth for command safety.
 
-The blocked patterns fall into these categories:
+The blocked patterns cover:
 
 - **Destructive operations** -- `rm -rf /`, disk overwrite, filesystem formatting, fork bombs
-- **Privilege escalation** -- `sudo`, `su`, `doas`
-- **Shell injection** -- command separators, chaining, substitution, pipe to shell
-- **Remote code execution** -- download-and-execute, `eval`
-- **Network tampering** -- firewall/network configuration changes
+- **Privilege escalation** -- `sudo`, `su`
+- **System modification** -- `chmod 777`, `chown root`
+- **Pipe-to-shell** -- `curl | sh`, `wget | bash`
+- **Direct network tools** -- `nc`, `ssh`, `scp`, `rsync`, etc.
+- **Command substitution** -- backticks, `$()`
+- **Remote code execution** -- `eval`
+- **Workspace escape** -- `cd`, `pushd`, `$HOME`, `../`, etc.
 
-Implementations SHOULD also block:
-- **Workspace escape** -- directory change commands, environment variable manipulation, home directory references, parent directory traversal
-
-### Pre-processing
-
-- Heredoc content MUST be stripped before safety validation to prevent false positives.
-- Implementations MAY define allowed patterns that override specific blocked patterns (e.g., `gcloud rsync` is not the same as the `rsync` binary).
-
-See [docs/security.md](docs/security.md) for the complete list of dangerous patterns, isolation mode details, and security best practices.
+See [spec/safety.md](safety.md) for the full regex pattern list.
 
 ---
 

@@ -94,11 +94,13 @@ Language-specific commands use the pattern `make <command>-<language>`, for exam
 
 ## Spec-First Development
 
-[SPEC.md](SPEC.md) is the source of truth for all client library behavior. A developer should be able to reimplement a client library in any language by following the spec alone.
+[spec/clients.md](spec/clients.md) is the source of truth for all client library behavior. A developer should be able to reimplement a client library in any language by following the spec alone.
 
-**All changes to code that impacts client library functionality must start with an update to SPEC.md.** Update the spec first, then update the implementation to match. The only exceptions are small bug fixes or negligible tweaks that don't affect the documented API or behavioral contract.
+[spec/daemon.md](spec/daemon.md) is the source of truth for the agentbe-daemon process — its endpoints, authentication, transports, scoping, shutdown, and Docker packaging. Changes to daemon behavior follow the same spec-first rule.
 
-This applies to new features, behavioral changes, API modifications, error handling changes, and anything else a consumer of the library would observe. If it changes what the library does, it goes in the spec.
+**All changes to code that impacts client library or daemon functionality must start with an update to the relevant spec.** Update the spec first, then update the implementation to match. The only exceptions are small bug fixes or negligible tweaks that don't affect the documented API or behavioral contract.
+
+This applies to new features, behavioral changes, API modifications, error handling changes, and anything else a consumer of the library or daemon would observe. If it changes what it does, it goes in the spec.
 
 ## Commit Messages
 

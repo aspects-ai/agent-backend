@@ -695,16 +695,7 @@ See [docs/agentbe-daemon.md](./docs/agentbe-daemon.md) for setup, configuration,
 
 ## Development
 
-This is a multi-language monorepo (TypeScript + Python). Use Makefile for all commands:
-
-```bash
-make help           # Show all available commands
-make install        # Install dependencies (including mprocs)
-make build          # Build all packages
-make test           # Run all tests
-make typecheck      # Type check everything
-make dev            # Start dev environment with mprocs TUI
-```
+This is a monorepo containing multiple packages and languages. We use **spec-based development** to enable rapid AI-based coding. The entirety of the functionality of each package should be described in the spec files in `spec/`, and changes should flow from there.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development setup, workflows, Docker commands, and troubleshooting.
 
