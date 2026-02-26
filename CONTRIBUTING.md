@@ -94,9 +94,11 @@ Language-specific commands use the pattern `make <command>-<language>`, for exam
 
 ## Spec-First Development
 
-[spec/clients.md](spec/clients.md) is the source of truth for all client library behavior. A developer should be able to reimplement a client library in any language by following the spec alone.
+[opensdd/spec.md](opensdd/spec.md) is the entry point for all behavioral specs, organized as an [OpenSDD](https://github.com/deepagents-ai/opensdd)-compliant spec with three components:
 
-[spec/daemon.md](spec/daemon.md) is the source of truth for the agentbe-daemon process — its endpoints, authentication, transports, scoping, shutdown, and Docker packaging. Changes to daemon behavior follow the same spec-first rule.
+- [opensdd/clients.md](opensdd/clients.md) -- source of truth for all client library behavior. A developer should be able to reimplement a client library in any language by following the spec alone.
+- [opensdd/daemon.md](opensdd/daemon.md) -- source of truth for the agentbe-daemon process — its endpoints, authentication, transports, scoping, shutdown, and Docker packaging.
+- [opensdd/safety.md](opensdd/safety.md) -- source of truth for command safety validation patterns.
 
 **All changes to code that impacts client library or daemon functionality must start with an update to the relevant spec.** Update the spec first, then update the implementation to match. The only exceptions are small bug fixes or negligible tweaks that don't affect the documented API or behavioral contract.
 

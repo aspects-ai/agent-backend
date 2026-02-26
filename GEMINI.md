@@ -1,7 +1,3 @@
-# Agent Backend - AI Development Guide
-
-You MUST read [CONTRIBUTING.md](CONTRIBUTING.md) before editing anything.
-
 <!-- OpenSDD Skills (managed by opensdd init — do not edit this section) -->
 @.claude/skills/sdd-manager/SKILL.md
 @.claude/skills/sdd-manager/references/spec-format.md

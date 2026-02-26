@@ -115,7 +115,7 @@ graph LR
 
 When `preventDangerous: true` (default), commands are checked against known dangerous patterns before execution.
 
-The complete list of blocked regex patterns (including destructive operations, privilege escalation, network tools, command substitution, workspace escape, and more) is defined in [spec/safety.md](../spec/safety.md), which is the source of truth for command safety rules.
+The complete list of blocked regex patterns (including destructive operations, privilege escalation, network tools, command substitution, workspace escape, and more) is defined in [opensdd/safety.md](../opensdd/safety.md), which is the source of truth for command safety rules.
 
 Common examples of blocked commands:
 

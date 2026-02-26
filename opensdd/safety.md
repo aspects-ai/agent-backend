@@ -1,12 +1,8 @@
-# Command Safety Specification
+# Command Safety
 
-This document is the source of truth for command safety patterns. Both the [daemon spec](daemon.md) and [client spec](clients.md) reference this document for the complete list of blocked patterns.
+> Behavioral contract for command safety validation -- pre-processing rules, dangerous command patterns, workspace escape patterns, and response format.
 
-When dangerous command blocking is enabled, commands MUST be checked against the patterns defined here before execution.
-
-## Terminology
-
-The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are used as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
+Both the [daemon spec](daemon.md) and [client spec](clients.md) reference this document for the complete list of blocked patterns. When dangerous command blocking is enabled, commands MUST be checked against the patterns defined here before execution.
 
 ---
 

@@ -1,24 +1,6 @@
-# Agent Backend Specification
-
-This document is the language-agnostic source of truth for the Agent Backend client library API. All client implementations (TypeScript, Python, etc.) MUST conform to the behavioral contracts described here.
-
-Implementations SHOULD use idiomatic patterns for their language (e.g., Python may use `async with` for lifecycle, TypeScript may use `await destroy()`). The exact method names, parameter ordering, and error handling idioms are left to each implementation, but the semantics described here MUST be preserved.
-
-## Terminology
-
-The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are used as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
-
-**Backend** -- A client-side object that provides file operations, command execution, and MCP tool access against a workspace (local directory or remote server). Implementations SHOULD define a base Backend interface that all backend types implement. Operations that only apply to file-based backends (e.g., exec) MAY be separated into a more specific interface.
-
-**Scoped Backend** -- A backend wrapper that restricts operations to a subdirectory of the parent's workspace. Scoped backends delegate operations to their parent after translating paths. Implementations SHOULD treat scoped backends as a distinct type from the backends they wrap, since they have different lifecycle semantics (e.g., destroy does not release resources, status is delegated).
-
-**Workspace** -- The root directory a backend operates within. All paths are relative to this root.
-
-**Scope** -- A restricted view of a backend, rooted at a subdirectory of the parent's workspace. Used for multi-tenant isolation.
-
-**agentbe-daemon** -- The server process that runs on a host and serves the workspace via MCP and SSH over WebSockets.
-
 # Client Libraries
+
+> Language-agnostic behavioral contract for the Agent Backend client library API.
 
 ## Backend Types
 
@@ -163,7 +145,7 @@ All file-based backends (local, remote, and memory) MUST support the following o
 
 ### Path Resolution
 
-Path handling follows the three-case resolution logic and escape prevention rules defined in [docs/filepaths.md](docs/filepaths.md), which is the source of truth for path behavior. In summary:
+Path handling follows the three-case resolution logic and escape prevention rules defined in [docs/filepaths.md](../docs/filepaths.md), which is the source of truth for path behavior. In summary:
 
 - Relative paths MUST be resolved against the workspace root.
 - Absolute paths that match the workspace root MUST be used directly.
@@ -171,7 +153,7 @@ Path handling follows the three-case resolution logic and escape prevention rule
 - Paths containing `..` that would escape the workspace MUST be rejected with a path escape error.
 - These rules apply at every scope level for scoped backends.
 
-See [docs/filepaths.md](docs/filepaths.md) for detailed examples, backend-specific path module conventions, and scoped workspace behavior.
+See [docs/filepaths.md](../docs/filepaths.md) for detailed examples, backend-specific path module conventions, and scoped workspace behavior.
 
 ### read(path)
 
@@ -447,7 +429,7 @@ Implementations SHOULD use consistent error codes across backends:
 
 ## Command Safety
 
-When dangerous command blocking is enabled, commands MUST be checked against known dangerous patterns before execution. The complete list of blocked patterns, pre-processing rules, and response format is defined in [spec/safety.md](safety.md), which is the source of truth for command safety.
+When dangerous command blocking is enabled, commands MUST be checked against known dangerous patterns before execution. The complete list of blocked patterns, pre-processing rules, and response format is defined in [safety.md](safety.md), which is the source of truth for command safety.
 
 The blocked patterns cover:
 
@@ -460,7 +442,7 @@ The blocked patterns cover:
 - **Remote code execution** -- `eval`
 - **Workspace escape** -- `cd`, `pushd`, `$HOME`, `../`, etc.
 
-See [spec/safety.md](safety.md) for the full regex pattern list.
+See [safety.md](safety.md) for the full regex pattern list.
 
 ---
 

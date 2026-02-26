@@ -5,7 +5,7 @@ The **agentbe-daemon** is the server component that provides MCP (Model Context 
 1. **Local-only mode** (stdio) - For local development, spawned as a subprocess
 2. **Full daemon mode** (MCP + SSH) - For production, serves multiple clients
 
-For the full behavioral specification (endpoints, authentication, transport details, Docker image, shutdown semantics, etc.), see [spec/daemon.md](../spec/daemon.md). This document covers usage and configuration.
+For the full behavioral specification (endpoints, authentication, transport details, Docker image, shutdown semantics, etc.), see [opensdd/daemon.md](../opensdd/daemon.md). This document covers usage and configuration.
 
 ## Quick Start
 
@@ -232,11 +232,11 @@ The Docker container runs:
 - Conventional SSH on port 22 (when `CONVENTIONAL_SSH=true`)
 - Default credentials: `root:agents`
 
-See [spec/daemon.md](../spec/daemon.md#docker-image) for the full Docker image specification including build arguments, environment variables, and entrypoint behavior.
+See [opensdd/daemon.md](../opensdd/daemon.md#docker-image) for the full Docker image specification including build arguments, environment variables, and entrypoint behavior.
 
 ## Security
 
-For detailed security documentation, see [docs/security.md](security.md). For implementation-level security contracts (authentication, path jailing, command safety patterns), see the [daemon spec](../spec/daemon.md#security-considerations) and [safety spec](../spec/safety.md).
+For detailed security documentation, see [docs/security.md](security.md). For implementation-level security contracts (authentication, path jailing, command safety patterns), see the [daemon spec](../opensdd/daemon.md#security-considerations) and [safety spec](../opensdd/safety.md).
 
 Quick summary:
 - **Path validation**: All operations are confined to `rootDir`. `--scopePath` cannot contain `..`.

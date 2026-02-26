@@ -1,0 +1,12 @@
+{
+  "opensdd": "0.1.0",
+  "specs_dir": "opensdd",
+  "deps_dir": ".opensdd.deps",
+  "publish": {
+    "name": "agent-backend",
+    "version": "0.1.0",
+    "description": "Client library and server daemon providing a unified API for agent-filesystem interaction within local or remote sandboxed workspaces",
+    "spec_format": "0.1.0",
+    "dependencies": []
+  }
+}
