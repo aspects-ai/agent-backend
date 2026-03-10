@@ -3,14 +3,14 @@
 </p>
 
 <p align="center">
-  <b>--An open-source remote filesystem backend for deep AI agents--</b>
+  <b>--A lightweight, portable daemon that gives AI agents full filesystem access in any sandbox runtime--</b>
 </p>
 
 ---
 
-The secret sauce behind effective deep AI agents like Claude Code and Manus is a POSIX-compliant filesystem for memory, file manipulation, shell access, and code execution.
+Effective deep AI agents like Claude Code and Manus rely on a POSIX-compliant filesystem for memory, file manipulation, shell access, and code execution.
 
-**Agent Backend is a client library + server-side daemon that provides a single API for agent-filesystem interaction within a remote sandbox.** It allows usage of a scalable, distributed filesystem backend just as easily as using MongoDB or Postgres - and it's just as easy to self-host.
+**Agent Backend is a client library + daemon that runs in any sandbox runtime and gives you full filesystem access in a simple package.** Deploy it on managed sandbox providers like E2B, Docker containers, or bare metal instances on AWS and Azure - it works everywhere and is trivial to self-host.
 
 [![npm version](https://badge.fury.io/js/agent-backend.svg)](https://badge.fury.io/js/agent-backend)
 [![PyPI version](https://badge.fury.io/py/agent-backend.svg)](https://badge.fury.io/py/agent-backend)
