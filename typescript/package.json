@@ -100,15 +100,18 @@
     },
     "./adapters": {
       "types": "./dist/adapters/index.d.ts",
-      "import": "./dist/adapters/index.js"
+      "import": "./dist/adapters/index.js",
+      "require": "./dist/adapters/index.cjs"
     },
     "./mcp": {
       "types": "./dist/mcp/index.d.ts",
-      "import": "./dist/mcp/index.js"
+      "import": "./dist/mcp/index.js",
+      "require": "./dist/mcp/index.cjs"
     },
     "./server": {
       "types": "./dist/server/index.d.ts",
-      "import": "./dist/server/index.js"
+      "import": "./dist/server/index.js",
+      "require": "./dist/server/index.cjs"
     },
     "./package.json": "./package.json"
   }
