@@ -112,7 +112,7 @@ jobs:
 
       - name: Configure git identity and credentials
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
@@ -120,7 +120,7 @@ jobs:
 
       - name: Publish OpenSDD spec
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
         run: opensdd publish --branch "agent-backend/${{ needs.check-version.outputs.version }}"
 
   tag-release:
