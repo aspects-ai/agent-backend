@@ -55,7 +55,7 @@ jobs:
           version: 9
 
       - name: Upgrade npm for OIDC trusted publishing
-        run: npm install -g npm@latest
+        run: npm install -g npm@11.11.1
 
       - name: Install dependencies
         working-directory: typescript
@@ -111,6 +111,8 @@ jobs:
         run: npm install -g opensdd
 
       - name: Publish OpenSDD spec
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: opensdd publish --branch "agent-backend/${{ needs.check-version.outputs.version }}"
 
   tag-release:
