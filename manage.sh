@@ -140,9 +140,14 @@ EOF
     --base main
   echo ""
 
+  echo "Switching back to main and deleting local release branch..."
+  git checkout main
+  git branch -D "$BRANCH"
+  echo ""
+
   echo "✓ All done!"
   echo ""
-  echo "Release branch: $BRANCH"
+  echo "Release branch: $BRANCH (pushed to origin, deleted locally)"
   echo "Version: $NEW_VERSION"
   echo "A PR has been opened — after merging, trigger the Publish Packages workflow in GitHub Actions."
 }
