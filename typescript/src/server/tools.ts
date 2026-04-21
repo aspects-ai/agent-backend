@@ -231,23 +231,45 @@ export function registerFilesystemTools(server: McpServer, getBackend: BackendGe
       description: 'Read an image or audio file, returns base64 data with MIME type',
       inputSchema: {
         path: z.string().describe('Path to the media file'),
+        force: z.boolean().optional().describe('Bypass the image/audio MIME type check and return the file as a base64 blob regardless of type. Off by default.'),
       },
     },
-    async ({ path: filePath }, { sessionId }) => {
+    async ({ path: filePath, force }, { sessionId }) => {
       const backend = await getBackend(sessionId) as FileBasedBackend
-      const buffer = await backend.read(filePath, { encoding: 'buffer' }) as Buffer
       const mimeType = getMimeType(filePath)
-      const base64 = buffer.toString('base64')
+      const isMedia = mimeType.startsWith('image/') || mimeType.startsWith('audio/')
 
-      // Determine content type based on MIME type (matches official MCP filesystem server)
+      // Per the Anthropic filesystem MCP spec, this tool is scoped to image/* and audio/*.
+      // For anything else we return a text message with file-level info so the model can route
+      // to a more appropriate tool. `force: true` is an explicit opt-in bypass for callers that
+      // genuinely need the raw bytes.
+      if (!isMedia && !force) {
+        const stats = await backend.stat(filePath)
+        const ext = path.extname(filePath) || '(none)'
+        const info = [
+          `Path: ${filePath}`,
+          `Extension: ${ext}`,
+          `Detected MIME type: ${mimeType}`,
+          `Size: ${stats.size} bytes`,
+          `Modified: ${stats.mtime.toISOString()}`,
+        ].join('\n')
+        return {
+          content: [{
+            type: 'text',
+            text: `Unrecognized file type ${ext} for read_media_file (only image/* and audio/* are supported).\n\n${info}\n\nTry read_text_file for text content or get_file_info for full metadata. If you really need raw bytes, call read_media_file again with force: true.`,
+          }],
+          isError: true,
+        }
+      }
+
+      const buffer = await backend.read(filePath, { encoding: 'buffer' }) as Buffer
+      const base64 = buffer.toString('base64')
       const contentType = mimeType.startsWith('image/')
         ? 'image'
         : mimeType.startsWith('audio/')
           ? 'audio'
-          : 'blob' // Fallback for other binary types
+          : 'blob'
 
-      // Return proper MCP content block format
-      // Note: 'blob' is not officially in the MCP spec but is used by the official filesystem server
       return {
         content: [{
           type: contentType as 'image' | 'audio',

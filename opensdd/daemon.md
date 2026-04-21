@@ -229,14 +229,14 @@ If a valid scope path is present, the daemon MUST create a scoped backend from t
 
 **Important:** The MCP protocol and its official reference servers evolve independently of this spec. Before implementing or updating MCP request handling, the implementer MUST consult the latest [MCP specification](https://spec.modelcontextprotocol.io/), the [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk), and the [official MCP Filesystem Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) for current transport types, server APIs, tool schemas, and protocol details. The tool list below is a snapshot; the official filesystem server is the source of truth.
 
-The daemon MUST register the tools defined by the [official MCP Filesystem Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem). Tool names, input schemas, and output formats MUST match the official filesystem MCP server exactly.
+The daemon MUST register the tools defined by the [official MCP Filesystem Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem). Tool names, input schemas, and output formats MUST match the official filesystem MCP server exactly, except where this spec explicitly calls out a deviation (see `read_media_file` below).
 
 At time of writing, the official filesystem MCP server provides the following tools:
 
 | Tool | Description |
 |------|-------------|
 | `read_text_file` | Read file contents as text (with optional `head`/`tail` line limits) |
-| `read_media_file` | Read an image or audio file as base64 |
+| `read_media_file` | Read an image or audio file as base64. Accepts an optional `force` boolean parameter (default: `false`). When `force` is omitted or `false` and the file's MIME type is not `image/*` or `audio/*`, the tool MUST return a text content block (with `isError: true`) naming the unrecognized file type, reporting file-level info (path, extension, detected MIME type, size, mtime), suggesting alternative tools (`read_text_file`, `get_file_info`), and instructing the caller to retry with `force: true` if raw bytes are genuinely needed. When `force: true`, the tool MUST return the file as base64 regardless of MIME type, using the `blob` content type for non-media files. **Deviation from the official filesystem server:** the official server *always* falls back to `blob` for unknown binaries; this daemon requires explicit opt-in via `force`. Rationale: the Anthropic filesystem MCP spec scopes this tool to images and audio, and there is no known common use case where a model can do anything useful with raw base64 of an arbitrary binary — the default response returns actionable file metadata instead of opaque bytes, and `force` preserves the escape hatch for callers that genuinely need it. |
 | `read_multiple_files` | Read multiple files simultaneously |
 | `write_file` | Create new file or overwrite existing |
 | `edit_file` | Selective edits using `edits: [{ oldText, newText }]` with optional `dryRun` |
