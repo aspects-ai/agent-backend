@@ -172,9 +172,9 @@ class TestLocalBackendExec:
         with pytest.raises((DangerousOperationError, BackendError)):
             await local_backend.exec("rm -rf /")
 
-    async def test_exec_workspace_escape_blocked(self, local_backend):
-        with pytest.raises(BackendError):
-            await local_backend.exec("cd /tmp")
+    async def test_exec_fork_bomb_blocked(self, local_backend):
+        with pytest.raises((DangerousOperationError, BackendError)):
+            await local_backend.exec(":(){ :|:& };:")
 
     async def test_exec_output_truncation(self, tmp_workspace):
         config = LocalFilesystemBackendConfig(
@@ -222,10 +222,9 @@ class TestLocalBackendExec:
         result = await backend.exec("echo test")
         assert result == "test"
 
-    async def test_exec_unsafe_command(self, local_backend):
-        with pytest.raises(BackendError) as exc_info:
-            await local_backend.exec("cd /tmp && ls")
-        assert exc_info.value.code == ErrorCode.UNSAFE_COMMAND
+    async def test_exec_cd_is_allowed(self, local_backend):
+        # cd is no longer blocked -- sandbox handles workspace containment
+        await local_backend.exec("cd . && echo ok")
 
 
 class TestLocalBackendLifecycle:

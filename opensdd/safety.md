@@ -1,91 +1,72 @@
 # Command Safety
 
-> Behavioral contract for command safety validation -- pre-processing rules, dangerous command patterns, workspace escape patterns, and response format.
+> Behavioral contract for command sanity-check validation -- pre-processing rules, blocked-command patterns, and response format.
 
-Both the [daemon spec](daemon.md) and [client spec](clients.md) reference this document for the complete list of blocked patterns. When dangerous command blocking is enabled, commands MUST be checked against the patterns defined here before execution.
+Both the [daemon spec](daemon.md) and [client spec](clients.md) reference this document for the complete list of blocked patterns. When `prevent_dangerous` is enabled, commands MUST be checked against the patterns defined here before execution.
+
+---
+
+## Scope
+
+These checks are **sanity checks, not a security boundary**. They exist to catch obvious footguns (a hallucinated `rm -rf /`, a miswired `dd of=/dev/sda`) before they run. They do not attempt to sandbox the shell.
+
+Real isolation is provided by:
+
+- **Docker** (recommended default for non-dev use).
+- **bwrap** (bubblewrap) isolation within `LocalFilesystemBackend` on Linux hosts that have it installed.
+- The host itself, when the daemon runs inside an already-sandboxed environment (Kubernetes pod, VM, etc.).
+
+Local mode without any of the above MUST emit a startup warning stating that it is unsandboxed and is intended for development use only.
+
+Implementations MUST NOT treat the pattern list as a substitute for any of the above.
 
 ---
 
 ## Pre-processing
 
 - Commands MUST be normalized to lowercase before pattern matching.
-- Heredoc content MUST be stripped before safety validation to prevent false positives (heredocs contain literal data, not executable commands).
-- Implementations MAY define allowed patterns that override specific blocked patterns. The default allowlist MUST include `gcloud rsync` (a gcloud subcommand, not the `rsync` binary).
-- Allowed patterns MUST be checked before dangerous patterns; if a command matches an allowed pattern, it is not dangerous.
+- Heredoc content MUST be stripped before validation to prevent false positives (heredocs contain literal data, not executable commands).
+- Implementations MAY define allowed patterns via `SafetyConfig.allowed_patterns` to override specific blocked patterns.
+- Allowed patterns MUST be checked before blocked patterns; if a command matches an allowed pattern, it is not blocked.
 
 ---
 
-## Dangerous Command Patterns
+## Blocked Command Patterns
 
 The following regex patterns MUST be blocked. Each pattern uses `\b` for word boundaries where appropriate.
 
-**Destructive operations:**
+**Destructive operations (footgun protection):**
 - `\brm\b.*-rf?\b.*[/~*]` and `\brm\b.*[/~*].*-rf?\b` -- system-wide destructive rm
 - `\bdd\b.*\bof=\/dev\/` -- disk wiping with dd
 
-**Privilege escalation:**
-- `\bsudo\b`, `\bsu\b`
-
-**System modification:**
-- `\bchmod\b.*777`, `\bchown\b.*root`
-
-**Pipe-to-shell (download-and-execute):**
+**Pipe-to-shell (download-and-execute footgun):**
 - `curl\b.*\|\s*(sh|bash|zsh|fish)\b`
 - `wget\b.*\|\s*(sh|bash|zsh|fish)\b`
 - `\|\s*(sh|bash|zsh|fish)\s*$`
 
-**Direct network tools:**
-- `\bnc\b`, `\bncat\b`, `\bnetcat\b`, `\btelnet\b`, `\bftp\b`, `\bssh\b`, `\bscp\b`, `\brsync\b`
-
-**Process and system control:**
-- `\bkill\s+-9`, `\bkillall\b`, `\bpkill\b`
-- `\bshutdown\b`, `\breboot\b`, `\bhalt\b`, `\binit\s+[06]\b`
-
-**Filesystem manipulation:**
-- `\bmount\b`, `\bumount\b`, `\bfdisk\b`, `\bmkfs\b`, `\bfsck\b`
-
-**Command substitution:**
-- `` `[^`]+` `` -- backtick substitution
-- `\$\([^)]+\)` -- `$()` substitution
-
-**Remote code execution:**
-- `\beval\b`
-
-**Resource exhaustion:**
-- `:\(\)` -- fork bomb pattern
-- `fork\(\)`
-- `\bwhile\s+true\b`
-- `\byes\b.*>\s*\/dev\/null`
-
-**Network tampering:**
-- `\biptables\b`
-- `\bifconfig\b.*\bdown\b`
-
-**System file modification:**
-- `>>?\s*\/etc\/`, `>\s*\/etc\/`
-- `\bcat\b.*>\s*\/etc\/`, `\becho\b.*>\s*\/etc\/`
-
-**Obfuscation:**
-- `[a-z]""[a-z]` -- string obfuscation (e.g., `r""m`)
-
-**Path traversal in sensitive operations:**
-- `\b(cp|mv|ln)\b.*\.\.\/`
-
-**Symbolic link creation:**
-- `\bln\s+-s`
+**Fork bombs (resource-exhaustion footgun):**
+- `:\(\)` -- classic fork-bomb pattern
 
 ---
 
-## Workspace Escape Patterns
+## Explicitly NOT Blocked
 
-Implementations SHOULD also block commands that attempt to escape the workspace. The following patterns MUST be checked (after heredoc stripping):
+The following categories are **intentionally not blocked**, because regex-based blocking of them produces false positives without providing real protection. Real enforcement belongs to the sandbox or the host.
 
-- `\bcd\b`, `\bpushd\b`, `\bpopd\b` -- directory change commands
-- `export\s+PATH=`, `export\s+HOME=`, `export\s+PWD=` -- environment manipulation
-- `~\/` -- home directory reference
-- `\$HOME`, `\$\{HOME\}` -- HOME variable references
-- `\.\.[/\\]` -- parent directory traversal
-- `` `[^`]+` ``, `\$\([^)]+\)` -- command substitution (may be used to escape)
+- Directory changes: `cd`, `pushd`, `popd`.
+- Environment manipulation: `export PATH=`, `export HOME=`, etc.
+- Home-directory references: `~/`, `$HOME`, `${HOME}`.
+- Parent-directory traversal: `../`.
+- Command substitution: `` `...` ``, `$(...)`.
+- Privilege escalation: `sudo`, `su`, `doas` (host policy enforces these).
+- Network tools: `nc`, `ssh`, `scp`, `rsync`, `ftp`, `telnet` (all legitimate dev tools).
+- Process control: `kill`, `killall`, `pkill`.
+- System control: `shutdown`, `reboot`, `halt`, `init`, `mount`, `umount`, `fdisk`, `mkfs`, `fsck`, `iptables`, `ifconfig` (all root-gated by the host).
+- `chmod 777`, `chown root` (not inherently destructive).
+- `eval`, `while true` (legitimate shell primitives).
+- Writes to `/etc/` (root-gated by the host).
+- Symlink creation (`ln -s`) and path-traversal in `cp`/`mv`/`ln` (legitimate).
+- Obfuscation patterns (trivial to bypass; not a meaningful signal).
 
 ---
 

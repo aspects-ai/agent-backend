@@ -79,6 +79,15 @@ export class LocalFilesystemBackend implements FileBasedBackend {
       )
     }
 
+    if (this.actualIsolation !== 'bwrap') {
+      getLogger().warn(
+        'LocalFilesystemBackend is running UNSANDBOXED. This mode is intended ' +
+          'for local development only, or for deployments already running inside ' +
+          'a sandboxed environment (e.g., a Kubernetes pod or VM). For non-dev ' +
+          'use, run the daemon via Docker or install bubblewrap (bwrap) on Linux.'
+      )
+    }
+
     // Validate utilities if requested
     if (config.validateUtils) {
       this.validateEnvironment()

@@ -6,6 +6,7 @@ Executes commands and file operations on the local machine.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import os.path
 import shutil
@@ -28,6 +29,8 @@ from agent_backend.types import (
     LocalFilesystemBackendConfig,
     ShellPreference,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from agent_backend.backends.base import Closeable
@@ -65,6 +68,15 @@ class LocalFilesystemBackend:
                 "bwrap isolation requested but bubblewrap is not installed.",
                 ErrorCode.MISSING_UTILITIES,
                 "bwrap",
+            )
+
+        if self._actual_isolation != IsolationMode.BWRAP:
+            logger.warning(
+                "LocalFilesystemBackend is running UNSANDBOXED. This mode is "
+                "intended for local development only, or for deployments already "
+                "running inside a sandboxed environment (e.g., a Kubernetes pod "
+                "or VM). For non-dev use, run the daemon via Docker or install "
+                "bubblewrap (bwrap) on Linux."
             )
 
     @property

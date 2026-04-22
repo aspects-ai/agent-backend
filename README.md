@@ -515,8 +515,10 @@ Agent Backend provides automatic isolation for safe multi-tenant operations.
 
 By default, `isolation: 'auto'` detects and uses the best available method:
 
-1. **Bubblewrap** (Linux) - OS-level namespace isolation, no root needed
-2. **Software** - Heuristics-based protection using path validation and dangerous operation blocking
+1. **Bubblewrap** (Linux) - OS-level namespace isolation via user namespaces. A real sandbox.
+2. **Software** (fallback) - Path validation within `rootDir` plus footgun-only command sanity checks. **Not a sandbox.** Intended for local development, or when the host already provides isolation (Kubernetes pod, VM, Docker container).
+
+For non-development use, run the backend inside Docker via `agent-backend start-docker` rather than relying on the software fallback.
 
 <details open>
 <summary>TypeScript</summary>
@@ -546,15 +548,15 @@ backend = LocalFilesystemBackend(LocalFilesystemBackendConfig(
 
 **Dangerous Operation Protection:**
 
-Dangerous commands are blocked by default:
+`preventDangerous` is a sanity check for obvious footguns — it catches typos and hallucinations like wiping the root filesystem or piping a remote script into a shell. It is **not** a security boundary. For real isolation, use Bubblewrap, Docker, or an isolated host. See [Isolation Levels](#isolation-levels) above.
 
 <details open>
 <summary>TypeScript</summary>
 
 ```typescript
-await backend.exec('rm -rf /')      // ❌ Blocked
-await backend.exec('sudo apt-get')  // ❌ Blocked
-await backend.exec('curl ... | sh') // ❌ Blocked
+await backend.exec('rm -rf /')         // ❌ Blocked
+await backend.exec('curl ... | sh')    // ❌ Blocked
+await backend.exec(':(){ :|:& };:')    // ❌ Blocked (fork bomb)
 ```
 
 </details>
@@ -563,14 +565,14 @@ await backend.exec('curl ... | sh') // ❌ Blocked
 <summary>Python</summary>
 
 ```python
-await backend.exec("rm -rf /")      # Blocked
-await backend.exec("sudo apt-get")  # Blocked
-await backend.exec("curl ... | sh") # Blocked
+await backend.exec("rm -rf /")         # Blocked
+await backend.exec("curl ... | sh")    # Blocked
+await backend.exec(":(){ :|:& };:")    # Blocked (fork bomb)
 ```
 
 </details>
 
-Disable for trusted environments:
+Opt out when the footgun check gets in the way (for example, when the host itself is already isolated):
 
 <details open>
 <summary>TypeScript</summary>
