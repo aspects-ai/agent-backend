@@ -35,6 +35,17 @@ class TestLocalBackendInit:
         backend = LocalFilesystemBackend(config)
         assert backend.root_dir == os.path.abspath(tmp_workspace)
 
+    def test_warns_when_unsandboxed(self, tmp_workspace, caplog):
+        # When bwrap isn't in use, construction must warn that the backend
+        # is running unsandboxed and is dev-only.
+        config = LocalFilesystemBackendConfig(
+            root_dir=tmp_workspace,
+            isolation=IsolationMode.SOFTWARE,
+        )
+        with caplog.at_level("WARNING", logger="agent_backend.backends.local"):
+            LocalFilesystemBackend(config)
+        assert any("UNSANDBOXED" in rec.message for rec in caplog.records)
+
 
 class TestLocalBackendFileOps:
     async def test_write_and_read(self, local_backend, tmp_workspace):
@@ -221,6 +232,20 @@ class TestLocalBackendExec:
         # Without prevention, a non-dangerous command should work
         result = await backend.exec("echo test")
         assert result == "test"
+
+    async def test_exec_no_prevent_dangerous_allows_footgun(self, tmp_workspace):
+        # With the opt-out, footgun patterns reach the shell. Picking a pattern
+        # that's blocked by default but harmless at runtime: `false | bash`
+        # matches the trailing-pipe-to-shell rule; bash reads empty stdin and
+        # exits cleanly.
+        config = LocalFilesystemBackendConfig(
+            root_dir=tmp_workspace,
+            prevent_dangerous=False,
+        )
+        backend = LocalFilesystemBackend(config)
+        # Should not raise DangerousOperationError -- the check is disabled.
+        result = await backend.exec("false | bash")
+        assert result == ""
 
     async def test_exec_cd_is_allowed(self, local_backend):
         # cd is no longer blocked -- sandbox handles workspace containment

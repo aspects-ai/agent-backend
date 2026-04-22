@@ -4,6 +4,7 @@ import * as fs from 'fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LocalFilesystemBackend } from '../../../src/backends/LocalFilesystemBackend.js'
 import { DangerousOperationError } from '../../../src/types.js'
+import { getLogger, setLogger, type Logger } from '../../../src/utils/logger.js'
 import { createMockSpawn, TEST_DATA } from '../helpers/mockFactories.js'
 
 describe('LocalFilesystemBackend (Unit Tests)', () => {
@@ -67,6 +68,33 @@ describe('LocalFilesystemBackend (Unit Tests)', () => {
         preventDangerous: false
       })
       expect(unsafeBackend).toBeDefined()
+    })
+
+    it('should warn when running without bwrap isolation', () => {
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined)
+
+      const warnSpy = vi.fn()
+      const originalLogger = getLogger()
+      const fakeLogger: Logger = {
+        error: vi.fn(),
+        warn: warnSpy,
+        info: vi.fn(),
+        debug: vi.fn(),
+      }
+      setLogger(fakeLogger)
+
+      try {
+        new LocalFilesystemBackend({
+          rootDir: '/test',
+          shell: 'bash',
+          isolation: 'software',
+        })
+      } finally {
+        setLogger(originalLogger)
+      }
+
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      expect(warnSpy.mock.calls[0][0]).toMatch(/UNSANDBOXED/)
     })
   })
 
