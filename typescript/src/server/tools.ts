@@ -452,13 +452,14 @@ export function registerFilesystemTools(server: McpServer, getBackend: BackendGe
   server.registerTool(
     'edit_file',
     {
-      description: 'Make selective edits using exact text matching. Each edit replaces exact text sequences. Returns a unified diff showing changes made.',
+      description: 'Make selective edits using exact text matching. Each edit\'s oldText must be unique in the current file state, unless replaceAll is set for that edit. Edits apply sequentially — later edits see the result of earlier ones. Returns a unified diff of the changes.',
       inputSchema: {
         path: z.string().describe('Path to the file'),
         edits: z.array(z.object({
-          oldText: z.string().describe('Text to search for - must match exactly'),
+          oldText: z.string().describe('Text to search for — must match exactly and (unless replaceAll is true) must be unique in the current file state. Add surrounding context to disambiguate if needed.'),
           newText: z.string().describe('Text to replace with'),
-        })).describe('Array of edits to apply'),
+          replaceAll: z.boolean().optional().describe('Replace every occurrence of oldText. Use for renames or other bulk replacements; defaults to false.'),
+        })).describe('Array of edits to apply sequentially'),
         dryRun: z.boolean().optional()
           .describe('Preview changes using git-style diff format (defaults to false)'),
       },
@@ -468,20 +469,31 @@ export function registerFilesystemTools(server: McpServer, getBackend: BackendGe
       const backend = await getBackend(sessionId) as FileBasedBackend
       const original = await backend.read(filePath, { encoding: 'utf8' }) as string
 
-      // Normalize line endings for consistent matching
       const normalizeLineEndings = (text: string) => text.replace(/\r\n/g, '\n')
+      const countOccurrences = (haystack: string, needle: string): number => {
+        if (needle.length === 0) return 0
+        return haystack.split(needle).length - 1
+      }
+
       let modified = normalizeLineEndings(original)
 
-      for (const edit of edits) {
+      for (let i = 0; i < edits.length; i++) {
+        const edit = edits[i]
         const normalizedOld = normalizeLineEndings(edit.oldText)
         const normalizedNew = normalizeLineEndings(edit.newText)
+        const replaceAll = edit.replaceAll ?? false
 
-        // Require exact match - throw error if not found (matches official behavior)
-        if (!modified.includes(normalizedOld)) {
-          throw new Error(`Could not find exact match for edit:\n${edit.oldText}`)
+        const occurrences = countOccurrences(modified, normalizedOld)
+        if (occurrences === 0) {
+          throw new Error(`edit ${i + 1}: could not find exact match for oldText. Check whitespace and line endings, or verify the file state after any preceding edits.`)
+        }
+        if (occurrences > 1 && !replaceAll) {
+          throw new Error(`edit ${i + 1}: oldText appears ${occurrences} times in the file; pass replaceAll: true to replace every occurrence, or add surrounding context to oldText to make it unique.`)
         }
 
-        modified = modified.replace(normalizedOld, normalizedNew)
+        modified = replaceAll
+          ? modified.replaceAll(normalizedOld, normalizedNew)
+          : modified.replace(normalizedOld, normalizedNew)
       }
 
       // Generate unified diff
@@ -728,20 +740,22 @@ export function registerFilesystemTools(server: McpServer, getBackend: BackendGe
   server.registerTool(
     'search_files',
     {
-      description: 'Recursively search for files and directories matching a glob pattern. Patterns match against paths relative to the search directory.',
+      description: 'Recursively search for files and directories matching a glob pattern. Patterns match against paths relative to the search directory. Pass sortBy: "mtime" to sort results by modification time (newest first) — useful for surfacing recently-edited files.',
       inputSchema: {
         path: z.string().describe('Starting directory path'),
         pattern: z.string().describe('Glob pattern to match (e.g., "*.ts", "**/*.js", "src/**/*.tsx")'),
         excludePatterns: z.array(z.string()).optional()
           .describe('Patterns to exclude from results'),
+        sortBy: z.enum(['path', 'mtime']).optional()
+          .describe('Sort order for results. "path" (default) sorts alphabetically by path. "mtime" sorts by modification time, newest first.'),
       },
     },
-    async ({ path: searchPath, pattern, excludePatterns: excludePatternsParam }, { sessionId }) => {
+    async ({ path: searchPath, pattern, excludePatterns: excludePatternsParam, sortBy: sortByParam }, { sessionId }) => {
       const excludePatterns = excludePatternsParam ?? []
+      const sortBy = sortByParam ?? 'path'
       const backend = await getBackend(sessionId) as FileBasedBackend
-      const results: string[] = []
+      const results: Array<{ path: string, mtimeMs: number }> = []
 
-      // Recursive search function using minimatch for glob matching
       async function searchDir(currentPath: string): Promise<void> {
         const entries = await backend.readdir(currentPath) as string[]
 
@@ -749,33 +763,39 @@ export function registerFilesystemTools(server: McpServer, getBackend: BackendGe
           const fullPath = path.join(currentPath, entry)
           const relativePath = path.relative(searchPath, fullPath)
 
-          // Check if this path should be excluded
           const shouldExclude = excludePatterns.some((excludePattern: string) =>
             minimatch(relativePath, excludePattern, { dot: true })
           )
           if (shouldExclude) continue
 
-          // Check if this path matches the search pattern
-          if (minimatch(relativePath, pattern, { dot: true })) {
-            results.push(fullPath)
+          let stats
+          try {
+            stats = await backend.stat(fullPath)
+          } catch {
+            continue
           }
 
-          // Recurse into directories
-          try {
-            const stats = await backend.stat(fullPath)
-            if (stats.isDirectory()) {
-              await searchDir(fullPath)
-            }
-          } catch {
-            // Skip inaccessible entries
+          if (minimatch(relativePath, pattern, { dot: true })) {
+            results.push({ path: fullPath, mtimeMs: stats.mtime.getTime() })
+          }
+
+          if (stats.isDirectory()) {
+            await searchDir(fullPath)
           }
         }
       }
 
       await searchDir(searchPath)
 
+      if (sortBy === 'mtime') {
+        results.sort((a, b) => b.mtimeMs - a.mtimeMs)
+      } else {
+        results.sort((a, b) => a.path.localeCompare(b.path))
+      }
+
+      const paths = results.map(r => r.path)
       return {
-        content: [{ type: 'text', text: results.length > 0 ? results.join('\n') : 'No matches found' }]
+        content: [{ type: 'text', text: paths.length > 0 ? paths.join('\n') : 'No matches found' }]
       }
     }
   )
@@ -848,6 +868,111 @@ export function registerExecTool(server: McpServer, getBackend: BackendGetter): 
       return {
         content: [{ type: 'text', text: result as string }]
       }
+    }
+  )
+}
+
+/**
+ * Shell-escape a string for safe inclusion in a bash -c command.
+ * Wraps in single quotes and escapes existing single quotes via '\''.
+ */
+function shellEscape(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`
+}
+
+/**
+ * Register grep tool on an MCP server. Shells out to ripgrep via the backend's
+ * exec capability. Should only be called for backends with exec (FileBasedBackend).
+ */
+export function registerGrepTool(server: McpServer, getBackend: BackendGetter): void {
+  server.registerTool(
+    'grep',
+    {
+      description: 'Search file contents with ripgrep (rg). Returns matching file paths, per-file match counts, or match content. Respects .gitignore by default. Parameter shape mirrors Claude Code\'s Grep tool.',
+      inputSchema: {
+        pattern: z.string().describe('Regex pattern to search for'),
+        path: z.string().optional().describe('File or directory to search in. Defaults to the workspace root.'),
+        glob: z.string().optional().describe('Glob to filter which files are searched (e.g. "*.ts", "src/**/*.py")'),
+        type: z.string().optional().describe('Ripgrep file-type name (e.g. "js", "py", "rust"). See `rg --type-list`.'),
+        outputMode: z.enum(['content', 'files_with_matches', 'count']).optional()
+          .describe('"files_with_matches" (default) returns matching paths; "count" returns per-file match counts; "content" returns matching lines.'),
+        caseInsensitive: z.boolean().optional().describe('Case-insensitive matching (rg -i).'),
+        multiline: z.boolean().optional().describe('Allow patterns to match across newlines (rg -U --multiline-dotall).'),
+        contextBefore: z.number().int().min(0).optional().describe('Lines of context before each match (rg -B). Content mode only.'),
+        contextAfter: z.number().int().min(0).optional().describe('Lines of context after each match (rg -A). Content mode only.'),
+        contextAround: z.number().int().min(0).optional().describe('Lines of context around each match (rg -C). Content mode only. Mutually exclusive with contextBefore/contextAfter.'),
+        lineNumbers: z.boolean().optional().describe('Prefix content-mode output with line numbers (rg -n). Ignored for other output modes.'),
+        headLimit: z.number().int().positive().optional().describe('Cap result to the first N output lines (applied after search).'),
+      },
+    },
+    async (args, { sessionId }) => {
+      const {
+        pattern, path: searchPath, glob, type,
+        outputMode: outputModeParam,
+        caseInsensitive, multiline,
+        contextBefore, contextAfter, contextAround,
+        lineNumbers, headLimit,
+      } = args
+
+      const outputMode = outputModeParam ?? 'files_with_matches'
+
+      if (contextAround != null && (contextBefore != null || contextAfter != null)) {
+        throw new Error('contextAround is mutually exclusive with contextBefore/contextAfter')
+      }
+      if (outputMode !== 'content' && (contextBefore != null || contextAfter != null || contextAround != null)) {
+        throw new Error('context parameters are only valid with outputMode: "content"')
+      }
+
+      const rgArgs: string[] = ['--color=never', '--no-heading', '--with-filename']
+      if (caseInsensitive) rgArgs.push('-i')
+      if (multiline) rgArgs.push('-U', '--multiline-dotall')
+
+      if (outputMode === 'files_with_matches') rgArgs.push('-l')
+      else if (outputMode === 'count') rgArgs.push('-c')
+      else if (outputMode === 'content' && lineNumbers) rgArgs.push('-n')
+
+      if (contextAround != null) rgArgs.push('-C', String(contextAround))
+      else {
+        if (contextBefore != null) rgArgs.push('-B', String(contextBefore))
+        if (contextAfter != null) rgArgs.push('-A', String(contextAfter))
+      }
+
+      if (glob) rgArgs.push('--glob', glob)
+      if (type) rgArgs.push('--type', type)
+
+      rgArgs.push('--', pattern)
+      if (searchPath) rgArgs.push(searchPath)
+
+      // `rg` exits 1 when it finds no matches; wrap so that only exit 0 means
+      // "found results" and exit 1 means "real rg error". Exit 2 from rg gets
+      // remapped to 1 by the wrapper, and its stderr is what exec surfaces.
+      const rgCmd = ['rg', ...rgArgs.map(shellEscape)].join(' ')
+      const shellCmd = `${rgCmd} || [ $? -eq 1 ]`
+
+      const backend = await getBackend(sessionId) as FileBasedBackend
+      let output: string
+      try {
+        output = await backend.exec(shellCmd) as string
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes('exit code 127') || /rg:\s+(command\s+)?not found/i.test(msg)) {
+          throw new Error('grep requires ripgrep (rg) to be installed. Install via `apt install ripgrep`, `brew install ripgrep`, or use the agentbe-daemon Docker image.')
+        }
+        throw err
+      }
+
+      if (output === '') {
+        return { content: [{ type: 'text', text: 'No matches found' }] }
+      }
+
+      const lines = output.split('\n')
+      if (headLimit != null && lines.length > headLimit) {
+        const kept = lines.slice(0, headLimit)
+        kept.push(`[output truncated to first ${headLimit} lines; ${lines.length - headLimit} more hidden]`)
+        return { content: [{ type: 'text', text: kept.join('\n') }] }
+      }
+
+      return { content: [{ type: 'text', text: output }] }
     }
   )
 }

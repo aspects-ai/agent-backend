@@ -227,11 +227,11 @@ If a valid scope path is present, the daemon MUST create a scoped backend from t
 
 ### MCP Server Tools
 
-**Important:** The MCP protocol and its official reference servers evolve independently of this spec. Before implementing or updating MCP request handling, the implementer MUST consult the latest [MCP specification](https://spec.modelcontextprotocol.io/), the [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk), and the [official MCP Filesystem Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) for current transport types, server APIs, tool schemas, and protocol details. The tool list below is a snapshot; the official filesystem server is the source of truth.
+**Important:** The MCP protocol evolves independently of this spec. Before implementing or updating MCP request handling, the implementer MUST consult the latest [MCP specification](https://spec.modelcontextprotocol.io/) and the [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) for current transport types, server APIs, and protocol details.
 
-The daemon MUST register the tools defined by the [official MCP Filesystem Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem). Tool names, input schemas, and output formats MUST match the official filesystem MCP server exactly, except where this spec explicitly calls out a deviation (see `read_text_file` and `read_media_file` below).
+**Positioning:** Early versions of this spec required tool names, schemas, and semantics to match the [official MCP Filesystem Server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) exactly. That constraint is now lifted. The daemon's filesystem toolset is explicitly designed for **agentic coding use cases** and targets parity with Claude Code's in-CLI file tools (Read, Write, Edit, Glob, Grep, Bash), which are more featured and more robust than the reference filesystem server. The official server remains a useful reference but is not the contract. Specific, intentional divergences are called out inline in the tool table below.
 
-At time of writing, the official filesystem MCP server provides the following tools:
+The daemon's filesystem tools are:
 
 | Tool | Description |
 |------|-------------|
@@ -239,21 +239,22 @@ At time of writing, the official filesystem MCP server provides the following to
 | `read_media_file` | Read an image or audio file as base64. Accepts an optional `force` boolean parameter (default: `false`). When `force` is omitted or `false` and the file's MIME type is not `image/*` or `audio/*`, the tool MUST return a text content block (with `isError: true`) naming the unrecognized file type, reporting file-level info (path, extension, detected MIME type, size, mtime), suggesting alternative tools (`read_text_file`, `get_file_info`), and instructing the caller to retry with `force: true` if raw bytes are genuinely needed. When `force: true`, the tool MUST return the file as base64 regardless of MIME type, using the `blob` content type for non-media files. **Deviation from the official filesystem server:** the official server *always* falls back to `blob` for unknown binaries; this daemon requires explicit opt-in via `force`. Rationale: the Anthropic filesystem MCP spec scopes this tool to images and audio, and there is no known common use case where a model can do anything useful with raw base64 of an arbitrary binary — the default response returns actionable file metadata instead of opaque bytes, and `force` preserves the escape hatch for callers that genuinely need it. |
 | `read_multiple_files` | Read multiple files simultaneously |
 | `write_file` | Create new file or overwrite existing |
-| `edit_file` | Selective edits using `edits: [{ oldText, newText }]` with optional `dryRun` |
+| `edit_file` | Selective edits using `edits: [{ oldText, newText, replaceAll? }]` with optional top-level `dryRun`. For each edit, if `oldText` is not found the tool MUST throw an input error. If `oldText` appears more than once in the current file state and `replaceAll` is omitted or `false`, the tool MUST throw an input error naming the number of matches and instructing the caller to either add more surrounding context to make `oldText` unique or pass `replaceAll: true`. When `replaceAll: true`, every occurrence of `oldText` MUST be replaced. Edits are applied sequentially; later edits see the file state produced by earlier edits. When `dryRun: true`, the tool MUST return the unified diff prefixed with `[DRY RUN]\n` and MUST NOT write to disk. **Deviation:** Claude Code's Edit tool shape is preferred over the reference server's single-edit shape. The uniqueness guard prevents silent first-match replacement, which is a known footgun in the reference server. |
 | `create_directory` | Create new directory or ensure it exists |
 | `list_directory` | List directory contents with `[FILE]`/`[DIR]` prefixes |
 | `list_directory_with_sizes` | List directory contents including file sizes, with optional `sortBy` |
 | `directory_tree` | Recursive JSON tree structure with optional `excludePatterns` |
 | `move_file` | Move or rename files and directories |
-| `search_files` | Recursively search for files matching glob patterns, with optional `excludePatterns` |
+| `search_files` | Recursively search for files matching glob patterns, with optional `excludePatterns` and optional `sortBy` (`path` \| `mtime`, default `path`). When `sortBy: 'mtime'`, results MUST be sorted by modification time descending (most recently modified first). This matches Claude Code's Glob behavior and helps agents surface recently-edited files without extra tool calls. |
 | `get_file_info` | Get detailed file/directory metadata |
 | `list_allowed_directories` | List the workspace boundary (allowed directories) |
 
-In addition to the official filesystem tools, the daemon MUST register the following tool when the backend supports command execution:
+In addition to the filesystem tools above, the daemon MUST register the following tools when the backend supports command execution (i.e. has an `exec` capability — file-based backends do, the memory backend does not):
 
 | Tool | Description |
 |------|-------------|
 | `exec` | Execute a shell command. Parameters: `command` (string, required), `env` (object, optional). |
+| `grep` | Search file contents using [ripgrep](https://github.com/BurntSushi/ripgrep). Parameters: `pattern` (string, required — regex), `path` (string, optional — file or directory, defaults to workspace root), `glob` (string, optional — e.g. `"*.ts"`), `type` (string, optional — ripgrep type name, e.g. `"js"`, `"py"`), `outputMode` (`"content"` \| `"files_with_matches"` \| `"count"`, default `"files_with_matches"`), `caseInsensitive` (boolean, optional), `multiline` (boolean, optional — pattern can span newlines when true), `contextBefore` (integer, optional — `rg -B`), `contextAfter` (integer, optional — `rg -A`), `contextAround` (integer, optional — `rg -C`, mutually exclusive with `contextBefore`/`contextAfter`), `lineNumbers` (boolean, optional — only valid with `outputMode: "content"`), `headLimit` (integer, optional — cap result lines/paths/counts at the end of processing). The tool MUST shell out to the system `rg` binary via the backend's `exec`. If `rg` is not installed on the host, the tool MUST surface a clear installation hint. `grep` requires a real filesystem and is NOT registered for the memory backend. **Rationale:** `search_files` only matches filenames; a coding agent needs content search. Ripgrep is the fastest tree-aware search tool and respects `.gitignore` by default, which matches what an agent typically wants. The parameter surface deliberately mirrors Claude Code's Grep tool so model prompting carries over. |
 
 ---
 
