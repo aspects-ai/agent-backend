@@ -10,6 +10,14 @@ type BackendGetter = (sessionId?: string) => Promise<Backend> | Backend
  * Default patterns to exclude from directory listings (gitignore-style).
  * These match at any depth in the tree.
  */
+/**
+ * read_text_file paging defaults. Tunable here; callers see them via the tool's
+ * footer. See opensdd/daemon.md for the behavioral contract.
+ */
+export const DEFAULT_LIMIT = 1000
+export const MAX_LIMIT = 5000
+export const LINE_TRUNCATION_THRESHOLD = 2000
+
 export const DEFAULT_EXCLUDE_PATTERNS = [
   // Version control
   '.git',
@@ -146,6 +154,33 @@ function formatSize(bytes: number): string {
 }
 
 /**
+ * Format a byte count for the read_text_file footer. Granularities mandated by spec:
+ * `<1 KB`, integer KB, one-decimal MB, one-decimal GB.
+ */
+function formatTextFileSize(bytes: number): string {
+  if (bytes < 1024) return '<1 KB'
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
+/**
+ * Render an integer with en-US comma thousands-separators (e.g. 4512 → "4,512").
+ */
+function formatCount(n: number): string {
+  return n.toLocaleString('en-US')
+}
+
+/**
+ * Clip a single line at LINE_TRUNCATION_THRESHOLD. Announced inline so the model
+ * can tell the content is partial and route to a different tool (e.g. grep).
+ */
+function truncateLine(line: string): string {
+  if (line.length <= LINE_TRUNCATION_THRESHOLD) return line
+  return `${line.slice(0, LINE_TRUNCATION_THRESHOLD)}… [line truncated, original ${line.length} chars]`
+}
+
+/**
  * Get MIME type for a file path (simple implementation to avoid extra dependency)
  */
 function getMimeType(filePath: string): string {
@@ -197,31 +232,103 @@ export function registerFilesystemTools(server: McpServer, getBackend: BackendGe
   server.registerTool(
     'read_text_file',
     {
-      description: 'Read complete contents of a file as text',
+      description: `Read file contents as text. Paginates by default: with no paging parameters, returns the first ${DEFAULT_LIMIT} lines and appends a footer indicating how much of the file was shown. Use offset and limit for explicit paging, or head/tail for first/last-N-line reads (the three modes are mutually exclusive). Lines longer than ${LINE_TRUNCATION_THRESHOLD} chars are truncated with an inline marker.`,
       inputSchema: {
         path: z.string().describe('Path to the file'),
-        head: z.number().optional().describe('Return only the first N lines'),
-        tail: z.number().optional().describe('Return only the last N lines'),
+        offset: z.number().int().positive().optional()
+          .describe('1-based line number to start at. Defaults to 1.'),
+        limit: z.number().int().positive().optional()
+          .describe(`Max lines to return. Defaults to ${DEFAULT_LIMIT}. Values over ${MAX_LIMIT} are clamped.`),
+        head: z.number().int().positive().optional()
+          .describe('Return only the first N lines. Mutually exclusive with offset/limit and tail.'),
+        tail: z.number().int().positive().optional()
+          .describe('Return only the last N lines. Mutually exclusive with offset/limit and head.'),
       },
     },
-    async ({ path: filePath, head, tail }, { sessionId }) => {
-      // Cannot specify both head and tail
-      if (head != null && tail != null) {
-        throw new Error('Cannot specify both head and tail parameters simultaneously')
+    async ({ path: filePath, offset, limit, head, tail }, { sessionId }) => {
+      // Exactly one of { head, tail, offset/limit } may be active. We already know
+      // head and tail are mutually exclusive today; the same applies to offset/limit
+      // versus head/tail now that paging is a first-class mode.
+      const pageMode = offset != null || limit != null
+      const activeModes = (head != null ? 1 : 0) + (tail != null ? 1 : 0) + (pageMode ? 1 : 0)
+      if (activeModes > 1) {
+        if (head != null && tail != null) {
+          throw new Error('cannot specify both `head` and `tail` — pick one paging mode')
+        }
+        if (head != null) {
+          throw new Error('cannot specify both `head` and `offset`/`limit` — pick one paging mode')
+        }
+        throw new Error('cannot specify both `tail` and `offset`/`limit` — pick one paging mode')
       }
 
       const backend = await getBackend(sessionId) as FileBasedBackend
-      let content = await backend.read(filePath, { encoding: 'utf8' }) as string
+      const content = await backend.read(filePath, { encoding: 'utf8' }) as string
+      const allLines = content.split('\n')
+      const totalLines = allLines.length
+
+      let slice: string[]
+      let mode: 'head' | 'tail' | 'page'
+      let pageStart = 1 // 1-based line of the first line in the slice (page mode)
+      const implicit = !pageMode && head == null && tail == null
 
       if (head != null) {
-        const lines = content.split('\n')
-        content = lines.slice(0, head).join('\n')
+        mode = 'head'
+        slice = allLines.slice(0, head)
       } else if (tail != null) {
-        const lines = content.split('\n')
-        content = lines.slice(-tail).join('\n')
+        mode = 'tail'
+        slice = allLines.slice(Math.max(0, totalLines - tail))
+      } else {
+        mode = 'page'
+        const rawLimit = limit ?? DEFAULT_LIMIT
+        const effectiveLimit = Math.min(rawLimit, MAX_LIMIT)
+        pageStart = offset ?? 1
+        const startIdx = pageStart - 1
+        slice = startIdx >= totalLines
+          ? []
+          : allLines.slice(startIdx, startIdx + effectiveLimit)
       }
 
-      return { content: [{ type: 'text', text: content }] }
+      const hadLineTruncation = slice.some(l => l.length > LINE_TRUNCATION_THRESHOLD)
+      const truncated = slice.map(truncateLine)
+      const body = truncated.join('\n')
+
+      // Footer decision. For head/tail, footer appears whenever the slice doesn't
+      // cover the whole file. For page mode, same — plus for implicit paging we
+      // also emit the footer if any line was truncated, so a pathological
+      // single-line file still surfaces file size and the "call again" hint.
+      let footer = ''
+      if (mode === 'head') {
+        if (slice.length < totalLines) {
+          footer = `[showing first ${formatCount(slice.length)} lines of ${formatCount(totalLines)}.]`
+        }
+      } else if (mode === 'tail') {
+        if (slice.length < totalLines) {
+          footer = `[showing last ${formatCount(slice.length)} lines of ${formatCount(totalLines)}.]`
+        }
+      } else {
+        const sliceEndLine = pageStart + slice.length - 1 // inclusive
+        const coversWholeFile = pageStart === 1 && slice.length >= totalLines
+        const needFooter = !coversWholeFile || (implicit && hadLineTruncation)
+        if (needFooter) {
+          if (slice.length === 0) {
+            footer = `[offset ${formatCount(pageStart)} is beyond end of file (${formatCount(totalLines)} lines).]`
+          } else if (implicit) {
+            const stats = await backend.stat(filePath)
+            const size = formatTextFileSize(stats.size)
+            footer = `[showing lines ${formatCount(pageStart)}-${formatCount(sliceEndLine)} of ${formatCount(totalLines)}; file is ~${size}. Call again with offset and limit to read more.]`
+          } else {
+            footer = `[showing lines ${formatCount(pageStart)}-${formatCount(sliceEndLine)} of ${formatCount(totalLines)}.]`
+          }
+        }
+      }
+
+      let text = body
+      if (footer) {
+        if (text.length > 0 && !text.endsWith('\n')) text += '\n'
+        text += footer
+      }
+
+      return { content: [{ type: 'text', text }] }
     }
   )
 
