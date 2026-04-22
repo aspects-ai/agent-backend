@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Backend } from '../types.js'
 import { isFileBasedBackend } from '../typing.js'
-import { registerExecTool, registerFilesystemTools } from './tools.js'
+import { registerExecTool, registerFilesystemTools, registerGrepTool } from './tools.js'
 
 /**
  * Adaptive MCP Server that works with any Backend type.
@@ -59,9 +59,12 @@ export class AgentBackendMCPServer {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const originalRegisterTool: any = baseServer.registerTool.bind(baseServer)
     baseServer.registerTool = ((name: string, config: Record<string, object>, cb: Function) => {
-      // Ensure inputSchema has type field for JSON Schema compatibility
+      // Ensure inputSchema carries the JSON-Schema `type: 'object'` marker for
+      // consumers that introspect via getTools(). `type` is written LAST so that
+      // user-defined parameters named `type` (e.g. grep's `type` filter) don't
+      // shadow the marker when the object is spread.
       const inputSchema = config.inputSchema
-        ? { type: 'object' as const, ...config.inputSchema }
+        ? { ...config.inputSchema, type: 'object' as const }
         : undefined
 
       this.tools.set(name, {
@@ -83,10 +86,12 @@ export class AgentBackendMCPServer {
     // Always register filesystem tools (read, write, directory operations, etc.)
     registerFilesystemTools(this.server, async () => this.backend)
 
-    // Conditionally register exec tool based on duck typing
-    // If the backend has an exec method, it supports command execution
+    // Conditionally register exec-backed tools based on duck typing.
+    // If the backend has an exec method, it can run shell commands — which
+    // unlocks both the raw exec tool and the ripgrep-backed grep tool.
     if (isFileBasedBackend(backend)) {
       registerExecTool(this.server, async () => this.backend)
+      registerGrepTool(this.server, async () => this.backend)
     }
   }
 
