@@ -5,9 +5,6 @@
  * of immutable manifests advanced by compare-and-swap on HEAD. Sandboxes work
  * against ephemeral checkouts and promote state via commit-back (per-file LWW
  * on conflict, for now).
- *
- * This entrypoint currently defines the interfaces (the boundaries that matter
- * for keeping the pieces separable); implementations land next.
  */
 
 export type {
@@ -37,9 +34,15 @@ export interface BlobStore {
  * (default: a small transactional DB; alternative: S3 conditional writes).
  */
 export interface RoomStore {
+  /** Current HEAD ref for a room, or null if the room has no commits yet. */
   head(room: RoomId): Promise<Ref | null>;
   getManifest(room: RoomId, ref: Ref): Promise<Manifest>;
-  /** Atomically advance HEAD from `expected` to `next`. */
+  /** Persist a manifest object. Must be called before it is referenced by HEAD. */
+  putManifest(manifest: Manifest): Promise<void>;
+  /**
+   * Atomically advance HEAD from `expected` to `next`. `expected` is null when
+   * creating the room's first commit. Returns "conflict" if HEAD has moved.
+   */
   casHead(room: RoomId, expected: Ref | null, next: Ref): Promise<"ok" | "conflict">;
 }
 
@@ -65,9 +68,21 @@ export interface VersionedStore {
 
   /**
    * Promote the current state of `tree` to a new room version. Diffs the tree
-   * against `base`, uploads new blobs, writes a manifest, and CAS-advances HEAD.
-   * On CAS failure returns a conflict; callers resolve (per-file LWW today) and
-   * retry.
+   * against `base` (null for the first commit), uploads new blobs, writes a
+   * manifest, and CAS-advances HEAD. On a concurrent HEAD advance it applies
+   * per-file last-writer-wins against the current HEAD and retries.
    */
-  commit(room: RoomId, base: Ref, tree: WorkingTree, createdBy: string): Promise<CommitResult>;
+  commit(
+    room: RoomId,
+    base: Ref | null,
+    tree: WorkingTree,
+    createdBy: string,
+  ): Promise<CommitResult>;
 }
+
+export { DefaultVersionedStore } from "./versioned-store.js";
+export type { VersionedStoreOptions } from "./versioned-store.js";
+export { InMemoryBlobStore, InMemoryRoomStore } from "./stores/memory.js";
+export { InMemoryWorkingTree } from "./testing/memory-working-tree.js";
+export { hashBytes, hashManifest } from "./hash.js";
+export { walkFiles, lwwMerge } from "./manifest.js";

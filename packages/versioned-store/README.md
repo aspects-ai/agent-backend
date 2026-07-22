@@ -2,7 +2,7 @@
 
 > Content-addressed, S3-backed versioned document store with checkout / commit-back into an [agent-backend](../agent-backend) workspace.
 
-**Status:** early scaffold — interfaces only, implementations landing next. Package name is a placeholder pending the published name.
+**Status:** core implemented and unit-tested (in-memory-backed). **S3 adapters are a TODO** (`S3BlobStore` + conditional-write `S3RoomStore`, pending localstack/MinIO integration tests). Package name is a placeholder pending the published name.
 
 ## Model
 
