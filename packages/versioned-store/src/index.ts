@@ -83,6 +83,8 @@ export interface VersionedStore {
 export { DefaultVersionedStore } from "./versioned-store.js";
 export type { VersionedStoreOptions } from "./versioned-store.js";
 export { InMemoryBlobStore, InMemoryRoomStore } from "./stores/memory.js";
+export { S3BlobStore, S3RoomStore } from "./stores/s3.js";
+export type { S3StoreOptions } from "./stores/s3.js";
 export { InMemoryWorkingTree } from "./testing/memory-working-tree.js";
 export { hashBytes, hashManifest } from "./hash.js";
 export { walkFiles, lwwMerge } from "./manifest.js";

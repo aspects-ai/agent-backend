@@ -94,10 +94,12 @@ Content-addressed store + checkout/commit-back. The `WorkingTree` surface is the
 - ✅ sha-256 content addressing + deterministic content-addressed manifest refs; tree walk; dedupe.
 - ✅ `InMemoryBlobStore` / `InMemoryRoomStore` / `InMemoryWorkingTree` (tests + local dev).
 
-**TODO — S3 adapters (task #8; deferred because they need integration tests, not unit tests):**
-- ☐ **`S3BlobStore`** — content-hash keys, streaming for large blobs, `hasBlob` HEAD check for dedupe. Adds `@aws-sdk/client-s3` (not yet a dependency).
-- ☐ **`S3RoomStore`** — manifests as S3 objects + HEAD via **conditional write** (`If-Match`) for CAS; DB-backed variant later if needed.
-- ☐ **Integration tests** against localstack/MinIO to land the adapters verified.
+**Done — S3 adapters (verified end-to-end against LocalStack):**
+- ✅ **`S3BlobStore`** — content-hash keys (`<prefix>blobs/<hash>`), `hasBlob` HEAD-check dedupe, streaming get. Adds `@aws-sdk/client-s3`.
+- ✅ **`S3RoomStore`** — manifests as S3 objects; HEAD via **conditional write** (`If-None-Match` for first commit, `If-Match` on read-ETag thereafter) for optimistic CAS. **Confirmed LocalStack honors both conditions** — DB-backed variant not needed for now.
+- ✅ **Integration tests** (`test:integration`, gated by config; not in the default unit run) against LocalStack — 5 green incl. the two CAS-conflict probes.
+
+**Test harness:** `test:run`/`test:unit` = fast in-memory (7 tests). `test:integration` = LocalStack (`docker run -d -p 4566:4566 -e SERVICES=s3 localstack/localstack:3`), endpoint overridable via `AGENTBE_S3_ENDPOINT`.
 
 **Open impl questions:** blob chunking threshold for very large files; manifest size limits for huge rooms (paginate / tree-of-manifests?); GC of unreferenced blobs.
 
@@ -127,7 +129,7 @@ The orchestrator + product surface. Papermark-like deployable (Next.js), self-ho
 
 Dependency-first. Land each, verify, then proceed.
 1. ✅ Monorepo restructure (done — commit `a1797f3`).
-2. **`versioned-store`** — ✅ core + in-memory + tests done; ☐ S3 adapters remain (task #8). The proven interfaces are enough to build the next packages against the in-memory store; S3 is an adapter swap.
+2. ✅ **`versioned-store`** — core + in-memory + unit tests, **and** S3 adapters verified end-to-end against LocalStack. The substrate is real.
 3. **`index-sync`** (5.3) — enables discovery. **← next.**
 4. **`room` app** MVP (5.5) — wire store + index + agent-backend into the loop; read-write with LWW; room-level auth.
 5. **`ingestion`** (5.4) — multimodal, added as the corpus demands it.
