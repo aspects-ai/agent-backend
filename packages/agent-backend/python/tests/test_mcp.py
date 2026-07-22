@@ -20,11 +20,9 @@ class TestMCPTransportCreation:
         with pytest.raises(BackendError):
             await create_backend_mcp_transport(FakeBackend())
 
-    def test_stdio_wrapper_close(self):
+    async def test_stdio_wrapper_close(self):
         wrapper = _StdioTransportWrapper(None)
-        import asyncio
-
-        asyncio.get_event_loop().run_until_complete(wrapper.close())
+        await wrapper.close()
 
     async def test_local_transport_creation(self):
         class FakeLocalBackend:

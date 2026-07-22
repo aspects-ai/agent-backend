@@ -1,0 +1,20 @@
+{
+  "name": "@agentbe/versioned-store",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Content-addressed, S3-backed versioned document store with checkout/commit-back into an agent-backend workspace",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

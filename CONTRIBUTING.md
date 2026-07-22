@@ -89,16 +89,16 @@ Language-specific commands use the pattern `make <command>-<language>`, for exam
 
 ### Language-Specific Docs
 
-- [TypeScript](./typescript/README.md) -- package info, testing, code style, workflows, troubleshooting
-- [Python](./python/README.md) -- build, test, lint commands
+- [TypeScript](./packages/agent-backend/typescript/README.md) -- package info, testing, code style, workflows, troubleshooting
+- [Python](./packages/agent-backend/python/README.md) -- build, test, lint commands
 
 ## Spec-First Development
 
-[opensdd/spec.md](opensdd/spec.md) is the entry point for all behavioral specs, organized as an [OpenSDD](https://github.com/deepagents-ai/opensdd)-compliant spec with three components:
+[opensdd/spec.md](packages/agent-backend/opensdd/spec.md) is the entry point for all behavioral specs, organized as an [OpenSDD](https://github.com/deepagents-ai/opensdd)-compliant spec with three components:
 
-- [opensdd/clients.md](opensdd/clients.md) -- source of truth for all client library behavior. A developer should be able to reimplement a client library in any language by following the spec alone.
-- [opensdd/daemon.md](opensdd/daemon.md) -- source of truth for the agentbe-daemon process — its endpoints, authentication, transports, scoping, shutdown, and Docker packaging.
-- [opensdd/safety.md](opensdd/safety.md) -- source of truth for command safety validation patterns.
+- [opensdd/clients.md](packages/agent-backend/opensdd/clients.md) -- source of truth for all client library behavior. A developer should be able to reimplement a client library in any language by following the spec alone.
+- [opensdd/daemon.md](packages/agent-backend/opensdd/daemon.md) -- source of truth for the agentbe-daemon process — its endpoints, authentication, transports, scoping, shutdown, and Docker packaging.
+- [opensdd/safety.md](packages/agent-backend/opensdd/safety.md) -- source of truth for command safety validation patterns.
 
 **All changes to code that impacts client library or daemon functionality must start with an update to the relevant spec.** Update the spec first, then update the implementation to match. The only exceptions are small bug fixes or negligible tweaks that don't affect the documented API or behavioral contract.
 
@@ -137,7 +137,7 @@ make publish
 This command:
 
 1. Prompts for version bump type (patch/minor/major)
-2. Bumps versions in both `typescript/package.json` and `python/pyproject.toml` in sync
+2. Bumps versions in both `packages/agent-backend/typescript/package.json` and `packages/agent-backend/python/pyproject.toml` in sync
 3. Builds TypeScript to verify compilation
 4. Creates a `release/v<VERSION>` branch
 5. Commits the version changes and pushes the branch

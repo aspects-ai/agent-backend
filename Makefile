@@ -98,14 +98,14 @@ test: test-typescript test-python ## Run all tests
 
 clean: ## Remove build artifacts and dependencies
 	@echo "Cleaning TypeScript packages..."
-	rm -rf typescript/dist typescript/node_modules
+	rm -rf packages/agent-backend/typescript/dist packages/agent-backend/typescript/node_modules
 	rm -rf examples/NextJS/dist examples/NextJS/.next examples/NextJS/node_modules
 	rm -rf examples/TSBasic/node_modules
 	rm -rf node_modules
 	@echo "Cleaning Python packages..."
 	rm -rf .venv dist
-	@if [ -d "python" ]; then \
-		cd python && rm -rf build *.egg-info .pytest_cache .mypy_cache __pycache__; \
+	@if [ -d "packages/agent-backend/python" ]; then \
+		cd packages/agent-backend/python && rm -rf build *.egg-info .pytest_cache .mypy_cache __pycache__; \
 	fi
 	@echo "Cleaning development artifacts..."
 	rm -rf tmp/
@@ -122,7 +122,7 @@ lint-fix: ## Auto-fix lint issues
 	@echo "Auto-fixing TypeScript..."
 	pnpm -r lint:fix || true
 	@echo "Auto-fixing Python..."
-	cd python && uv run ruff check --fix . || true
+	cd packages/agent-backend/python && uv run ruff check --fix . || true
 
 ##@ Language-Specific
 
@@ -140,7 +140,7 @@ test-typescript: ## Run TypeScript tests
 
 test-python: ## Run Python tests
 	@echo "Running Python tests..."
-	cd python && uv run pytest -m "not integration" --cov=agent_backend --cov-report=term-missing --cov-fail-under=80
+	cd packages/agent-backend/python && uv run pytest -m "not integration" --cov=agent_backend --cov-report=term-missing --cov-fail-under=80
 
 test-unit: ## Run unit tests only
 	@echo "Running unit tests..."
@@ -152,7 +152,7 @@ typecheck-typescript: ## Type check TypeScript packages
 
 typecheck-python: ## Type check Python package
 	@echo "Type checking Python package..."
-	cd python && uv run ty check
+	cd packages/agent-backend/python && uv run ty check
 
 lint-typescript: ## Lint TypeScript packages
 	@echo "Linting TypeScript packages..."
@@ -160,7 +160,7 @@ lint-typescript: ## Lint TypeScript packages
 
 lint-python: ## Lint Python package
 	@echo "Linting Python package..."
-	cd python && uv run ruff check .
+	cd packages/agent-backend/python && uv run ruff check .
 
 ##@ Publishing & CI
 
@@ -194,5 +194,5 @@ docker-build: ## Build agentbe-daemon Docker image
 	@echo "Building agent-backend TypeScript package..."
 	@pnpm --filter=agent-backend build
 	@echo "Building agentbe-daemon Docker image..."
-	@cd daemon/docker && \
+	@cd agentbe-daemon/docker && \
 		docker build -f Dockerfile -t agentbe-daemon:latest ../..

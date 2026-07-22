@@ -690,8 +690,8 @@ See [docs/agentbe-daemon.md](./docs/agentbe-daemon.md) for setup, configuration,
 - [Connection Pooling](docs/connection-pooling.md)
 - [Security & Isolation](docs/security.md)
 - [Performance](docs/performance.md)
-- [TypeScript Client Library](typescript/README.md)
-- [Python Client Library](python/README.md)
+- [TypeScript Client Library](packages/agent-backend/typescript/README.md)
+- [Python Client Library](packages/agent-backend/python/README.md)
 
 ---
 

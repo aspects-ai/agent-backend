@@ -12,8 +12,8 @@ TypeScript implementation of the `agent-backend` package. See the [main README](
 | Test runner | Vitest                         |
 | Build       | Vite                           |
 | Linter      | ESLint                         |
-| Source       | `typescript/src/`              |
-| Tests        | `typescript/tests/unit/`       |
+| Source       | `packages/agent-backend/typescript/src/` |
+| Tests        | `packages/agent-backend/typescript/tests/unit/` |
 
 ## Advanced Features
 
@@ -142,9 +142,9 @@ try {
 
 ### Commands
 
-All commands can be run from the monorepo root via Make or from the `typescript/` directory via pnpm.
+All commands can be run from the monorepo root via Make or from the `packages/agent-backend/typescript/` directory via pnpm.
 
-| Task        | Make (root)              | pnpm (`typescript/`)    |
+| Task        | Make (root)              | pnpm (`packages/agent-backend/typescript/`) |
 |-------------|--------------------------|-------------------------|
 | Build       | `make build-typescript`  | `pnpm run build`        |
 | Test        | `make test-typescript`   | `pnpm test --run`       |
@@ -168,7 +168,7 @@ ESLint enforces these rules. Run `make lint-fix` or `pnpm run lint:fix` to auto-
 
 #### Unit Tests
 
-Tests live in `typescript/tests/unit/` and use Vitest with global mocks.
+Tests live in `packages/agent-backend/typescript/tests/unit/` and use Vitest with global mocks.
 
 The global setup file (`tests/unit/setup.ts`) mocks `child_process` and `fs/promises` to prevent real I/O during tests. If a test calls a real I/O function without mocking it first, it throws a **"UNIT TEST VIOLATION"** error. This is intentional -- always mock before calling code under test.
 
@@ -218,7 +218,7 @@ pnpm test --coverage         # With coverage report
 make dev
 ```
 
-This starts the mprocs TUI with TypeScript watch mode. Edit files under `typescript/src/` and watch the build output in the mprocs pane. The watcher rebuilds on every change.
+This starts the mprocs TUI with TypeScript watch mode. Edit files under `packages/agent-backend/typescript/src/` and watch the build output in the mprocs pane. The watcher rebuilds on every change.
 
 ### Docker
 

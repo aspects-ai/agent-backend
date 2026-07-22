@@ -57,7 +57,7 @@ class TestRemoteBackendUnit:
         await backend.destroy()
         assert backend.status == ConnectionStatus.DESTROYED
 
-    def test_status_change_callback(self):
+    async def test_status_change_callback(self):
         config = RemoteFilesystemBackendConfig(
             root_dir="/workspace",
             host="localhost",
@@ -66,9 +66,7 @@ class TestRemoteBackendUnit:
         events = []
         backend.on_status_change(lambda e: events.append(e))
         # Manually trigger destroy to test callback
-        import asyncio
-
-        asyncio.get_event_loop().run_until_complete(backend.destroy())
+        await backend.destroy()
         assert len(events) == 1
         assert events[0].to_status == ConnectionStatus.DESTROYED
 

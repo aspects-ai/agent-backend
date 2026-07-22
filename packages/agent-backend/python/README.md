@@ -13,8 +13,8 @@ Python implementation of the `agent-backend` package. See the [main README](../R
 | Build        | python -m build             |
 | Linter       | ruff                        |
 | Type checker | mypy                        |
-| Source        | `python/agent_backend/`    |
-| Tests         | `python/tests/`            |
+| Source        | `packages/agent-backend/python/agent_backend/` |
+| Tests         | `packages/agent-backend/python/tests/` |
 
 ## Advanced Features
 
@@ -153,9 +153,9 @@ except BackendError as e:
 
 ### Commands
 
-All commands can be run from the monorepo root via Make or from the `python/` directory via uv.
+All commands can be run from the monorepo root via Make or from the `packages/agent-backend/python/` directory via uv.
 
-| Task        | Make (root)              | uv (`python/`)                                      |
+| Task        | Make (root)              | uv (`packages/agent-backend/python/`)                |
 |-------------|--------------------------|------------------------------------------------------|
 | Build       | `make build-python`      | `uv build`                                           |
 | Test        | `make test-python`       | `uv run pytest`                                      |
@@ -175,7 +175,7 @@ All commands can be run from the monorepo root via Make or from the `python/` di
 
 ### Testing
 
-Tests live in `python/tests/` and use pytest with `pytest-asyncio`.
+Tests live in `packages/agent-backend/python/tests/` and use pytest with `pytest-asyncio`.
 
 `asyncio_mode = "auto"` is configured in `pyproject.toml`, so async test functions are detected automatically -- no `@pytest.mark.asyncio` decorator needed.
 

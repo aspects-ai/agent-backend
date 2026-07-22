@@ -51,9 +51,9 @@ jobs:
         run: uv sync
 
       - name: Lint
-        working-directory: python
+        working-directory: packages/agent-backend/python
         run: uv run ruff check .
 
       - name: Test
-        working-directory: python
+        working-directory: packages/agent-backend/python
         run: uv run pytest --cov=agent_backend --cov-fail-under=80

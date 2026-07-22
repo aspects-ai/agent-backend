@@ -46,7 +46,7 @@ RUN npm i -g pnpm && \
 
 # Install agent-backend from local build (for development) or npm (for production)
 ARG AGENTBE_VERSION=local
-RUN --mount=type=bind,source=typescript,target=/tmp/agent-backend-src \
+RUN --mount=type=bind,source=packages/agent-backend/typescript,target=/tmp/agent-backend-src \
     if [ "$AGENTBE_VERSION" = "local" ]; then \
       mkdir -p /tmp/agent-backend && \
       cp /tmp/agent-backend-src/package.json /tmp/agent-backend/ && \
@@ -88,7 +88,7 @@ RUN if [ "$INCLUDE_SSHD" = "true" ]; then \
     fi
 
 # Copy entrypoint
-COPY daemon/docker/docker-entrypoint.sh /docker-entrypoint.sh
+COPY agentbe-daemon/docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Set workspace permissions

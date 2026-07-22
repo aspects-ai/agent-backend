@@ -32,7 +32,7 @@ procs:
     shell: |
       [ -z "$LOCAL" ] && echo "Skipped (set LOCAL=1 to enable)" && exit 0
       echo "Starting agentbe-daemon locally (tsx --watch)..."
-      cd typescript
+      cd packages/agent-backend/typescript
       exec npx tsx --watch src/cli.ts daemon \
         --rootDir /tmp/agent-backend-workspace \
         --local-only
@@ -73,7 +73,7 @@ procs:
         -p 3001:3001 \
         -p 2222:22 \
         -v "$(pwd)/tmp/deploy:/app/agent-backend:ro" \
-        -v "$(pwd)/typescript/src:/app/agent-backend/src:ro" \
+        -v "$(pwd)/packages/agent-backend/typescript/src:/app/agent-backend/src:ro" \
         -e USE_LOCAL_BUILD=1 \
         --env-file "$ENV_FILE" \
         agentbe-daemon:latest &
