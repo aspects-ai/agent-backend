@@ -2,7 +2,7 @@
 
 > Content-addressed, S3-backed versioned document store with checkout / commit-back into an [agent-backend](../agent-backend) workspace.
 
-**Status:** core + in-memory backends (unit-tested, 7) **and** S3 adapters (`S3BlobStore` + conditional-write `S3RoomStore`, integration-tested against LocalStack, 5) are implemented and green. Package name is a placeholder pending the published name.
+**Status:** core + in-memory backends (unit-tested, 7) **and** S3 adapters (`S3BlobStore` + conditional-write `S3RoomStore`, integration-tested against LocalStack, 9 — incl. byte-exact round-trips of real JPEG/PNG/PDF/CSV fixtures) are implemented and green. Package name is a placeholder pending the published name.
 
 Test tiers: `pnpm test:run` (fast, in-memory) · `pnpm test:integration` (needs a live S3 — `docker run -d -p 4566:4566 -e SERVICES=s3 localstack/localstack:3`; override endpoint via `AGENTBE_S3_ENDPOINT`).
 

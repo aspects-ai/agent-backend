@@ -97,7 +97,7 @@ Content-addressed store + checkout/commit-back. The `WorkingTree` surface is the
 **Done — S3 adapters (verified end-to-end against LocalStack):**
 - ✅ **`S3BlobStore`** — content-hash keys (`<prefix>blobs/<hash>`), `hasBlob` HEAD-check dedupe, streaming get. Adds `@aws-sdk/client-s3`.
 - ✅ **`S3RoomStore`** — manifests as S3 objects; HEAD via **conditional write** (`If-None-Match` for first commit, `If-Match` on read-ETag thereafter) for optimistic CAS. **Confirmed LocalStack honors both conditions** — DB-backed variant not needed for now.
-- ✅ **Integration tests** (`test:integration`, gated by config; not in the default unit run) against LocalStack — 5 green incl. the two CAS-conflict probes.
+- ✅ **Integration tests** (`test:integration`, gated by config; not in the default unit run) against LocalStack — **9 green**: the two CAS-conflict probes + byte-exact round-trips of **real multimodal/tabular fixtures** (JPEG, PNG, two PDFs, CSV) incl. a mixed-tree commit/checkout, dedupe, and partial checkout of a single binary. Fixtures committed under `test/fixtures/` (~180 KB).
 
 **Test harness:** `test:run`/`test:unit` = fast in-memory (7 tests). `test:integration` = LocalStack (`docker run -d -p 4566:4566 -e SERVICES=s3 localstack/localstack:3`), endpoint overridable via `AGENTBE_S3_ENDPOINT`.
 
