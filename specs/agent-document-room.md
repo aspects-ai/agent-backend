@@ -120,13 +120,22 @@ Per-asset pipeline turning raw media into searchable + shell-analyzable form. **
 - Adapters: OCR (images/PDF), transcription (audio/video), table extraction (Excel/CSV normalization).
 - Output contract: raw asset stays a content-addressed blob; **derived text committed as a sibling file**; embedding handed to `index-sync`. Derived artifacts are rebuildable — history tracks the raw asset as canonical.
 
-### 5.5 `room` — the app (last)
-The orchestrator + product surface. Papermark-like deployable (Next.js), self-hostable.
-- **API**: room CRUD, upload/ingest, search, checkout-a-workspace, run/exec, commit.
-- **Membership + room-level auth** (granular ACL deferred).
-- **Workspace provisioning**: spin up an ephemeral agent-backend workspace scoped to a room, wire the agent loop (search tool + shell), tear down after task.
-- **Agent loop wiring**: expose `search → checkout → exec → commit-back` as tools to the agent.
-- Batteries-included: `clone → configure S3 + vector store + model key → run`; libs remain independently importable.
+### 5.5 `room` — the app (root `room/`; service core ✓, API/UI/auth TODO)
+The orchestrator + product surface. Service core folds in the `BackendWorkingTree` adapter (moved here from the deleted `integration` package) + the e2e loop test.
+
+**Done — service core (`RoomService` / `RoomSession`), unit + S3-integration tested (6 unit + 1 integration green):**
+- ✅ `putDocuments(room, files, author)` — full-checkout-of-HEAD then write then commit (never drops existing docs), auto-reindex.
+- ✅ `search(room, query, k)` — semantic search over the room.
+- ✅ `openSession(room, {paths?})` — provisions an ephemeral agent-backend workspace, checks out HEAD (full = read-write, `paths`-scoped = **read-only**, which enforces the partial-commit guard from §7), exposes `exec` + working tree + `commit(author)` (reindexes, chains base) + `close()`.
+- ✅ **`WorkspaceProvider`** seam + **`LocalWorkspaceProvider`** (temp-dir `LocalFilesystemBackend`); a Docker/daemon provider is the production swap.
+- ✅ The `BackendWorkingTree` adapter (agent-backend `Backend` → `WorkingTree`, byte-read fix) lives here.
+
+**TODO:**
+- ☐ **HTTP API** (Next.js) over `RoomService`: room CRUD, upload, search, session/exec/commit.
+- ☐ **Agent loop wiring**: expose `search → checkout → exec → commit-back` as agent tools (MCP / AI-SDK).
+- ☐ **Membership + room-level auth** (granular ACL deferred).
+- ☐ **UI** + batteries-included deploy (`clone → configure S3 + vector store + model key → run`).
+- ☐ Real embedding provider + vector-store adapter (currently `HashingEmbeddingProvider` + `InMemoryVectorStore`).
 
 ## 6. Build sequence
 
@@ -134,7 +143,8 @@ Dependency-first. Land each, verify, then proceed.
 1. ✅ Monorepo restructure (done — commit `a1797f3`).
 2. ✅ **`versioned-store`** — core + in-memory + unit tests, **and** S3 adapters verified end-to-end against LocalStack. The substrate is real.
 3. ✅ **`index-sync`** (5.3) — sync/syncDiff/query + BYO embedder/vector-store, hash-keyed dedup, unit-tested (4 green).
-4. **`room` app** MVP (5.5) — wire store + index + agent-backend into the loop; read-write with LWW; room-level auth. **← next.**
+3.5. ✅ **Integration hardening** (`packages/integration`) — `BackendWorkingTree` adapter (agent-backend `Backend` → `WorkingTree`) + full-loop e2e test: **search → checkout → exec → commit-back → reindex** over S3 + a real `LocalFilesystemBackend`, using real fixtures (CSV `wc -l` = use case A; PNG byte-fidelity). **Surfaced & fixed a real seam:** agent-backend `read()` defaults to a UTF-8 *string*, which would corrupt binaries in checkout/commit — the adapter forces byte reads. 2 integration + 3 unit tests green. Adapter kept out of agent-backend (no breaking spec change) and out of versioned-store (structural, no dependency).
+4. **`room` app** (5.5) — ✅ **service core** (`RoomService`/`RoomSession` + `LocalWorkspaceProvider`) wiring store + index + agent-backend into the loop; unit + S3-integration tested. ☐ Remaining: HTTP API + agent-tool wiring + room-level auth + UI. **← next: the API/tools layer over the proven core.**
 5. **`ingestion`** (5.4) — multimodal, added as the corpus demands it. (Also unblocks real search over binaries via derived text.)
 
 ## 7. Open questions / deferred
@@ -145,6 +155,7 @@ Dependency-first. Land each, verify, then proceed.
 - **Case A as a separate store** — the GB-scale read-only binary catalog may want a distinct read-only manifest-over-S3 surface rather than sharing the read-write room store. The seam between "git-/manifest-backed read-write rooms" and "read-only catalogs" may be the real product boundary. Revisit.
 - **`versioned-store` published name** — `@agentbe/versioned-store` is a placeholder (`private: true`).
 - **Pre-existing `ty` type backlog** (13 diagnostics in `agent-backend` python) — tracked separately from the room work.
+- **Partial-checkout-then-commit deletes unchecked files** — `commit` reflects the FULL working-tree state, so committing from a `paths`-scoped checkout would drop everything not materialized. The room app must either full-checkout before commit, or add scoped commits. (Found during integration testing; the e2e test uses full-checkout-before-commit for the read-write path.)
 
 ## 8. Out of scope (for now)
 

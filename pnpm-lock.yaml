@@ -234,6 +234,31 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@20.19.43)
 
+  room:
+    dependencies:
+      '@agentbe/index-sync':
+        specifier: workspace:*
+        version: link:../packages/index-sync
+      '@agentbe/versioned-store':
+        specifier: workspace:*
+        version: link:../packages/versioned-store
+      agent-backend:
+        specifier: workspace:*
+        version: link:../packages/agent-backend/typescript
+    devDependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.700.0
+        version: 3.1093.0
+      '@types/node':
+        specifier: ^20.17.10
+        version: 20.19.43
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@20.19.43)
+
 packages:
 
   '@ai-sdk/gateway@3.0.153':
