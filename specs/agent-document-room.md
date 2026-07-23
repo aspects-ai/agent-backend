@@ -103,14 +103,17 @@ Content-addressed store + checkout/commit-back. The `WorkingTree` surface is the
 
 **Open impl questions:** blob chunking threshold for very large files; manifest size limits for huge rooms (paginate / tree-of-manifests?); GC of unreferenced blobs.
 
-### 5.3 `packages/index-sync` — search (thin lib)
-Keep a semantic + lexical index in step with manifests; **derived and rebuildable**, keyed by blob hash so unchanged blobs are never re-embedded.
+### 5.3 `packages/index-sync` — search (✓ implemented + unit-tested, 4 green)
+Keeps a semantic/lexical index in step with manifests; **derived and rebuildable**, keyed by blob hash so unchanged blobs are never re-embedded (across paths, rooms, and repeated syncs).
 
-**Scope:**
-- `sync(room, ref)` / incremental `syncDiff(room, fromRef, toRef)` — embed added/changed blobs (via their derived text for media), remove deleted.
-- **Embedding-provider abstraction** (BYO model) + **BYO vector store** (interface, not a bundled DB).
-- Query is a service, **room-scoped** (no per-doc ACL yet), returns paths/hashes the agent then checks out.
-- Runs **outside** the sandbox.
+**Done:**
+- ✅ `IndexSync.sync(room, ref)` (full reindex) + `syncDiff(room, fromRef, toRef)` (incremental add/change/delete) + room-scoped `query(room, text, k)`.
+- ✅ **`EmbeddingProvider`** interface + **`HashingEmbeddingProvider`** — a dependency-free signed-feature-hashing lexical embedder (real default + deterministic test embedder; swap in a semantic model by implementing the interface).
+- ✅ **`VectorStore`** interface + **`InMemoryVectorStore`** (content-addressed embeddings keyed by hash; per-room path→hash records; cosine top-k). BYO vector DB by implementing the interface.
+- ✅ Embeddable-path filter (text extensions); binaries indexed via their committed derived-text siblings, never embedded directly.
+- ✅ Runs **outside** the sandbox; room-scoped (no per-doc ACL yet); returns paths/hashes to feed into `checkout`.
+
+**TODO / next:** real semantic embedding provider (e.g. Claude/OpenAI) + a real vector-store adapter (e.g. pgvector/Qdrant) behind the interfaces; media derived-text ingestion (see 5.4) so images/PDF/audio become searchable.
 
 ### 5.4 `packages/ingestion` — extraction adapters (later; optional plugins)
 Per-asset pipeline turning raw media into searchable + shell-analyzable form. **Not core** — a set of swappable adapters.
@@ -130,9 +133,9 @@ The orchestrator + product surface. Papermark-like deployable (Next.js), self-ho
 Dependency-first. Land each, verify, then proceed.
 1. ✅ Monorepo restructure (done — commit `a1797f3`).
 2. ✅ **`versioned-store`** — core + in-memory + unit tests, **and** S3 adapters verified end-to-end against LocalStack. The substrate is real.
-3. **`index-sync`** (5.3) — enables discovery. **← next.**
-4. **`room` app** MVP (5.5) — wire store + index + agent-backend into the loop; read-write with LWW; room-level auth.
-5. **`ingestion`** (5.4) — multimodal, added as the corpus demands it.
+3. ✅ **`index-sync`** (5.3) — sync/syncDiff/query + BYO embedder/vector-store, hash-keyed dedup, unit-tested (4 green).
+4. **`room` app** MVP (5.5) — wire store + index + agent-backend into the loop; read-write with LWW; room-level auth. **← next.**
+5. **`ingestion`** (5.4) — multimodal, added as the corpus demands it. (Also unblocks real search over binaries via derived text.)
 
 ## 7. Open questions / deferred
 

@@ -1,6 +1,7 @@
 packages:
   - packages/agent-backend/typescript
   - packages/versioned-store
+  - packages/index-sync
   - examples/NextJS
   - examples/TSBasic
 
