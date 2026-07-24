@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agentbe-room": {
+      "command": "node",
+      "args": ["/Users/danny/Documents/devspresso/agent-backend/room/dist/bin.js"],
+      "env": {
+        "AGENTBE_ROOM": "demo"
+      }
+    }
+  }
+}

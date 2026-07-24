@@ -46,12 +46,62 @@ describe("room MCP server", () => {
     const client = await connectClient();
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "close_session",
+      "commit_session",
       "list_documents",
+      "open_session",
       "put_document",
       "read_document",
       "run_command",
       "search",
+      "write_file",
     ]);
+  });
+
+  it("warm session persists state across commands, then commits", async () => {
+    const client = await connectClient();
+    const opened = await client.callTool({ name: "open_session", arguments: {} });
+    const { session, canCommit } = JSON.parse(textOf(opened)) as {
+      session: string;
+      canCommit: boolean;
+    };
+    expect(canCommit).toBe(true);
+
+    // Write a file with one command, read it back with another — same warm sandbox.
+    await client.callTool({
+      name: "run_command",
+      arguments: { session, command: "echo hello-warm > scratch.txt" },
+    });
+    const cat = await client.callTool({
+      name: "run_command",
+      arguments: { session, command: "cat scratch.txt" },
+    });
+    expect(textOf(cat)).toContain("hello-warm"); // state survived across commands
+
+    const committed = await client.callTool({ name: "commit_session", arguments: { session } });
+    expect(textOf(committed)).toContain("committed");
+    await client.callTool({ name: "close_session", arguments: { session } });
+
+    // The committed artifact is now part of the room.
+    const list = await client.callTool({ name: "list_documents", arguments: {} });
+    expect(textOf(list)).toContain("scratch.txt");
+  });
+
+  it("a paths-scoped session is read-only and cannot commit", async () => {
+    const client = await connectClient();
+    const opened = await client.callTool({
+      name: "open_session",
+      arguments: { paths: ["vendors.md"] },
+    });
+    const { session, canCommit } = JSON.parse(textOf(opened)) as {
+      session: string;
+      canCommit: boolean;
+    };
+    expect(canCommit).toBe(false);
+    const res = await client.callTool({ name: "commit_session", arguments: { session } });
+    // MCP surfaces the tool error as an error result.
+    expect(JSON.stringify(res)).toMatch(/paths-scoped|error/i);
+    await client.callTool({ name: "close_session", arguments: { session } });
   });
 
   it("search returns relevant documents", async () => {

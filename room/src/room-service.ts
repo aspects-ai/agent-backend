@@ -149,6 +149,13 @@ export class RoomService {
     });
   }
 
+  /** Rebuild the search index from the room's current HEAD. Use on startup with
+   * a persistent store + an in-memory (derived) index. No-op for an empty room. */
+  async reindexHead(room: string): Promise<void> {
+    const head = await this.deps.rooms.head(room);
+    if (head) await this.index.sync(room, head);
+  }
+
   private async reindex(room: string, from: string | null, to: string): Promise<void> {
     if (from) await this.index.syncDiff(room, from, to);
     else await this.index.sync(room, to);

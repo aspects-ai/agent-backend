@@ -99,6 +99,8 @@ Content-addressed store + checkout/commit-back. The `WorkingTree` surface is the
 - ✅ **`S3RoomStore`** — manifests as S3 objects; HEAD via **conditional write** (`If-None-Match` for first commit, `If-Match` on read-ETag thereafter) for optimistic CAS. **Confirmed LocalStack honors both conditions** — DB-backed variant not needed for now.
 - ✅ **Integration tests** (`test:integration`, gated by config; not in the default unit run) against LocalStack — **9 green**: the two CAS-conflict probes + byte-exact round-trips of **real multimodal/tabular fixtures** (JPEG, PNG, two PDFs, CSV) incl. a mixed-tree commit/checkout, dedupe, and partial checkout of a single binary. Fixtures committed under `test/fixtures/` (~180 KB).
 
+**Fs store + conformance (added):** **`FsBlobStore`/`FsRoomStore`** — content-addressed blobs + manifests on the local filesystem (dev + single-node self-host; no external deps). **Storage tiers: InMemory (tests) → Fs (dev / single-node) → S3 (scale).** A **shared conformance suite** (`test/support/conformance.ts`) runs the *same* behavioral contract (round-trip, dedup, partial checkout, LWW, sequential CAS, manifest JSON round-trip) against **all three backends** — so a fake can't silently drift from a real store (the failure mode behind the earlier CAS-atomicity and byte-read bugs). Green: in-memory (6) + fs (6) unit, s3 (6) integration.
+
 **Test harness:** `test:run`/`test:unit` = fast in-memory (7 tests). `test:integration` = LocalStack (`docker run -d -p 4566:4566 -e SERVICES=s3 localstack/localstack:3`), endpoint overridable via `AGENTBE_S3_ENDPOINT`.
 
 **Open impl questions:** blob chunking threshold for very large files; manifest size limits for huge rooms (paginate / tree-of-manifests?); GC of unreferenced blobs.
@@ -133,12 +135,13 @@ Per-asset pipeline turning raw media into searchable + shell-analyzable form. **
 
 **Done — MCP server (primary delivery), `@modelcontextprotocol/sdk`, in-process-client tested (5 green; 16 room tests total):**
 - ✅ `createRoomMcpServer(service, room)` + `serveRoomStdio(...)` (stdio transport).
-- ✅ Tools: **`search`**, **`list_documents`**, **`read_document`**, **`run_command`** (checkout selected docs → shell exec, read-only), **`put_document`** (versioned write-back). This IS the agent-loop wiring (`search → checkout → exec → commit`).
-- ✅ Tested via an in-process MCP `Client` over a linked transport — every tool driven end-to-end incl. real shell exec.
+- ✅ Retrieval tools: **`search`**, **`list_documents`**, **`read_document`** (all sandbox-free).
+- ✅ Execution: one-shot **`run_command`** (read-only checkout of `paths`) + **warm sessions** — **`open_session`** (full = read-write, `paths` = read-only) → repeated **`run_command`/`write_file`** against the *same live sandbox* (state persists across commands) → **`commit_session`** (versioned write-back + reindex) → **`close_session`**. Plus one-shot **`put_document`**. This IS the agent-loop wiring (`search → checkout → exec → commit`).
+- ✅ Tested via an in-process MCP `Client` over a linked transport — every tool end-to-end, incl. warm-session state persistence (`echo > f` then `cat f` in the same session) and the read-only-session commit guard.
 
 **TODO:**
 - ☐ **Streamable-HTTP transport** for the MCP server (hosted / shared-room), mirroring agent-backend's daemon; + a CLI/bin entry that wires a `RoomService` from env config (S3 + vector store + model key).
-- ☐ **Per-connection persistent sessions** (upgrade from per-call exec; scoped to the MCP connection).
+- ✅ **Warm sessions** (open/run/write/commit/close via a session registry; state persists across commands; cleaned up on connection close). TODO within this: session-scoped `WorkspaceProvider` reuse + **idle-TTL reaping** (matters for the hosted HTTP transport; stdio sessions die with the process).
 - ☐ **Membership + room-level auth** (via MCP transport bearer tokens; granular ACL deferred).
 - ☐ **UI portal** as a separate example app (a client of the room).
 - ☐ Real embedding provider + vector-store adapter (currently `HashingEmbeddingProvider` + `InMemoryVectorStore`).

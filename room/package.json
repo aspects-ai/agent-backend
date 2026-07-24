@@ -6,7 +6,8 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "src"],
+  "bin": { "agentbe-room-mcp": "./dist/bin.js" },
+  "files": ["dist", "src", "testdata"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

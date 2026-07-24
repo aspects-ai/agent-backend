@@ -1,0 +1,65 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+
+import {
+  FsBlobStore,
+  FsRoomStore,
+  InMemoryBlobStore,
+  InMemoryRoomStore,
+} from "@agentbe/versioned-store";
+import { HashingEmbeddingProvider, InMemoryVectorStore } from "@agentbe/index-sync";
+
+import { RoomService } from "./room-service.js";
+import { LocalWorkspaceProvider } from "./workspace-local.js";
+
+export interface BuildRoomServiceOptions {
+  /** Persist blobs + manifests under this directory (filesystem store). Omit
+   * for an ephemeral in-memory store (tests). The index is derived and always
+   * in-memory — rebuild it on startup via `reindexHead`. */
+  storeDir?: string;
+}
+
+/**
+ * Build a self-contained `RoomService` for local dev / demos: a dependency-free
+ * lexical embedder, an in-memory (derived) index, and a temp-dir sandbox
+ * provider. With `storeDir` the canonical store persists to disk; without, it's
+ * ephemeral in-memory. For a real deployment, construct `new RoomService({...})`
+ * with S3 + a real vector DB directly.
+ */
+export function buildRoomService(options: BuildRoomServiceOptions = {}): RoomService {
+  return new RoomService({
+    blobs: options.storeDir ? new FsBlobStore(options.storeDir) : new InMemoryBlobStore(),
+    rooms: options.storeDir ? new FsRoomStore(options.storeDir) : new InMemoryRoomStore(),
+    embedder: new HashingEmbeddingProvider(),
+    vectors: new InMemoryVectorStore(),
+    workspaces: new LocalWorkspaceProvider(),
+  });
+}
+
+function collectFiles(dir: string, base: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    const full = path.join(dir, name);
+    if (statSync(full).isDirectory()) out.push(...collectFiles(full, base));
+    else out.push(full);
+  }
+  return out;
+}
+
+/** Ingest every file under `dir` into `room` (paths relative to `dir`). Files
+ * are read as UTF-8 text — suitable for a text/markdown/CSV seed corpus. Returns
+ * the number of documents seeded. */
+export async function seedRoomFromDir(
+  service: RoomService,
+  room: string,
+  dir: string,
+): Promise<number> {
+  const files: Record<string, string> = {};
+  for (const full of collectFiles(dir, dir)) {
+    const rel = path.relative(dir, full).split(path.sep).join("/");
+    files[rel] = readFileSync(full, "utf-8");
+  }
+  const count = Object.keys(files).length;
+  if (count > 0) await service.putDocuments(room, files, "seed");
+  return count;
+}

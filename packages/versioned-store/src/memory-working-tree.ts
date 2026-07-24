@@ -1,6 +1,6 @@
 import posix from "node:path/posix";
 
-import type { WorkingTree } from "../working-tree.js";
+import type { WorkingTree } from "./working-tree.js";
 
 interface FileNode {
   content: Uint8Array;
@@ -11,8 +11,11 @@ const FILE_MODE = 0o100644;
 const DIR_MODE = 0o040755;
 
 /**
- * In-memory WorkingTree fake. Directories are implicit (derived from file
- * paths); stat() reports POSIX type bits so walkFiles can distinguish them.
+ * In-memory `WorkingTree` — a lightweight staging tree with no sandbox or disk.
+ * Used both in tests and in production for sandbox-free ingestion (write +
+ * commit without provisioning an agent-backend workspace). Directories are
+ * implicit (derived from file paths); stat() reports POSIX type bits so
+ * walkFiles can distinguish them.
  */
 export class InMemoryWorkingTree implements WorkingTree {
   readonly rootDir = "/";
