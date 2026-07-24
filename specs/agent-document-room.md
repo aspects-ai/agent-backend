@@ -120,8 +120,9 @@ Per-asset pipeline turning raw media into searchable + shell-analyzable form. **
 - Adapters: OCR (images/PDF), transcription (audio/video), table extraction (Excel/CSV normalization).
 - Output contract: raw asset stays a content-addressed blob; **derived text committed as a sibling file**; embedding handed to `index-sync`. Derived artifacts are rebuildable — history tracks the raw asset as canonical.
 
-### 5.5 `room` — the app (root `room/`; service core ✓, API/UI/auth TODO)
-The orchestrator + product surface. Service core folds in the `BackendWorkingTree` adapter (moved here from the deleted `integration` package) + the e2e loop test.
+### 5.5 `room` — the app (root `room/`; service core ✓, MCP server ✓)
+
+**Delivery format (decided):** the room's **primary surface is a headless MCP server** — the canonical way an agent consumes a data room, and on-brand with agent-backend (itself an MCP server, one layer down). This dissolved the earlier "Next.js vs Hono" question: transport is **MCP** (stdio ✓, streamable-HTTP next), mirroring agent-backend's dual-transport daemon. `RoomService` stays the transport-agnostic core; the MCP server is one adapter. A **UI portal is a separate example app** (a client), not the core. Session lifecycle maps to the MCP **connection** (per-call exec now; per-connection persistent workspace is the natural upgrade).
 
 **Done — service core (`RoomService` / `RoomSession`), unit + S3-integration tested (6 unit + 1 integration green):**
 - ✅ `putDocuments(room, files, author)` — full-checkout-of-HEAD then write then commit (never drops existing docs), auto-reindex.
@@ -130,12 +131,34 @@ The orchestrator + product surface. Service core folds in the `BackendWorkingTre
 - ✅ **`WorkspaceProvider`** seam + **`LocalWorkspaceProvider`** (temp-dir `LocalFilesystemBackend`); a Docker/daemon provider is the production swap.
 - ✅ The `BackendWorkingTree` adapter (agent-backend `Backend` → `WorkingTree`, byte-read fix) lives here.
 
+**Done — MCP server (primary delivery), `@modelcontextprotocol/sdk`, in-process-client tested (5 green; 16 room tests total):**
+- ✅ `createRoomMcpServer(service, room)` + `serveRoomStdio(...)` (stdio transport).
+- ✅ Tools: **`search`**, **`list_documents`**, **`read_document`**, **`run_command`** (checkout selected docs → shell exec, read-only), **`put_document`** (versioned write-back). This IS the agent-loop wiring (`search → checkout → exec → commit`).
+- ✅ Tested via an in-process MCP `Client` over a linked transport — every tool driven end-to-end incl. real shell exec.
+
 **TODO:**
-- ☐ **HTTP API** (Next.js) over `RoomService`: room CRUD, upload, search, session/exec/commit.
-- ☐ **Agent loop wiring**: expose `search → checkout → exec → commit-back` as agent tools (MCP / AI-SDK).
-- ☐ **Membership + room-level auth** (granular ACL deferred).
-- ☐ **UI** + batteries-included deploy (`clone → configure S3 + vector store + model key → run`).
+- ☐ **Streamable-HTTP transport** for the MCP server (hosted / shared-room), mirroring agent-backend's daemon; + a CLI/bin entry that wires a `RoomService` from env config (S3 + vector store + model key).
+- ☐ **Per-connection persistent sessions** (upgrade from per-call exec; scoped to the MCP connection).
+- ☐ **Membership + room-level auth** (via MCP transport bearer tokens; granular ACL deferred).
+- ☐ **UI portal** as a separate example app (a client of the room).
 - ☐ Real embedding provider + vector-store adapter (currently `HashingEmbeddingProvider` + `InMemoryVectorStore`).
+
+### 5.6 Deployment & orchestration (decided; k8s path deferred)
+
+**Two planes.** The per-op ephemeral sandbox was a category error — retrieval/ingestion and code-execution have opposite resource profiles. Split them:
+- **Control / retrieval plane** — the long-lived service: **store + index + sandbox broker**. Ingest/search/read need **no sandbox** (pure store+index). Stateless-scalable; the broker is control-plane (it *manages* external sandboxes, doesn't run them), so it's fine to bundle with retrieval.
+- **Execution plane** — per-**session** agent-backend sandboxes (external instances), **warm across commands**, idle-reaped. Not per-op. Only code execution needs these.
+
+**The service vends sandboxes on request.** Read-only clients (contract-QA) use retrieval and never get a sandbox; interactive agents request one. A vended sandbox is wired to the room: checkout/commit against S3 directly + search via the service.
+
+**`WorkspaceProvider` is the broker seam** (already built). `LocalWorkspaceProvider` = dev (temp-dir daemon). Production = a k8s/Docker/E2B provider, wired at the composition root — **`room` depends only on the interface**, staying deployment-agnostic.
+
+**k8s orchestration → [kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)** (SIG Apps CRD controller: `Sandbox` / `SandboxTemplate` / `SandboxWarmPool` / `SandboxClaim` — on-demand isolated pods, warm pools, pause/resume, reaping, built *for* untrusted agent code). It **is** the scheduler — so **no separate scheduler package** (would duplicate it). A thin **`K8sWorkspaceProvider`** claims a sandbox (pod running `agentbe-daemon` via a `SandboxTemplate`) → returns a `RemoteFilesystemBackend`.
+- **Do NOT add agent-sandbox to agent-backend core.** Layering: agent-sandbox *deploys* agent-backend (schedules pods that run the daemon) — depending on it would invert the stack and break agent-backend's portable/lightweight identity. agent-backend stays daemon + connect-client; its "K8s coming soon" roadmap is largely subsumed by agent-sandbox.
+- The k8s provider lives in its **own opt-in package** (`@agentbe/k8s-workspaces`) — reason is **dependency isolation** (`@kubernetes/client-node`; agent-sandbox ships only Go/Python SDKs so we drive CRs via the k8s API), NOT code size. Keeps `@kubernetes/client-node` out of `room`'s deployment-agnostic core.
+- **Build it only when the k8s path is tackled** (YAGNI). The seam means zero `room` changes when added. `LocalWorkspaceProvider` covers dev/MVP.
+
+**Session state caveat:** the broker holds session→sandbox mapping; for horizontal scale, use session affinity or externalize it. Ignore for single-node MVP.
 
 ## 6. Build sequence
 
@@ -144,7 +167,7 @@ Dependency-first. Land each, verify, then proceed.
 2. ✅ **`versioned-store`** — core + in-memory + unit tests, **and** S3 adapters verified end-to-end against LocalStack. The substrate is real.
 3. ✅ **`index-sync`** (5.3) — sync/syncDiff/query + BYO embedder/vector-store, hash-keyed dedup, unit-tested (4 green).
 3.5. ✅ **Integration hardening** (`packages/integration`) — `BackendWorkingTree` adapter (agent-backend `Backend` → `WorkingTree`) + full-loop e2e test: **search → checkout → exec → commit-back → reindex** over S3 + a real `LocalFilesystemBackend`, using real fixtures (CSV `wc -l` = use case A; PNG byte-fidelity). **Surfaced & fixed a real seam:** agent-backend `read()` defaults to a UTF-8 *string*, which would corrupt binaries in checkout/commit — the adapter forces byte reads. 2 integration + 3 unit tests green. Adapter kept out of agent-backend (no breaking spec change) and out of versioned-store (structural, no dependency).
-4. **`room` app** (5.5) — ✅ **service core** (`RoomService`/`RoomSession` + `LocalWorkspaceProvider`) wiring store + index + agent-backend into the loop; unit + S3-integration tested. ☐ Remaining: HTTP API + agent-tool wiring + room-level auth + UI. **← next: the API/tools layer over the proven core.**
+4. **`room` app** (5.5) — ✅ **service core** (`RoomService`/`RoomSession` + `LocalWorkspaceProvider`) + ✅ **MCP server** (primary delivery: `search`/`list_documents`/`read_document`/`run_command`/`put_document` over stdio, in-process-client tested). ☐ Remaining: streamable-HTTP transport + config/bin entry, per-connection sessions, room-level auth, UI example app. **← next: HTTP transport + a runnable configured server (bin).**
 5. **`ingestion`** (5.4) — multimodal, added as the corpus demands it. (Also unblocks real search over binaries via derived text.)
 
 ## 7. Open questions / deferred
@@ -155,6 +178,7 @@ Dependency-first. Land each, verify, then proceed.
 - **Case A as a separate store** — the GB-scale read-only binary catalog may want a distinct read-only manifest-over-S3 surface rather than sharing the read-write room store. The seam between "git-/manifest-backed read-write rooms" and "read-only catalogs" may be the real product boundary. Revisit.
 - **`versioned-store` published name** — `@agentbe/versioned-store` is a placeholder (`private: true`).
 - **Pre-existing `ty` type backlog** (13 diagnostics in `agent-backend` python) — tracked separately from the room work.
+- **HEAD CAS atomicity → DynamoDB before real multiplayer/prod.** Verified (2026-07): our `S3RoomStore` CAS is correct only if the backend's conditional writes are atomic. Real AWS S3 guarantees this; **LocalStack does not** (probe: two concurrent `casHead` on the same expected ref both win → lost updates; 6 concurrent commits dropped 3 files). Single-writer paths are unaffected. Decision: **defer** — correct on real AWS today; before shipping real multiplayer or supporting non-atomic S3-compatible stores, move HEAD ref + `casHead` to **DynamoDB** conditional updates (atomic, and faithfully emulated by LocalStack → concurrency becomes locally verifiable). Manifests/blobs stay in S3. The skipped test in `packages/versioned-store/test/concurrency.integration.test.ts` re-enables against real AWS S3 or DynamoDB.
 - **Partial-checkout-then-commit deletes unchecked files** — `commit` reflects the FULL working-tree state, so committing from a `paths`-scoped checkout would drop everything not materialized. The room app must either full-checkout before commit, or add scoped commits. (Found during integration testing; the e2e test uses full-checkout-before-commit for the read-write path.)
 
 ## 8. Out of scope (for now)

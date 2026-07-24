@@ -18,3 +18,4 @@ export type {
 export { LocalWorkspaceProvider } from "./workspace-local.js";
 export { BackendWorkingTree } from "./lib/backend-working-tree.js";
 export type { BackendLike } from "./lib/backend-working-tree.js";
+export { createRoomMcpServer, serveRoomStdio } from "./mcp/server.js";

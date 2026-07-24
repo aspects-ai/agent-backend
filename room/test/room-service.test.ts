@@ -80,3 +80,29 @@ describe("RoomService", () => {
     expect((await svc.search(ROOM, "beta keep me", 5)).some((h) => h.path === "b.md")).toBe(true);
   });
 });
+
+describe("RoomService retrieval-only (no sandbox provider)", () => {
+  function retrievalOnly(): RoomService {
+    return new RoomService({
+      blobs: new InMemoryBlobStore(),
+      rooms: new InMemoryRoomStore(),
+      embedder: new HashingEmbeddingProvider(),
+      vectors: new InMemoryVectorStore(),
+      // no `workspaces` — retrieval/ingestion need no sandbox
+    });
+  }
+
+  it("ingests, searches, reads, and lists without a WorkspaceProvider", async () => {
+    const svc = retrievalOnly();
+    await svc.putDocuments(ROOM, { "vendors.md": "acme vendor invoice payment totals" }, "alice");
+    expect((await svc.search(ROOM, "vendor invoice payment", 3))[0]?.path).toBe("vendors.md");
+    expect(await svc.readDocument(ROOM, "vendors.md")).toContain("acme");
+    expect(await svc.listDocuments(ROOM)).toContain("vendors.md");
+  });
+
+  it("refuses to open a session without a provider", async () => {
+    const svc = retrievalOnly();
+    await svc.putDocuments(ROOM, { "a.md": "alpha" }, "alice");
+    await expect(svc.openSession(ROOM)).rejects.toThrow(/WorkspaceProvider/);
+  });
+});

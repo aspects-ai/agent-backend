@@ -242,9 +242,15 @@ importers:
       '@agentbe/versioned-store':
         specifier: workspace:*
         version: link:../packages/versioned-store
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.10.0
+        version: 1.29.0(zod@3.25.76)
       agent-backend:
         specifier: workspace:*
         version: link:../packages/agent-backend/typescript
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
       '@aws-sdk/client-s3':
         specifier: ^3.700.0
