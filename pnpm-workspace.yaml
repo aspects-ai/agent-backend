@@ -2,6 +2,8 @@ packages:
   - packages/agent-backend/typescript
   - packages/versioned-store
   - packages/index-sync
+  - packages/embeddings
+  - packages/ingestion
   - room
   - examples/NextJS
   - examples/TSBasic

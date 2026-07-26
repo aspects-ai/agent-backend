@@ -22,15 +22,25 @@ function envWith(extra: Record<string, string>): Record<string, string> {
   return { ...base, ...extra };
 }
 
-async function connect(storeDir: string): Promise<Client> {
+async function connect(storeDir: string, embedder = "hash"): Promise<Client> {
   const transport = new StdioClientTransport({
     command: "node",
     args: [binPath],
-    env: envWith({ AGENTBE_STORE_DIR: storeDir }),
+    env: envWith({
+      AGENTBE_STORE_DIR: storeDir,
+      AGENTBE_EMBEDDER: embedder,
+      AGENTBE_IMAGE_EMBEDDER: "none",
+    }),
   });
   const client = new Client({ name: "e2e", version: "0.0.0" });
   await client.connect(transport);
   return client;
+}
+
+function scoreOf(searchText: string, path: string): number {
+  const line = searchText.split("\n").find((l) => l.startsWith(path));
+  const match = line?.match(/score (-?\d+\.\d+)/);
+  return match ? parseFloat(match[1]!) : Number.NEGATIVE_INFINITY;
 }
 
 describe("runnable stdio MCP server (real subprocess)", () => {
@@ -66,6 +76,28 @@ describe("runnable stdio MCP server (real subprocess)", () => {
       arguments: { command: "wc -l < data/ag_exports.csv", paths: ["data/ag_exports.csv"] },
     });
     expect(parseInt(textOf(res).trim(), 10)).toBeGreaterThan(0);
+  });
+});
+
+describe("semantic search via the local embedder (real model, real bin)", () => {
+  it("ranks a topically-related doc above an unrelated one despite few shared words", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "room-semantic-"));
+    try {
+      const client = await connect(dir, "local");
+      const res = await client.callTool({
+        name: "search",
+        arguments: { query: "why do customers churn and cancel their subscription" },
+      });
+      const text = textOf(res);
+      // The interview notes (churn/renewal/onboarding) must out-score the
+      // unrelated agricultural-exports CSV — semantic, not keyword, matching.
+      expect(scoreOf(text, "research/customer-interviews-q1.md")).toBeGreaterThan(
+        scoreOf(text, "data/ag_exports.csv"),
+      );
+      await client.close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

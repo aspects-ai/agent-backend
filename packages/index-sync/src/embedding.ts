@@ -8,6 +8,19 @@ export interface EmbeddingProvider {
   embed(texts: string[]): Promise<number[][]>;
 }
 
+/**
+ * Embeds images and text into one shared space (CLIP-style), so a text query
+ * can retrieve images. Implemented in `@agentbe/embeddings`
+ * (`ClipImageEmbeddingProvider`); swap in your own.
+ */
+export interface ImageEmbeddingProvider {
+  readonly dimensions: number;
+  /** Embed raw image bytes. */
+  embedImages(images: Uint8Array[]): Promise<number[][]>;
+  /** Embed text into the SAME space as images (for text → image retrieval). */
+  embedText(texts: string[]): Promise<number[][]>;
+}
+
 function tokenize(text: string): string[] {
   return text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 }

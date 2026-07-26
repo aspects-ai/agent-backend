@@ -1,0 +1,28 @@
+{
+  "name": "@agentbe/ingestion",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pluggable document ingestion for the agent document room — PDF text extraction (swappable; text-layer default)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:unit": "vitest run"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "unpdf": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
+  }
+}

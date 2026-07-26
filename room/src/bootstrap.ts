@@ -7,7 +7,13 @@ import {
   InMemoryBlobStore,
   InMemoryRoomStore,
 } from "@agentbe/versioned-store";
-import { HashingEmbeddingProvider, InMemoryVectorStore } from "@agentbe/index-sync";
+import {
+  HashingEmbeddingProvider,
+  InMemoryVectorStore,
+  type EmbeddingProvider,
+  type ImageEmbeddingProvider,
+} from "@agentbe/index-sync";
+import { UnpdfExtractionProvider, type PdfExtractionProvider } from "@agentbe/ingestion";
 
 import { RoomService } from "./room-service.js";
 import { LocalWorkspaceProvider } from "./workspace-local.js";
@@ -17,6 +23,14 @@ export interface BuildRoomServiceOptions {
    * for an ephemeral in-memory store (tests). The index is derived and always
    * in-memory — rebuild it on startup via `reindexHead`. */
   storeDir?: string;
+  /** Embedding model. Defaults to the dependency-free lexical hashing embedder
+   * (fast, no download) — pass a real one (e.g. from `@agentbe/embeddings`) for
+   * semantic search. */
+  embedder?: EmbeddingProvider;
+  /** PDF text extraction. Defaults to text-layer extraction (unpdf). */
+  pdfExtractor?: PdfExtractionProvider;
+  /** Image embedder (CLIP) for text→image search. Omit to skip image indexing. */
+  imageEmbedder?: ImageEmbeddingProvider;
 }
 
 /**
@@ -30,9 +44,11 @@ export function buildRoomService(options: BuildRoomServiceOptions = {}): RoomSer
   return new RoomService({
     blobs: options.storeDir ? new FsBlobStore(options.storeDir) : new InMemoryBlobStore(),
     rooms: options.storeDir ? new FsRoomStore(options.storeDir) : new InMemoryRoomStore(),
-    embedder: new HashingEmbeddingProvider(),
+    embedder: options.embedder ?? new HashingEmbeddingProvider(),
     vectors: new InMemoryVectorStore(),
     workspaces: new LocalWorkspaceProvider(),
+    pdfExtractor: options.pdfExtractor ?? new UnpdfExtractionProvider(),
+    imageEmbedder: options.imageEmbedder,
   });
 }
 

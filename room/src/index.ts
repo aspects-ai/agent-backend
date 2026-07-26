@@ -19,4 +19,6 @@ export { LocalWorkspaceProvider } from "./workspace-local.js";
 export { BackendWorkingTree } from "./lib/backend-working-tree.js";
 export type { BackendLike } from "./lib/backend-working-tree.js";
 export { createRoomMcpServer, serveRoomStdio } from "./mcp/server.js";
+export { serveRoomHttp } from "./mcp/http.js";
+export type { RoomHttpOptions, RoomHttpHandle } from "./mcp/http.js";
 export { buildRoomService, seedRoomFromDir } from "./bootstrap.js";

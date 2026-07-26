@@ -23,3 +23,20 @@ export function isEmbeddablePath(path: string): boolean {
   if (dot < 0) return false;
   return TEXT_EXTENSIONS.has(path.slice(dot).toLowerCase());
 }
+
+const IMAGE_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".bmp",
+  ".tif",
+  ".tiff",
+]);
+
+export function isImagePath(path: string): boolean {
+  const dot = path.lastIndexOf(".");
+  if (dot < 0) return false;
+  return IMAGE_EXTENSIONS.has(path.slice(dot).toLowerCase());
+}

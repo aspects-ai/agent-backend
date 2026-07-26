@@ -3,13 +3,19 @@ import {
   InMemoryWorkingTree,
   type BlobStore,
   type RoomStore,
+  type WorkingTree,
 } from "@agentbe/versioned-store";
 import {
+  ImageIndexSync,
   IndexSync,
+  InMemoryVectorStore,
   type EmbeddingProvider,
+  type ImageEmbeddingProvider,
   type QueryHit,
   type VectorStore,
 } from "@agentbe/index-sync";
+
+import type { PdfExtractionProvider } from "@agentbe/ingestion";
 
 import { BackendWorkingTree, type BackendLike } from "./lib/backend-working-tree.js";
 
@@ -38,7 +44,18 @@ export interface RoomServiceDeps {
   /** Provisions sandboxes for `openSession`/`runCommand`. Optional — a
    * retrieval/ingestion-only room needs no sandbox at all. */
   workspaces?: WorkspaceProvider;
+  /** Extracts text from uploaded PDFs into a searchable sibling document.
+   * Optional — omit to store PDFs as opaque blobs. */
+  pdfExtractor?: PdfExtractionProvider;
+  /** Embeds images (CLIP-style) into a separate image index for text→image
+   * search. Optional — omit to skip image indexing entirely. */
+  imageEmbedder?: ImageEmbeddingProvider;
+  /** Vector store for the image index (defaults to a fresh in-memory one). */
+  imageVectors?: VectorStore;
 }
+
+/** Which index(es) a search covers. */
+export type SearchModality = "text" | "image" | "all";
 
 export interface OpenSessionOptions {
   /** Materialize only these paths (e.g. semantic-search hits). A paths-scoped
@@ -55,10 +72,19 @@ export interface OpenSessionOptions {
 export class RoomService {
   private readonly store: DefaultVersionedStore;
   private readonly index: IndexSync;
+  private readonly imageIndex?: ImageIndexSync;
 
   constructor(private readonly deps: RoomServiceDeps) {
     this.store = new DefaultVersionedStore(deps.blobs, deps.rooms);
     this.index = new IndexSync(deps.blobs, deps.rooms, deps.embedder, deps.vectors);
+    if (deps.imageEmbedder) {
+      this.imageIndex = new ImageIndexSync(
+        deps.blobs,
+        deps.rooms,
+        deps.imageEmbedder,
+        deps.imageVectors ?? new InMemoryVectorStore(),
+      );
+    }
   }
 
   head(room: string): Promise<string | null> {
@@ -79,16 +105,32 @@ export class RoomService {
     const tree = new InMemoryWorkingTree();
     const base = await this.deps.rooms.head(room);
     if (base) await this.store.checkout(room, base, tree);
-    for (const [path, content] of Object.entries(files)) await tree.write(path, content);
+    for (const [path, content] of Object.entries(files)) {
+      await tree.write(path, content);
+      await this.preprocess(tree, path, content);
+    }
     const result = await this.store.commit(room, base, tree, author);
     if (result.status !== "committed") throw new Error(`commit failed: ${result.status}`);
     await this.reindex(room, base, result.ref);
     return result.ref;
   }
 
-  /** Semantic search over a room; returns paths/hashes to open in a session. */
-  search(room: string, query: string, k = 5): Promise<QueryHit[]> {
-    return this.index.query(room, query, k);
+  /** Semantic search over a room. `modality` selects the text index, the image
+   * index, or both (default). Combined results are merged by score (cosine
+   * across the two spaces is heuristic). */
+  async search(
+    room: string,
+    query: string,
+    k = 5,
+    modality: SearchModality = "all",
+  ): Promise<QueryHit[]> {
+    const hits: QueryHit[] = [];
+    if (modality !== "image") hits.push(...(await this.index.query(room, query, k)));
+    if (modality !== "text" && this.imageIndex) {
+      hits.push(...(await this.imageIndex.query(room, query, k)));
+    }
+    hits.sort((a, b) => b.score - a.score);
+    return hits.slice(0, k);
   }
 
   /** All document paths in the room's current version (empty if the room is new). */
@@ -153,12 +195,37 @@ export class RoomService {
    * a persistent store + an in-memory (derived) index. No-op for an empty room. */
   async reindexHead(room: string): Promise<void> {
     const head = await this.deps.rooms.head(room);
-    if (head) await this.index.sync(room, head);
+    if (!head) return;
+    await this.index.sync(room, head);
+    if (this.imageIndex) await this.imageIndex.sync(room, head);
+  }
+
+  /** Ingest-time preprocessing: extract a searchable text sibling from PDFs
+   * (`report.pdf` → `report.pdf.txt`). The raw PDF is kept as a blob; the text
+   * sibling is what the index picks up. Failures (scanned/corrupt PDFs) are
+   * swallowed — the PDF simply stays opaque. */
+  private async preprocess(
+    tree: WorkingTree,
+    path: string,
+    content: string | Uint8Array,
+  ): Promise<void> {
+    if (!this.deps.pdfExtractor || !path.toLowerCase().endsWith(".pdf")) return;
+    const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
+    try {
+      const text = await this.deps.pdfExtractor.extractText(bytes);
+      if (text.trim().length > 0) await tree.write(`${path}.txt`, text);
+    } catch {
+      // No text layer or extraction error — leave the PDF as an opaque blob.
+    }
   }
 
   private async reindex(room: string, from: string | null, to: string): Promise<void> {
     if (from) await this.index.syncDiff(room, from, to);
     else await this.index.sync(room, to);
+    if (this.imageIndex) {
+      if (from) await this.imageIndex.syncDiff(room, from, to);
+      else await this.imageIndex.sync(room, to);
+    }
   }
 }
 

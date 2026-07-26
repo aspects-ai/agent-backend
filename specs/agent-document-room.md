@@ -67,8 +67,9 @@ Package-first (apps at root, libs under `packages/`; convention from `aspects-ap
 packages/
   agent-backend/     typescript/ python/ opensdd/    # substrate lib (dual-language)
   versioned-store/   src/ ...                         # TS-only, the linchpin
-  index-sync/        src/ ...                          # TS-only
-  ingestion/         (adapters; later)
+  index-sync/        src/ ...                          # TS-only (interface + HashingEmbeddingProvider)
+  embeddings/        # pluggable EmbeddingProvider adapters (local/OpenAI/Ollama)
+  ingestion/         # PdfExtractionProvider (unpdf text-layer); image/OCR TODO
 agentbe-daemon/      # deploy peer: Docker + deploy-tool, bundles agent-backend
 room/                # the app (Next.js), root peer
 docs/  specs/  Makefile ...
@@ -115,12 +116,24 @@ Keeps a semantic/lexical index in step with manifests; **derived and rebuildable
 - ✅ Embeddable-path filter (text extensions); binaries indexed via their committed derived-text siblings, never embedded directly.
 - ✅ Runs **outside** the sandbox; room-scoped (no per-doc ACL yet); returns paths/hashes to feed into `checkout`.
 
-**TODO / next:** real semantic embedding provider (e.g. Claude/OpenAI) + a real vector-store adapter (e.g. pgvector/Qdrant) behind the interfaces; media derived-text ingestion (see 5.4) so images/PDF/audio become searchable.
+**Real embedders (✅ `@agentbe/embeddings`):** pluggable `EmbeddingProvider` adapters behind the existing interface — **`LocalEmbeddingProvider`** (Transformers.js, default **all-MiniLM-L6-v2** 384-dim q8; offline, no key, private — the out-of-box default), **`OpenAIEmbeddingProvider`**, **`OllamaEmbeddingProvider`**, and a `createEmbeddingProvider({kind})` selector (`AGENTBE_EMBEDDER=local|openai|ollama|hash`). `@huggingface/transformers` is an optional peer (lazy dynamic import). Verified: unit (5) + a real semantic test (churn ranks above baking) + a real-bin e2e (churn query ranks interview notes above the CSV through the live MCP server). `HashingEmbeddingProvider` stays in index-sync core as the zero-dep fallback (tests). **`buildRoomService` defaults to hash** (fast tests); **the bin defaults to local** (real semantic search).
 
-### 5.4 `packages/ingestion` — extraction adapters (later; optional plugins)
-Per-asset pipeline turning raw media into searchable + shell-analyzable form. **Not core** — a set of swappable adapters.
-- Adapters: OCR (images/PDF), transcription (audio/video), table extraction (Excel/CSV normalization).
-- Output contract: raw asset stays a content-addressed blob; **derived text committed as a sibling file**; embedding handed to `index-sync`. Derived artifacts are rebuildable — history tracks the raw asset as canonical.
+**TODO / next:** a real vector-store adapter (pgvector/Qdrant) behind the `VectorStore` interface for scale; media derived-text ingestion (see 5.4). Note: the index is model-specific — switching embedders requires reindex (handled by reindex-on-boot for the in-memory index).
+
+### 5.4 `packages/ingestion` — extraction adapters (PDF text ✅; images/OCR TODO)
+Per-asset preprocessing turning raw media into searchable form. Swappable providers; the raw asset stays a content-addressed blob, **derived text is committed as a sibling file**, and the existing text index picks it up (no index-sync change).
+
+**Done — PDF text extraction (Phase A):**
+- ✅ Self-contained **`PdfExtractionProvider`** interface + **`UnpdfExtractionProvider`** default (unpdf text-layer; no native deps). Scanned/OCR left to a user-supplied provider (no lightweight local OCR — needs page rasterization + an OCR engine).
+- ✅ Room integration: `putDocuments` runs the extractor on `.pdf` uploads → commits `<path>.pdf.txt` → searchable; raw PDF preserved. `buildRoomService` wires it by default. Verified: extractor unit test + room e2e (upload PDF → derived `.txt` committed + found by search).
+
+**Done — image embedding (Phase B):**
+- ✅ **`ImageEmbeddingProvider`** interface (index-sync) + **`ClipImageEmbeddingProvider`** (`@agentbe/embeddings`, CLIP via Transformers.js, `clip-vit-base-patch32`, image + text in one 512-dim space; offline, no key). Verified with the real model (the Python-logo fixture scores higher on "python logo" than "fluffy kitten").
+- ✅ **`ImageIndexSync`** (index-sync) — a **separate** image index (CLIP space) keyed by blob hash; `query()` embeds the text query via `embedText` for text→image retrieval.
+- ✅ Room: image index wired in; **`search(room, query, k, modality)`** with `modality = text | image | all` (default all, results merged by score) — the MCP `search` tool exposes `modality`, giving **combined and per-modality** search. Bin defaults to local CLIP (`AGENTBE_IMAGE_EMBEDDER=none` disables). Verified: `ImageIndexSync` unit + room image-search unit (image-only / text-only / combined / no-embedder).
+
+**TODO:**
+- ☐ OCR provider (Tesseract.js / AI-OCR) for scanned PDFs; transcription (audio/video); table extraction.
 
 ### 5.5 `room` — the app (root `room/`; service core ✓, MCP server ✓)
 
@@ -139,10 +152,13 @@ Per-asset pipeline turning raw media into searchable + shell-analyzable form. **
 - ✅ Execution: one-shot **`run_command`** (read-only checkout of `paths`) + **warm sessions** — **`open_session`** (full = read-write, `paths` = read-only) → repeated **`run_command`/`write_file`** against the *same live sandbox* (state persists across commands) → **`commit_session`** (versioned write-back + reindex) → **`close_session`**. Plus one-shot **`put_document`**. This IS the agent-loop wiring (`search → checkout → exec → commit`).
 - ✅ Tested via an in-process MCP `Client` over a linked transport — every tool end-to-end, incl. warm-session state persistence (`echo > f` then `cat f` in the same session) and the read-only-session commit guard.
 
+**Done — transports + runnable server:**
+- ✅ **Streamable-HTTP transport** (`serveRoomHttp`) — **stateful** (one `McpServer` + warm-session registry per client connection, keyed by `Mcp-Session-Id`), so warm sessions survive across HTTP requests (a per-request stateless server couldn't). Optional **bearer auth**. Node `http` (no framework dep). Tested in-process (tools/search over HTTP, warm session across separate requests, auth enforcement).
+- ✅ **Runnable bin** (`room/src/bin.ts` → `dist/bin.js`): stdio by default, **HTTP when `AGENTBE_HTTP_PORT` set**; persistent `Fs` store (`AGENTBE_STORE_DIR`, default `room/.room-data`), seed-if-empty / reindex-on-boot; wired into Claude Code via repo-root `.mcp.json`.
+
 **TODO:**
-- ☐ **Streamable-HTTP transport** for the MCP server (hosted / shared-room), mirroring agent-backend's daemon; + a CLI/bin entry that wires a `RoomService` from env config (S3 + vector store + model key).
 - ✅ **Warm sessions** (open/run/write/commit/close via a session registry; state persists across commands; cleaned up on connection close). TODO within this: session-scoped `WorkspaceProvider` reuse + **idle-TTL reaping** (matters for the hosted HTTP transport; stdio sessions die with the process).
-- ☐ **Membership + room-level auth** (via MCP transport bearer tokens; granular ACL deferred).
+- ◑ **Room-level auth** — bearer-token check on the HTTP transport ✅; membership/multi-token + granular ACL still TODO.
 - ☐ **UI portal** as a separate example app (a client of the room).
 - ☐ Real embedding provider + vector-store adapter (currently `HashingEmbeddingProvider` + `InMemoryVectorStore`).
 

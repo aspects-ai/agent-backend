@@ -2,7 +2,14 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  createEmbeddingProvider,
+  createImageEmbeddingProvider,
+  type EmbedderKind,
+} from "@agentbe/embeddings";
+
 import { buildRoomService, seedRoomFromDir } from "./bootstrap.js";
+import { serveRoomHttp } from "./mcp/http.js";
 import { serveRoomStdio } from "./mcp/server.js";
 
 // Serve a demo room over stdio for an MCP client (e.g. Claude Code).
@@ -14,7 +21,21 @@ const room = process.env.AGENTBE_ROOM ?? "demo";
 const storeDir = process.env.AGENTBE_STORE_DIR ?? path.join(here, "..", ".room-data");
 const seedDir = process.env.AGENTBE_SEED_DIR ?? path.join(here, "..", "testdata");
 
-const service = buildRoomService({ storeDir });
+// Embedder: local semantic model by default (offline, no key); switch with
+// AGENTBE_EMBEDDER=openai|ollama|hash (+ AGENTBE_EMBED_MODEL to override).
+const embedderKind = (process.env.AGENTBE_EMBEDDER ?? "local") as EmbedderKind;
+const embedder = createEmbeddingProvider({ kind: embedderKind, model: process.env.AGENTBE_EMBED_MODEL });
+console.error(`[agentbe-room] embedder: ${embedderKind}`);
+
+// Image embedder: local CLIP by default (offline, no key). Set
+// AGENTBE_IMAGE_EMBEDDER=none to disable image indexing.
+const imageEmbedder =
+  process.env.AGENTBE_IMAGE_EMBEDDER === "none"
+    ? undefined
+    : createImageEmbeddingProvider({ model: process.env.AGENTBE_IMAGE_MODEL });
+console.error(`[agentbe-room] image embedder: ${imageEmbedder ? "clip" : "none"}`);
+
+const service = buildRoomService({ storeDir, embedder, imageEmbedder });
 
 const existingHead = await service.head(room);
 if (existingHead) {
@@ -30,5 +51,16 @@ if (existingHead) {
   }
 }
 
-await serveRoomStdio(service, room);
-console.error(`[agentbe-room] serving room "${room}" over stdio`);
+// Transport: HTTP if AGENTBE_HTTP_PORT is set (hosted / shared), else stdio.
+const httpPort = process.env.AGENTBE_HTTP_PORT ? Number(process.env.AGENTBE_HTTP_PORT) : undefined;
+if (httpPort !== undefined) {
+  const handle = await serveRoomHttp(service, room, {
+    port: httpPort,
+    authToken: process.env.AGENTBE_AUTH_TOKEN,
+  });
+  const auth = process.env.AGENTBE_AUTH_TOKEN ? "bearer-token required" : "open";
+  console.error(`[agentbe-room] serving room "${room}" over HTTP :${handle.port}/mcp (${auth})`);
+} else {
+  await serveRoomStdio(service, room);
+  console.error(`[agentbe-room] serving room "${room}" over stdio`);
+}

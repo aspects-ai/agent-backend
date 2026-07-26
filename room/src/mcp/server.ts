@@ -36,14 +36,18 @@ export function createRoomMcpServer(service: RoomService, room: string): McpServ
     "search",
     {
       description:
-        "Semantic search over the room's documents. Returns ranked file paths — read them or run commands over them.",
+        "Semantic search over the room. `modality` selects documents (text), images, or both (default) — text queries match images via CLIP. Returns ranked file paths.",
       inputSchema: {
         query: z.string().describe("Natural-language query."),
         limit: z.number().int().positive().optional().describe("Max results (default 5)."),
+        modality: z
+          .enum(["text", "image", "all"])
+          .optional()
+          .describe("Search text docs, images, or both (default all)."),
       },
     },
-    async ({ query, limit }) => {
-      const hits = await service.search(room, query, limit ?? 5);
+    async ({ query, limit, modality }) => {
+      const hits = await service.search(room, query, limit ?? 5, modality ?? "all");
       return textResult(
         hits.length
           ? hits.map((h) => `${h.path}\t(score ${h.score.toFixed(3)})`).join("\n")
