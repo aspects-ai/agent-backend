@@ -68,8 +68,9 @@ packages/
   agent-backend/     typescript/ python/ opensdd/    # substrate lib (dual-language)
   versioned-store/   src/ ...                         # TS-only, the linchpin
   index-sync/        src/ ...                          # TS-only (interface + HashingEmbeddingProvider)
-  embeddings/        # pluggable EmbeddingProvider adapters (local/OpenAI/Ollama)
+  embeddings/        # pluggable EmbeddingProvider adapters (local/OpenAI/Ollama) + CLIP images
   ingestion/         # PdfExtractionProvider (unpdf text-layer); image/OCR TODO
+  vector-pg/         # PgVectorStore (pgvector) — persistent, ANN vector index
 agentbe-daemon/      # deploy peer: Docker + deploy-tool, bundles agent-backend
 room/                # the app (Next.js), root peer
 docs/  specs/  Makefile ...
@@ -118,7 +119,9 @@ Keeps a semantic/lexical index in step with manifests; **derived and rebuildable
 
 **Real embedders (✅ `@agentbe/embeddings`):** pluggable `EmbeddingProvider` adapters behind the existing interface — **`LocalEmbeddingProvider`** (Transformers.js, default **all-MiniLM-L6-v2** 384-dim q8; offline, no key, private — the out-of-box default), **`OpenAIEmbeddingProvider`**, **`OllamaEmbeddingProvider`**, and a `createEmbeddingProvider({kind})` selector (`AGENTBE_EMBEDDER=local|openai|ollama|hash`). `@huggingface/transformers` is an optional peer (lazy dynamic import). Verified: unit (5) + a real semantic test (churn ranks above baking) + a real-bin e2e (churn query ranks interview notes above the CSV through the live MCP server). `HashingEmbeddingProvider` stays in index-sync core as the zero-dep fallback (tests). **`buildRoomService` defaults to hash** (fast tests); **the bin defaults to local** (real semantic search).
 
-**TODO / next:** a real vector-store adapter (pgvector/Qdrant) behind the `VectorStore` interface for scale; media derived-text ingestion (see 5.4). Note: the index is model-specific — switching embedders requires reindex (handled by reindex-on-boot for the in-memory index).
+**Vector stores:** `InMemoryVectorStore` (index-sync core; brute-force cosine, rebuilt on boot) **+ `PgVectorStore`** (`@agentbe/vector-pg`) — pgvector-backed, persistent, HNSW ANN. Adapter is dep-light (structural `PgQueryable`; consumer passes a `pg.Pool`), fixed-dim per namespace (text vs image). A **shared VectorStore conformance suite** runs against in-memory (6) + pgvector (6). Room: `buildRoomService({vectors, imageVectors})`; bin `AGENTBE_VECTOR=pg` (+ `AGENTBE_PG_URL`) selects it and **skips reindex-on-boot** (persistent index survives). Verified: unit (fake client) + pgvector conformance (real container) + room-over-pgvector e2e.
+
+**TODO / next:** media derived-text ingestion (see 5.4); a Qdrant adapter if wanted. Note: the index is model-specific — switching embedders requires reindex (auto for the in-memory index; a pg deployment needs an explicit reindex on embedder change).
 
 ### 5.4 `packages/ingestion` — extraction adapters (PDF text ✅; images/OCR TODO)
 Per-asset preprocessing turning raw media into searchable form. Swappable providers; the raw asset stays a content-addressed blob, **derived text is committed as a sibling file**, and the existing text index picks it up (no index-sync change).

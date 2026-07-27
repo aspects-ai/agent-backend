@@ -12,6 +12,7 @@ import {
   InMemoryVectorStore,
   type EmbeddingProvider,
   type ImageEmbeddingProvider,
+  type VectorStore,
 } from "@agentbe/index-sync";
 import { UnpdfExtractionProvider, type PdfExtractionProvider } from "@agentbe/ingestion";
 
@@ -31,6 +32,11 @@ export interface BuildRoomServiceOptions {
   pdfExtractor?: PdfExtractionProvider;
   /** Image embedder (CLIP) for text→image search. Omit to skip image indexing. */
   imageEmbedder?: ImageEmbeddingProvider;
+  /** Vector store for the text index. Defaults to in-memory (rebuilt on boot).
+   * Pass a persistent one (e.g. `@agentbe/vector-pg`) for scale. */
+  vectors?: VectorStore;
+  /** Vector store for the image index. Defaults to a fresh in-memory one. */
+  imageVectors?: VectorStore;
 }
 
 /**
@@ -45,7 +51,8 @@ export function buildRoomService(options: BuildRoomServiceOptions = {}): RoomSer
     blobs: options.storeDir ? new FsBlobStore(options.storeDir) : new InMemoryBlobStore(),
     rooms: options.storeDir ? new FsRoomStore(options.storeDir) : new InMemoryRoomStore(),
     embedder: options.embedder ?? new HashingEmbeddingProvider(),
-    vectors: new InMemoryVectorStore(),
+    vectors: options.vectors ?? new InMemoryVectorStore(),
+    imageVectors: options.imageVectors,
     workspaces: new LocalWorkspaceProvider(),
     pdfExtractor: options.pdfExtractor ?? new UnpdfExtractionProvider(),
     imageEmbedder: options.imageEmbedder,

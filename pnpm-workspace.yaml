@@ -4,6 +4,7 @@ packages:
   - packages/index-sync
   - packages/embeddings
   - packages/ingestion
+  - packages/vector-pg
   - room
   - examples/NextJS
   - examples/TSBasic

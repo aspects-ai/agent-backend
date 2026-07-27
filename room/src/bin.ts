@@ -35,13 +35,35 @@ const imageEmbedder =
     : createImageEmbeddingProvider({ model: process.env.AGENTBE_IMAGE_MODEL });
 console.error(`[agentbe-room] image embedder: ${imageEmbedder ? "clip" : "none"}`);
 
-const service = buildRoomService({ storeDir, embedder, imageEmbedder });
+// Vector store: in-memory (rebuilt on boot) by default; AGENTBE_VECTOR=pg uses a
+// persistent pgvector index (AGENTBE_PG_URL). Separate namespaces per space.
+const persistentVectors = process.env.AGENTBE_VECTOR === "pg";
+let vectors;
+let imageVectors;
+if (persistentVectors) {
+  const { Pool } = await import("pg");
+  const { PgVectorStore } = await import("@agentbe/vector-pg");
+  const pool = new Pool({ connectionString: process.env.AGENTBE_PG_URL });
+  vectors = new PgVectorStore(pool, { dimensions: embedder.dimensions, namespace: "text" });
+  if (imageEmbedder) {
+    imageVectors = new PgVectorStore(pool, {
+      dimensions: imageEmbedder.dimensions,
+      namespace: "image",
+    });
+  }
+}
+console.error(`[agentbe-room] vector store: ${persistentVectors ? "pgvector" : "in-memory"}`);
+
+const service = buildRoomService({ storeDir, embedder, imageEmbedder, vectors, imageVectors });
 
 const existingHead = await service.head(room);
 if (existingHead) {
-  // Persistent store already has this room — rebuild the (derived) index.
-  await service.reindexHead(room);
-  console.error(`[agentbe-room] loaded "${room}" from ${storeDir} (HEAD ${existingHead.slice(0, 12)})`);
+  // In-memory index must be rebuilt from the persistent store on boot; a
+  // persistent (pgvector) index survives, so skip the re-embed.
+  if (!persistentVectors) await service.reindexHead(room);
+  console.error(
+    `[agentbe-room] loaded "${room}" (HEAD ${existingHead.slice(0, 12)}; ${persistentVectors ? "persistent index" : "index rebuilt"})`,
+  );
 } else {
   try {
     const n = await seedRoomFromDir(service, room, seedDir);
