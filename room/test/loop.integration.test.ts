@@ -12,15 +12,9 @@ import { LocalWorkspaceProvider, RoomService } from "../src/index.js";
 
 const ENDPOINT = process.env.AGENTBE_S3_ENDPOINT ?? "http://localhost:4566";
 const BUCKET = "agentbe-room-it";
-const FIXTURE_DIR = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "packages",
-  "versioned-store",
-  "test",
-  "fixtures",
-);
+// Canonical app corpus (shared by the bin seed + the sample room), not the
+// versioned-store package fixtures — room tests stay within the room package.
+const CORPUS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "testdata");
 const ROOM = "room";
 
 const client = new S3Client({
@@ -30,8 +24,8 @@ const client = new S3Client({
   forcePathStyle: true,
 });
 
-function loadFixture(name: string): Uint8Array {
-  return new Uint8Array(readFileSync(path.join(FIXTURE_DIR, name)));
+function loadCorpus(rel: string): Uint8Array {
+  return new Uint8Array(readFileSync(path.join(CORPUS_DIR, rel)));
 }
 
 function makeService(): RoomService {
@@ -57,8 +51,8 @@ beforeAll(async () => {
 describe("RoomService full loop over S3", () => {
   it("upload → search → read-only analysis → edit/commit → re-search", async () => {
     const svc = makeService();
-    const csv = loadFixture("ag_exports.csv");
-    const png = loadFixture("logo.png");
+    const csv = loadCorpus("data/ag_exports.csv");
+    const png = loadCorpus("assets/logo.png");
 
     await svc.putDocuments(
       ROOM,

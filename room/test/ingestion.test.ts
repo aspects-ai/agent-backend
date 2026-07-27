@@ -6,15 +6,13 @@ import { describe, expect, it } from "vitest";
 
 import { buildRoomService } from "../src/index.js";
 
+// Canonical app corpus (shared by the bin seed + the sample room).
 const PDF = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
-  "..",
-  "packages",
-  "versioned-store",
-  "test",
-  "fixtures",
-  "document.pdf",
+  "testdata",
+  "docs",
+  "sample.pdf",
 );
 const ROOM = "room";
 

@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-local nextjs tsbasic pybasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
+.PHONY: help install dev dev-local demo demo-test nextjs tsbasic pybasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -66,6 +66,12 @@ dev-local: ## Start dev environment (local only, no Docker)
 	LOCAL=1 mprocs
 
 ##@ Examples
+
+demo: build-typescript ## Run the demo document-room MCP server over HTTP :8848 (PG=1 for pgvector)
+	@bash room/examples/demo-room/run.sh --http $(if $(filter 1,$(PG)),--pg,)
+
+demo-test: build-typescript ## Verify the demo room end-to-end over a real MCP connection (PG=1 for pgvector)
+	@node room/examples/demo-room/smoke.mjs --reset $(if $(filter 1,$(PG)),--pg,)
 
 nextjs: sync-assets build-typescript ## Run NextJS demo app
 	@command -v mprocs >/dev/null 2>&1 || { \

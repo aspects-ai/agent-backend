@@ -69,18 +69,29 @@ function collectFiles(dir: string, base: string): string[] {
   return out;
 }
 
-/** Ingest every file under `dir` into `room` (paths relative to `dir`). Files
- * are read as UTF-8 text — suitable for a text/markdown/CSV seed corpus. Returns
- * the number of documents seeded. */
+/** True if `bytes` looks binary — a NUL in the leading window, the same cheap
+ * heuristic git uses. Text corpora (md/csv/txt/json) never contain NUL; images
+ * and PDFs reliably do. */
+function looksBinary(bytes: Buffer): boolean {
+  const window = Math.min(bytes.length, 8000);
+  for (let i = 0; i < window; i++) if (bytes[i] === 0) return true;
+  return false;
+}
+
+/** Ingest every file under `dir` into `room` (paths relative to `dir`). Text
+ * files are seeded as UTF-8 strings; binary files (images, PDFs) are seeded as
+ * raw bytes so they round-trip intact and feed the image/PDF ingestion paths.
+ * Returns the number of documents seeded. */
 export async function seedRoomFromDir(
   service: RoomService,
   room: string,
   dir: string,
 ): Promise<number> {
-  const files: Record<string, string> = {};
+  const files: Record<string, string | Uint8Array> = {};
   for (const full of collectFiles(dir, dir)) {
     const rel = path.relative(dir, full).split(path.sep).join("/");
-    files[rel] = readFileSync(full, "utf-8");
+    const bytes = readFileSync(full);
+    files[rel] = looksBinary(bytes) ? new Uint8Array(bytes) : bytes.toString("utf-8");
   }
   const count = Object.keys(files).length;
   if (count > 0) await service.putDocuments(room, files, "seed");
