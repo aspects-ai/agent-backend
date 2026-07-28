@@ -190,3 +190,39 @@ describe("CAS retry", () => {
     expect(await readAll(fresh)).toEqual({ "a.txt": "a-me", "b.txt": "b0", "c.txt": "c-ext" });
   });
 });
+
+describe("manifest refs are global identifiers", () => {
+  it("gives different rooms different refs for identical content", async () => {
+    const { store, rooms } = makeStore();
+    const treeA = new InMemoryWorkingTree();
+    const treeB = new InMemoryWorkingTree();
+    await writeFiles(treeA, { "doc.md": "byte-for-byte identical" });
+    await writeFiles(treeB, { "doc.md": "byte-for-byte identical" });
+
+    // Same content, same author, same (null) parent — differing only by room.
+    const refA = committedRef(await store.commit("room-a", null, treeA, "ada"));
+    const refB = committedRef(await store.commit("room-b", null, treeB, "ada"));
+
+    // The room is part of the hash, so a ref identifies a manifest globally.
+    // Without this, a cache or cross-room lookup keyed on ref alone would
+    // conflate two rooms' histories.
+    expect(refA).not.toBe(refB);
+    expect((await rooms.getManifest("room-a", refA)).room).toBe("room-a");
+    expect((await rooms.getManifest("room-b", refB)).room).toBe("room-b");
+  });
+
+  it("stays idempotent for the same room, parent, author and entries", async () => {
+    // Separate stores, so both commits genuinely share parent = null. (Two
+    // sequential commits in ONE store would not: the second's parent is the
+    // first's ref, so their refs legitimately differ.)
+    const first = makeStore();
+    const second = makeStore();
+    const a = new InMemoryWorkingTree();
+    const b = new InMemoryWorkingTree();
+    await writeFiles(a, { "doc.md": "same" });
+    await writeFiles(b, { "doc.md": "same" });
+    expect(committedRef(await first.store.commit(ROOM, null, a, "ada"))).toBe(
+      committedRef(await second.store.commit(ROOM, null, b, "ada")),
+    );
+  });
+});

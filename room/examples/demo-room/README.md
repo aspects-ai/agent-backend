@@ -100,11 +100,26 @@ The repo's `.mcp.json` wires this up as the `agentbe-room` server pointing at
 - `run_command` — `{ "command": "wc -l data/ag_exports.csv", "paths": ["data/ag_exports.csv"] }`
 - `open_session` / `write_file` / `commit_session` — the read-write editing loop.
 
+Note `put_document` and `commit_session` take no `author`: attribution comes from
+the authenticated identity, so it can't be forged by the caller. The demo runs
+without auth, so commits are recorded as `anonymous`. Set `AGENTBE_PRINCIPALS` to
+a JSON map of bearer token → principal (e.g.
+`{"tok-ada":"ada@example.com"}`) to get real per-person attribution and
+per-person revocation.
+
 ## Notes / caveats
 
-- `run_command` runs **unsandboxed** here (`LocalWorkspaceProvider`,
-  isolation:none) — fine for a trusted local demo; the real isolation boundary is
-  the Docker/k8s sandbox provider.
+- `run_command` runs in a **per-session Docker container** (`agentbe-daemon`),
+  one container per warm session, torn down on `close_session` or by the idle
+  reaper. If Docker isn't reachable the room falls back to running commands
+  **unsandboxed on your host** and says so loudly at boot — fine for a trusted
+  local demo, never for untrusted agent code. Force either with
+  `AGENTBE_SANDBOX=docker|local`; check the `[agentbe-room] sandbox:` line at
+  startup to see which you got.
+- The published daemon image is **amd64-only**. On Apple Silicon `run.sh` sets
+  `AGENTBE_SANDBOX_PLATFORM=linux/amd64` automatically so it runs under
+  emulation — correct but slower to start. Point `AGENTBE_DAEMON_IMAGE` at a
+  natively-built image (from `agentbe-daemon/docker/Dockerfile`) to avoid that.
 - The index is model-specific. Switching `AGENTBE_EMBEDDER` /
   `AGENTBE_IMAGE_EMBEDDER` invalidates a persisted (`--pg`) index — re-run with
   `--reset`.

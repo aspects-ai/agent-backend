@@ -73,6 +73,12 @@ demo: build-typescript ## Run the demo document-room MCP server over HTTP :8848 
 demo-test: build-typescript ## Verify the demo room end-to-end over a real MCP connection (PG=1 for pgvector)
 	@node room/examples/demo-room/smoke.mjs --reset $(if $(filter 1,$(PG)),--pg,)
 
+rooms: build-typescript ## Run a multi-room deploy locally (one process per room: acme :8861, globex :8862; S3=1 for the S3 tier)
+	@bash room/examples/multi-room/run.sh $(if $(filter 1,$(S3)),--s3,)
+
+rooms-test: build-typescript ## Verify multi-room isolation: cross-room credentials, content, sandboxes (S3=1 for the S3 tier)
+	@node room/examples/multi-room/check.mjs --reset $(if $(filter 1,$(S3)),--s3,)
+
 nextjs: sync-assets build-typescript ## Run NextJS demo app
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \

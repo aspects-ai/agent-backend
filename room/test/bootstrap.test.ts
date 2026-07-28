@@ -3,13 +3,13 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { buildRoomService, seedRoomFromDir } from "../src/index.js";
+import { buildRoomService, LocalWorkspaceProvider, seedRoomFromDir } from "../src/index.js";
 
 const TESTDATA = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "testdata");
 
 describe("bootstrap seed", () => {
   it("seeds the demo corpus and makes it searchable", async () => {
-    const service = buildRoomService();
+    const service = buildRoomService({ workspaces: new LocalWorkspaceProvider() });
     const seeded = await seedRoomFromDir(service, "demo", TESTDATA);
     expect(seeded).toBe(8);
 

@@ -6,6 +6,8 @@ import {
   FsRoomStore,
   InMemoryBlobStore,
   InMemoryRoomStore,
+  type BlobStore,
+  type RoomStore,
 } from "@agentbe/versioned-store";
 import {
   HashingEmbeddingProvider,
@@ -16,14 +18,23 @@ import {
 } from "@agentbe/index-sync";
 import { UnpdfExtractionProvider, type PdfExtractionProvider } from "@agentbe/ingestion";
 
-import { RoomService } from "./room-service.js";
-import { LocalWorkspaceProvider } from "./workspace-local.js";
+import { RoomService, type WorkspaceProvider } from "./room-service.js";
+import { AutoWorkspaceProvider } from "./workspace-auto.js";
 
 export interface BuildRoomServiceOptions {
   /** Persist blobs + manifests under this directory (filesystem store). Omit
    * for an ephemeral in-memory store (tests). The index is derived and always
    * in-memory — rebuild it on startup via `reindexHead`. */
   storeDir?: string;
+  /**
+   * Canonical store overrides, taking precedence over {@link storeDir}. Use
+   * these to run on S3 — `createS3Stores({ bucket })` returns exactly this
+   * shape. **Storage tiers: in-memory (tests) → fs (dev / single-node) → S3
+   * (durable, multi-node).** The filesystem store pins a room to one node's
+   * disk, so production deployments should pass S3 stores here.
+   */
+  blobs?: BlobStore;
+  rooms?: RoomStore;
   /** Embedding model. Defaults to the dependency-free lexical hashing embedder
    * (fast, no download) — pass a real one (e.g. from `@agentbe/embeddings`) for
    * semantic search. */
@@ -37,23 +48,35 @@ export interface BuildRoomServiceOptions {
   vectors?: VectorStore;
   /** Vector store for the image index. Defaults to a fresh in-memory one. */
   imageVectors?: VectorStore;
+  /**
+   * Provisions sandboxes. Defaults to {@link AutoWorkspaceProvider}: a
+   * per-session Docker container when Docker is reachable, otherwise an
+   * unsandboxed temp dir **with a loud warning**. Pass
+   * `new LocalWorkspaceProvider()` explicitly to keep tests hermetic and fast.
+   */
+  workspaces?: WorkspaceProvider;
 }
 
 /**
  * Build a self-contained `RoomService` for local dev / demos: a dependency-free
- * lexical embedder, an in-memory (derived) index, and a temp-dir sandbox
- * provider. With `storeDir` the canonical store persists to disk; without, it's
+ * lexical embedder, an in-memory (derived) index, and a **sandboxed-by-default**
+ * workspace provider (Docker when available, unsandboxed temp dir with a warning
+ * when not). With `storeDir` the canonical store persists to disk; without, it's
  * ephemeral in-memory. For a real deployment, construct `new RoomService({...})`
  * with S3 + a real vector DB directly.
  */
 export function buildRoomService(options: BuildRoomServiceOptions = {}): RoomService {
   return new RoomService({
-    blobs: options.storeDir ? new FsBlobStore(options.storeDir) : new InMemoryBlobStore(),
-    rooms: options.storeDir ? new FsRoomStore(options.storeDir) : new InMemoryRoomStore(),
+    blobs:
+      options.blobs ??
+      (options.storeDir ? new FsBlobStore(options.storeDir) : new InMemoryBlobStore()),
+    rooms:
+      options.rooms ??
+      (options.storeDir ? new FsRoomStore(options.storeDir) : new InMemoryRoomStore()),
     embedder: options.embedder ?? new HashingEmbeddingProvider(),
     vectors: options.vectors ?? new InMemoryVectorStore(),
     imageVectors: options.imageVectors,
-    workspaces: new LocalWorkspaceProvider(),
+    workspaces: options.workspaces ?? new AutoWorkspaceProvider(),
     pdfExtractor: options.pdfExtractor ?? new UnpdfExtractionProvider(),
     imageEmbedder: options.imageEmbedder,
   });

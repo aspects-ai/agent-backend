@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { buildRoomService } from "../src/index.js";
+import { buildRoomService, LocalWorkspaceProvider } from "../src/index.js";
 
 // Canonical app corpus (shared by the bin seed + the sample room).
 const PDF = path.join(
@@ -19,7 +19,7 @@ const ROOM = "room";
 describe("PDF ingestion", () => {
   it("extracts a PDF's text on upload and makes it searchable", async () => {
     // buildRoomService wires the default UnpdfExtractionProvider.
-    const service = buildRoomService();
+    const service = buildRoomService({ workspaces: new LocalWorkspaceProvider() });
     const pdf = new Uint8Array(readFileSync(PDF));
     await service.putDocuments(ROOM, { "docs/sample.pdf": pdf }, "alice");
 

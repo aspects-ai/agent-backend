@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-import { buildRoomService, serveRoomHttp } from "../src/index.js";
+import { buildRoomService, LocalWorkspaceProvider, serveRoomHttp } from "../src/index.js";
 import type { RoomHttpHandle } from "../src/index.js";
 
 const ROOM = "room";
@@ -14,7 +14,7 @@ function textOf(result: unknown): string {
 }
 
 async function startServer(authToken?: string): Promise<RoomHttpHandle> {
-  const service = buildRoomService();
+  const service = buildRoomService({ workspaces: new LocalWorkspaceProvider() });
   await service.putDocuments(
     ROOM,
     { "vendors.md": "Acme vendor invoice payment terms", "data.txt": "one\ntwo\nthree\n" },

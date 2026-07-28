@@ -5,7 +5,7 @@ import { PgVectorStore } from "@agentbe/vector-pg";
 import { Pool } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { buildRoomService } from "../src/index.js";
+import { buildRoomService, LocalWorkspaceProvider } from "../src/index.js";
 
 const CONNECTION =
   process.env.AGENTBE_PG_URL ?? "postgresql://postgres:test@localhost:5433/agentbe";
@@ -22,7 +22,7 @@ describe("room over pgvector", () => {
     // Hash embedder (256-dim, no download) → pgvector text index.
     const vectors = new PgVectorStore(pool, { dimensions: 256, namespace });
     try {
-      const service = buildRoomService({ embedder: new HashingEmbeddingProvider(), vectors });
+      const service = buildRoomService({ embedder: new HashingEmbeddingProvider(), vectors, workspaces: new LocalWorkspaceProvider() });
       await service.putDocuments(
         ROOM,
         {

@@ -17,6 +17,9 @@ function decode(output: string | Uint8Array): string {
 /** Warm sessions idle longer than this are reaped. 15 minutes. */
 const DEFAULT_SESSION_IDLE_MS = 15 * 60_000;
 
+/** Attribution used when no principal could be established. */
+export const ANONYMOUS_PRINCIPAL = "anonymous";
+
 export interface RoomMcpOptions {
   /**
    * Release a warm session's sandbox after this many milliseconds with no tool
@@ -26,6 +29,17 @@ export interface RoomMcpOptions {
    * cleans up, so the leak is invisible there).
    */
   sessionIdleMs?: number;
+  /**
+   * Who this connection acts as — the identity recorded on every commit. It is
+   * **derived from the credential** by the transport, never accepted as a tool
+   * argument, so attribution cannot be forged by the caller.
+   *
+   * Defaults to {@link ANONYMOUS_PRINCIPAL}, which is what an unauthenticated
+   * (or shared-token) deployment gets. A shared token means the commit log
+   * cannot distinguish people — configure per-principal tokens to get a real
+   * audit trail.
+   */
+  principal?: string;
 }
 
 /** A warm session plus the bookkeeping the reaper needs. */
@@ -50,6 +64,8 @@ export function createRoomMcpServer(
 ): McpServer {
   const server = new McpServer({ name: `agentbe-room:${room}`, version: "0.0.0" });
   const idleMs = options.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS;
+  // Fixed for the life of the connection, established from the credential.
+  const principal = options.principal ?? ANONYMOUS_PRINCIPAL;
 
   // Warm sessions held for the life of this connection (or until close_session
   // / the idle reaper below).
@@ -200,15 +216,14 @@ export function createRoomMcpServer(
     "commit_session",
     {
       description:
-        "Commit a warm session's working tree as a new room version (and reindex). Read-only sessions cannot commit.",
+        "Commit a warm session's working tree as a new room version (and reindex). Read-only sessions cannot commit. Attribution comes from the authenticated identity.",
       inputSchema: {
         session: z.string().describe("Warm session id."),
-        author: z.string().optional().describe("Commit attribution."),
       },
     },
-    async ({ session, author }) =>
+    async ({ session }) =>
       withSession(session, async (s) => {
-        const ref = await s.commit(author ?? "mcp-agent");
+        const ref = await s.commit(principal);
         return textResult(`committed ${ref}`);
       }),
   );
@@ -229,15 +244,14 @@ export function createRoomMcpServer(
     "put_document",
     {
       description:
-        "Add or update a document, creating a new version of the room. Returns the new version ref.",
+        "Add or update a document, creating a new version of the room. Returns the new version ref. Attribution comes from the authenticated identity.",
       inputSchema: {
         path: z.string().describe("Document path within the room."),
         content: z.string().describe("Text contents to write."),
-        author: z.string().optional().describe("Attribution for the commit."),
       },
     },
-    async ({ path, content, author }) => {
-      const ref = await service.putDocuments(room, { [path]: content }, author ?? "mcp-agent");
+    async ({ path, content }) => {
+      const ref = await service.putDocuments(room, { [path]: content }, principal);
       return textResult(`committed ${ref}`);
     },
   );

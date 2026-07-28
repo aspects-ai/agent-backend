@@ -83,6 +83,15 @@ if [ "$RESET" = "1" ]; then
   fi
 fi
 
+# The room now sandboxes agent commands in a per-session agentbe-daemon
+# container. The published image is amd64-only, so on Apple Silicon / arm64 ask
+# Docker for the emulated platform rather than failing on a missing manifest.
+if [ -z "${AGENTBE_SANDBOX_PLATFORM:-}" ]; then
+  case "$(uname -m)" in
+    arm64|aarch64) export AGENTBE_SANDBOX_PLATFORM=linux/amd64 ;;
+  esac
+fi
+
 # Build if the bin is missing (dist is gitignored).
 if [ ! -f "$ROOM_PKG/dist/bin.js" ]; then
   log "building @agentbe/room"

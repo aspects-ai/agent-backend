@@ -308,6 +308,9 @@ importers:
       '@agentbe/versioned-store':
         specifier: workspace:*
         version: link:../packages/versioned-store
+      '@aws-sdk/client-s3':
+        specifier: ^3.700.0
+        version: 3.1093.0
       '@huggingface/transformers':
         specifier: ^3.0.0
         version: 3.8.1
@@ -324,9 +327,6 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
-      '@aws-sdk/client-s3':
-        specifier: ^3.700.0
-        version: 3.1093.0
       '@types/node':
         specifier: ^20.17.10
         version: 20.19.43

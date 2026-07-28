@@ -83,7 +83,7 @@ export class DefaultVersionedStore implements VersionedStore {
         parent = head;
       }
 
-      const ref = hashManifest(parent, createdBy, entries);
+      const ref = hashManifest(room, parent, createdBy, entries);
       await this.rooms.putManifest({ room, ref, parent, createdBy, entries });
       const result = await this.rooms.casHead(room, head, ref);
       if (result === "ok") return { status: "committed", ref };
