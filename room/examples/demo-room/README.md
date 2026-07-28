@@ -21,9 +21,13 @@ container) when you want to exercise or test that path.
 - `run.sh` — the launcher: builds the room if needed and serves it over MCP with
   `AGENTBE_EMBEDDER=local` + `AGENTBE_IMAGE_EMBEDDER=clip`. `--pg` adds the
   persistent pgvector index (and manages its container).
-- `smoke.mjs` — drives the running room over a real stdio MCP connection and
-  asserts semantic text ranking, cross-modal (text→image) ranking, PDF-derived
-  text search, and sandboxed `run_command`. A manual end-to-end check.
+- `smoke.mjs` — drives a room over a real **streamable-HTTP** MCP connection —
+  the same transport `make demo` serves — and asserts semantic text ranking,
+  cross-modal (text→image) ranking, PDF-derived text search, sandboxed
+  `run_command`, and a warm session surviving across separate HTTP requests. A
+  manual end-to-end check. It boots its own room on port 8849 with its own store
+  (`.smoke-data/`), so it never disturbs a `make demo` you have running; pass
+  `--url=http://localhost:8848/mcp` to point it at that one instead.
 - `.data/` — the persistent blob + manifest store, gitignored.
 
 ## Prerequisites
@@ -78,17 +82,19 @@ node room/examples/demo-room/smoke.mjs --pg --reset
 Expected: natural-language text queries each rank the topically-correct document
 first (e.g. *"why do teams stop using the product and cancel"* →
 `research/customer-interviews-q1.md`), a text→image query ranks the Python logo
-above the unrelated photo (CLIP), the PDF's derived `.pdf.txt` is present, and a
-`run_command` counts rows of the CSV inside a sandbox — the whole **search →
-checkout → exec** loop over real text + image embeddings.
+above the unrelated photo (CLIP), the PDF's derived `.pdf.txt` is present, a
+`run_command` counts rows of the CSV inside a sandbox, and a warm session's
+sandbox state survives across separate HTTP requests — the whole **search →
+checkout → exec** loop over real text + image embeddings, on the real transport.
 
 ## Drive it from an MCP client
 
-The repo's `.mcp.json` already wires this up as the `agentbe-room` server
-(`bash room/examples/demo-room/run.sh`), so Claude Code connects to it directly.
-To use `--pg`, add the flag to that entry's `args`. Then try tools like:
+The repo's `.mcp.json` wires this up as the `agentbe-room` server pointing at
+`http://localhost:8848/mcp`, so Claude Code connects once `make demo` is running
+(start it first — unlike a stdio server, the client won't spawn it). To use
+`--pg`, run `make demo PG=1`. Then try tools like:
 
-- `search` (text) — `{ "query": "how is the Globex engagement billed", "k": 3, "modality": "text" }`
+- `search` (text) — `{ "query": "how is the Globex engagement billed", "limit": 3, "modality": "text" }`
 - `search` (image) — `{ "query": "the Python programming language logo", "modality": "image" }`
 - `read_document` — `{ "path": "contracts/globex-sow.md" }`
 - `run_command` — `{ "command": "wc -l data/ag_exports.csv", "paths": ["data/ag_exports.csv"] }`
@@ -104,3 +110,7 @@ To use `--pg`, add the flag to that entry's `args`. Then try tools like:
   `--reset`.
 - With `--pg`, the bin uses fixed pgvector namespaces `text` / `image`; `--reset`
   drops those tables. Don't point it at a database you care about.
+- Warm sessions are reaped after 15 minutes idle, so a client that disconnects
+  without `close_session` doesn't leak its sandbox. Override with
+  `AGENTBE_SESSION_IDLE_MS` (`0` disables). A command that runs longer than the
+  window is safe — reaping skips sessions with work in flight.

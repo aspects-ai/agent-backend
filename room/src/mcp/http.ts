@@ -5,8 +5,9 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 
 import type { RoomService } from "../room-service.js";
 import { createRoomMcpServer } from "./server.js";
+import type { RoomMcpOptions } from "./server.js";
 
-export interface RoomHttpOptions {
+export interface RoomHttpOptions extends RoomMcpOptions {
   /** Port to listen on (0 = ephemeral, useful for tests). Default 0. */
   port?: number;
   host?: string;
@@ -83,7 +84,9 @@ export async function serveRoomHttp(
           transport.onclose = () => {
             if (transport.sessionId) transports.delete(transport.sessionId);
           };
-          await createRoomMcpServer(service, room).connect(transport);
+          await createRoomMcpServer(service, room, {
+            sessionIdleMs: options.sessionIdleMs,
+          }).connect(transport);
           await transport.handleRequest(req, res, body);
           return;
         }

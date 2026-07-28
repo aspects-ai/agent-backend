@@ -14,6 +14,28 @@ function decode(output: string | Uint8Array): string {
   return typeof output === "string" ? output : new TextDecoder().decode(output);
 }
 
+/** Warm sessions idle longer than this are reaped. 15 minutes. */
+const DEFAULT_SESSION_IDLE_MS = 15 * 60_000;
+
+export interface RoomMcpOptions {
+  /**
+   * Release a warm session's sandbox after this many milliseconds with no tool
+   * activity. `0` disables reaping. Matters for the hosted HTTP transport: a
+   * client that disconnects without calling `close_session` would otherwise leak
+   * its sandbox for the life of the process (over stdio the process death
+   * cleans up, so the leak is invisible there).
+   */
+  sessionIdleMs?: number;
+}
+
+/** A warm session plus the bookkeeping the reaper needs. */
+interface HeldSession {
+  session: RoomSession;
+  lastUsed: number;
+  /** Tool calls currently running against this session; never reap while > 0. */
+  inFlight: number;
+}
+
 /**
  * Build an MCP server exposing a single data room to an agent: semantic search,
  * document reads, and sandboxed execution. Execution comes in two flavors — a
@@ -21,16 +43,57 @@ function decode(output: string | Uint8Array): string {
  * `run_command`/`write_file` against the *same* live sandbox → `commit_session`)
  * so state persists across commands. This is the room's primary delivery surface.
  */
-export function createRoomMcpServer(service: RoomService, room: string): McpServer {
+export function createRoomMcpServer(
+  service: RoomService,
+  room: string,
+  options: RoomMcpOptions = {},
+): McpServer {
   const server = new McpServer({ name: `agentbe-room:${room}`, version: "0.0.0" });
+  const idleMs = options.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS;
 
-  // Warm sessions held for the life of this connection (or until close_session).
-  const sessions = new Map<string, RoomSession>();
-  const requireSession = (id: string): RoomSession => {
-    const session = sessions.get(id);
-    if (!session) throw new Error(`unknown or closed session: ${id}`);
-    return session;
+  // Warm sessions held for the life of this connection (or until close_session
+  // / the idle reaper below).
+  const sessions = new Map<string, HeldSession>();
+
+  const releaseSession = async (id: string): Promise<void> => {
+    const held = sessions.get(id);
+    if (!held) return;
+    sessions.delete(id);
+    await held.session.close();
   };
+
+  /**
+   * Run `fn` against a warm session, keeping it alive for the duration. The
+   * in-flight count is what stops the reaper from pulling a sandbox out from
+   * under a command that runs longer than the idle window.
+   */
+  const withSession = async <T>(id: string, fn: (session: RoomSession) => Promise<T>): Promise<T> => {
+    const held = sessions.get(id);
+    if (!held) throw new Error(`unknown or closed session: ${id}`);
+    held.inFlight++;
+    try {
+      return await fn(held.session);
+    } finally {
+      held.inFlight--;
+      held.lastUsed = Date.now();
+    }
+  };
+
+  // Sweep often enough that a short idle window is honored, but never hot-loop.
+  let reaper: ReturnType<typeof setInterval> | undefined;
+  if (idleMs > 0) {
+    const everyMs = Math.max(50, Math.min(idleMs / 2, 60_000));
+    reaper = setInterval(() => {
+      const now = Date.now();
+      for (const [id, held] of sessions) {
+        if (held.inFlight === 0 && now - held.lastUsed >= idleMs) {
+          void releaseSession(id);
+        }
+      }
+    }, everyMs);
+    // Don't hold the process open just to run the sweep.
+    reaper.unref?.();
+  }
 
   server.registerTool(
     "search",
@@ -89,7 +152,9 @@ export function createRoomMcpServer(service: RoomService, room: string): McpServ
       },
     },
     async ({ command, session, paths }) => {
-      if (session) return textResult(decode(await requireSession(session).exec(command)));
+      if (session) {
+        return withSession(session, async (s) => textResult(decode(await s.exec(command))));
+      }
       return textResult(await service.runCommand(room, command, paths));
     },
   );
@@ -109,7 +174,7 @@ export function createRoomMcpServer(service: RoomService, room: string): McpServ
     async ({ paths }) => {
       const session = await service.openSession(room, paths ? { paths } : {});
       const id = randomUUID();
-      sessions.set(id, session);
+      sessions.set(id, { session, lastUsed: Date.now(), inFlight: 0 });
       return textResult(JSON.stringify({ session: id, canCommit: session.canCommit }));
     },
   );
@@ -124,10 +189,11 @@ export function createRoomMcpServer(service: RoomService, room: string): McpServ
         content: z.string().describe("Text contents."),
       },
     },
-    async ({ session, path, content }) => {
-      await requireSession(session).tree.write(path, content);
-      return textResult(`wrote ${path}`);
-    },
+    async ({ session, path, content }) =>
+      withSession(session, async (s) => {
+        await s.tree.write(path, content);
+        return textResult(`wrote ${path}`);
+      }),
   );
 
   server.registerTool(
@@ -140,10 +206,11 @@ export function createRoomMcpServer(service: RoomService, room: string): McpServ
         author: z.string().optional().describe("Commit attribution."),
       },
     },
-    async ({ session, author }) => {
-      const ref = await requireSession(session).commit(author ?? "mcp-agent");
-      return textResult(`committed ${ref}`);
-    },
+    async ({ session, author }) =>
+      withSession(session, async (s) => {
+        const ref = await s.commit(author ?? "mcp-agent");
+        return textResult(`committed ${ref}`);
+      }),
   );
 
   server.registerTool(
@@ -153,11 +220,7 @@ export function createRoomMcpServer(service: RoomService, room: string): McpServ
       inputSchema: { session: z.string().describe("Warm session id.") },
     },
     async ({ session }) => {
-      const held = sessions.get(session);
-      if (held) {
-        await held.close();
-        sessions.delete(session);
-      }
+      await releaseSession(session);
       return textResult("closed");
     },
   );
@@ -180,9 +243,11 @@ export function createRoomMcpServer(service: RoomService, room: string): McpServ
   );
 
   // Best-effort cleanup: release any warm sandboxes when the connection closes.
+  // The reaper is the backstop for clients that never get here (HTTP hangups).
   const priorOnClose = server.server.onclose?.bind(server.server);
   server.server.onclose = () => {
-    for (const session of sessions.values()) void session.close();
+    if (reaper) clearInterval(reaper);
+    for (const held of sessions.values()) void held.session.close();
     sessions.clear();
     priorOnClose?.();
   };
@@ -191,7 +256,11 @@ export function createRoomMcpServer(service: RoomService, room: string): McpServ
 }
 
 /** Serve a room over stdio (the local / single-agent transport). */
-export async function serveRoomStdio(service: RoomService, room: string): Promise<void> {
-  const server = createRoomMcpServer(service, room);
+export async function serveRoomStdio(
+  service: RoomService,
+  room: string,
+  options: RoomMcpOptions = {},
+): Promise<void> {
+  const server = createRoomMcpServer(service, room, options);
   await server.connect(new StdioServerTransport());
 }

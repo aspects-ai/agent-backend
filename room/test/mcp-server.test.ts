@@ -19,7 +19,7 @@ function makeService(): RoomService {
   });
 }
 
-async function connectClient(): Promise<Client> {
+async function connectClient(options?: { sessionIdleMs?: number }): Promise<Client> {
   const service = makeService();
   await service.putDocuments(
     ROOM,
@@ -29,7 +29,7 @@ async function connectClient(): Promise<Client> {
     },
     "seed",
   );
-  const server = createRoomMcpServer(service, ROOM);
+  const server = createRoomMcpServer(service, ROOM, options);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -123,6 +123,51 @@ describe("room MCP server", () => {
       arguments: { command: "wc -l < data.txt", paths: ["data.txt"] },
     });
     expect(parseInt(textOf(res).trim(), 10)).toBe(3);
+  });
+
+  it("reaps a warm session left idle past the TTL", async () => {
+    const client = await connectClient({ sessionIdleMs: 60 });
+    const opened = await client.callTool({ name: "open_session", arguments: {} });
+    const { session } = JSON.parse(textOf(opened)) as { session: string };
+
+    // Still fresh: the session works.
+    const before = await client.callTool({
+      name: "run_command",
+      arguments: { session, command: "echo alive" },
+    });
+    expect(textOf(before)).toContain("alive");
+
+    // Go quiet past the idle window — the reaper should release the sandbox
+    // even though the client never called close_session.
+    await new Promise((r) => setTimeout(r, 250));
+
+    const after = await client.callTool({
+      name: "run_command",
+      arguments: { session, command: "echo alive" },
+    });
+    expect(JSON.stringify(after)).toMatch(/unknown or closed session/);
+  });
+
+  it("does not reap a session while a command is still running", async () => {
+    const client = await connectClient({ sessionIdleMs: 60 });
+    const opened = await client.callTool({ name: "open_session", arguments: {} });
+    const { session } = JSON.parse(textOf(opened)) as { session: string };
+
+    // A command that outlives the idle window must not have its sandbox pulled
+    // out from under it — the in-flight guard, not the timestamp, protects this.
+    const slow = await client.callTool({
+      name: "run_command",
+      arguments: { session, command: "sleep 0.3 && echo survived" },
+    });
+    expect(textOf(slow)).toContain("survived");
+
+    // And it stays usable afterwards: completing a command refreshes the clock.
+    const next = await client.callTool({
+      name: "run_command",
+      arguments: { session, command: "echo still-here" },
+    });
+    expect(textOf(next)).toContain("still-here");
+    await client.callTool({ name: "close_session", arguments: { session } });
   });
 
   it("put_document adds a version discoverable by search and listing", async () => {

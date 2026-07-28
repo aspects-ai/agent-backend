@@ -73,16 +73,23 @@ if (existingHead) {
   }
 }
 
+// Warm sandboxes are released after this long with no activity (0 disables).
+// Matters most over HTTP, where a client can vanish without close_session.
+const sessionIdleMs = process.env.AGENTBE_SESSION_IDLE_MS
+  ? Number(process.env.AGENTBE_SESSION_IDLE_MS)
+  : undefined;
+
 // Transport: HTTP if AGENTBE_HTTP_PORT is set (hosted / shared), else stdio.
 const httpPort = process.env.AGENTBE_HTTP_PORT ? Number(process.env.AGENTBE_HTTP_PORT) : undefined;
 if (httpPort !== undefined) {
   const handle = await serveRoomHttp(service, room, {
     port: httpPort,
     authToken: process.env.AGENTBE_AUTH_TOKEN,
+    sessionIdleMs,
   });
   const auth = process.env.AGENTBE_AUTH_TOKEN ? "bearer-token required" : "open";
   console.error(`[agentbe-room] serving room "${room}" over HTTP :${handle.port}/mcp (${auth})`);
 } else {
-  await serveRoomStdio(service, room);
+  await serveRoomStdio(service, room, { sessionIdleMs });
   console.error(`[agentbe-room] serving room "${room}" over stdio`);
 }

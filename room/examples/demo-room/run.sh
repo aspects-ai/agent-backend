@@ -24,7 +24,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOM_PKG="$(cd "$HERE/../.." && pwd)"
 
-STORE_DIR="$HERE/.data"
+# Overridable so a parallel run (e.g. the smoke check) can use its own store
+# instead of clobbering the store a live `make demo` is serving.
+STORE_DIR="${AGENTBE_STORE_DIR:-$HERE/.data}"
 # One shared corpus for the whole app — the same testdata the room test suite and
 # the bin's default seed use (text + images + a PDF).
 CORPUS_DIR="$ROOM_PKG/testdata"

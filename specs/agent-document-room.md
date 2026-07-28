@@ -2,7 +2,7 @@
 
 > **Status:** Working spec (temporary). Living document tracking the build-out of the agent document room on top of `agent-backend`. Not an OpenSDD behavioral contract — the room is deliberately spec-lite. Supersede/delete once the plan is stable and the durable pieces graduate to `docs/`.
 >
-> **Last updated:** 2026-07-22 · **Owner:** danny
+> **Last updated:** 2026-07-27 · **Owner:** danny
 
 ## 1. Goal
 
@@ -55,7 +55,7 @@ Six concerns, kept as separate seams. The room product is the orchestrator that 
 | Workspace lifetime | **Ephemeral per task** now; long-lived later | Minimizes conflict window; commit-back is the only way state becomes real |
 | Commits | **Per task** | Each manifest is a revert target |
 | Merge | **Per-file last-writer-wins** now; grow into 3-way merge later from retained manifests | Multiplayer isn't hot yet; not a one-way door |
-| Access control | **Room-level only** (maps to `agent-backend` `.scope()`); granular ACL deferred | AC is a later nice-to-have |
+| Access control | **The room is the tenant.** Principals are granted membership *to a room*; granular per-doc ACL deferred | Rooms may span organizations (two parties in a deal), so org is never a data-plane partition — see §7. Room-level membership is also what keeps the write path coherent: every member sees the whole room, so every member can commit |
 | Derived text | **Committed as real files** (raw media stays a blob; embeddings are index-side only) | The shell must be able to `grep`/parse extracted text |
 | Language | agent-backend keeps Python + TS; **everything new is TS-only** | — |
 
@@ -157,13 +157,20 @@ Per-asset preprocessing turning raw media into searchable form. Swappable provid
 
 **Done — transports + runnable server:**
 - ✅ **Streamable-HTTP transport** (`serveRoomHttp`) — **stateful** (one `McpServer` + warm-session registry per client connection, keyed by `Mcp-Session-Id`), so warm sessions survive across HTTP requests (a per-request stateless server couldn't). Optional **bearer auth**. Node `http` (no framework dep). Tested in-process (tools/search over HTTP, warm session across separate requests, auth enforcement).
-- ✅ **Runnable bin** (`room/src/bin.ts` → `dist/bin.js`): stdio by default, **HTTP when `AGENTBE_HTTP_PORT` set**; persistent `Fs` store (`AGENTBE_STORE_DIR`, default `room/.room-data`), seed-if-empty / reindex-on-boot; wired into Claude Code via repo-root `.mcp.json`.
+- ✅ **Runnable bin** (`room/src/bin.ts` → `dist/bin.js`): stdio by default, **HTTP when `AGENTBE_HTTP_PORT` set**; persistent `Fs` store (`AGENTBE_STORE_DIR`, default `room/.room-data`), seed-if-empty / reindex-on-boot; wired into Claude Code via repo-root `.mcp.json` (HTTP, `:8848/mcp`).
+
+**Done — demo server + idle reaping (2026-07-27):**
+- ✅ **Demo room** (`room/examples/demo-room/`) — the single way to run a room by hand, on the **real** embedders (MiniLM + CLIP) and the shared `room/testdata` corpus. `make demo` serves HTTP `:8848`; `make demo-test` drives it over a **real streamable-HTTP MCP connection** (its own port 8849 + store, so it can't clobber a live demo) asserting semantic ranking, cross-modal text→image, PDF-derived text, sandboxed exec, and warm-session state across separate HTTP requests. Verified green end to end.
+- ✅ **Idle-TTL session reaping** — warm sandboxes are released after `sessionIdleMs` (default 15 min, `AGENTBE_SESSION_IDLE_MS`, `0` disables). Closes the hosted-HTTP leak where a client vanishes without `close_session` (invisible over stdio, where process death cleans up). Reaping skips sessions with **work in flight**, so a command outliving the window can't have its sandbox pulled out from under it. Threaded through `createRoomMcpServer` / `serveRoomStdio` / `serveRoomHttp` / bin. 2 tests (reap-when-idle, don't-reap-in-flight); the in-flight guard was verified non-vacuous by breaking it.
 
 **TODO:**
-- ✅ **Warm sessions** (open/run/write/commit/close via a session registry; state persists across commands; cleaned up on connection close). TODO within this: session-scoped `WorkspaceProvider` reuse + **idle-TTL reaping** (matters for the hosted HTTP transport; stdio sessions die with the process).
+- ✅ **Warm sessions** (open/run/write/commit/close via a session registry; state persists across commands; cleaned up on connection close **and by an idle reaper**). TODO within this: session-scoped `WorkspaceProvider` reuse.
 - ◑ **Room-level auth** — bearer-token check on the HTTP transport ✅; membership/multi-token + granular ACL still TODO.
+- ☐ **Principal identity + room membership** (*not* org multi-tenancy — see §7). Today `createRoomMcpServer(service, room)` binds one server to one room behind one shared bearer token, with no principal at all. Needed: credential → principal; `(principal, room, role)` grants; room bound at connect via `/rooms/:room/mcp` and authorized once per connection (fits the already-stateful transport, and keeps every tool signature unchanged — no `room` argument). Roles fall out of the §5.6 plane split: **reader** = retrieval only, never gets a sandbox; **member** = sandbox + commit.
+  - **Prerequisite, currently broken:** `author` is a caller-supplied tool parameter (`mcp/server.ts` `commit_session` / `put_document`, defaulting to `"mcp-agent"`), so commit attribution is **self-asserted and forgeable**. Harmless single-user; unreliable the moment two individuals share a room. It cannot be fixed in isolation — there is no principal to derive it from until membership lands, so it ships *with* that work, not before.
+- ☐ **Production `WorkspaceProvider`** — only `LocalWorkspaceProvider` exists, which runs agent code **unsandboxed on the host**. This is the blocker to vending; see 5.6.
 - ☐ **UI portal** as a separate example app (a client of the room).
-- ☐ Real embedding provider + vector-store adapter (currently `HashingEmbeddingProvider` + `InMemoryVectorStore`).
+- ✅ Real embedding provider + vector-store adapter (MiniLM/CLIP via `@agentbe/embeddings`; `PgVectorStore` via `@agentbe/vector-pg`).
 
 ### 5.6 Deployment & orchestration (decided; k8s path deferred)
 
@@ -189,12 +196,20 @@ Dependency-first. Land each, verify, then proceed.
 2. ✅ **`versioned-store`** — core + in-memory + unit tests, **and** S3 adapters verified end-to-end against LocalStack. The substrate is real.
 3. ✅ **`index-sync`** (5.3) — sync/syncDiff/query + BYO embedder/vector-store, hash-keyed dedup, unit-tested (4 green).
 3.5. ✅ **Integration hardening** (`packages/integration`) — `BackendWorkingTree` adapter (agent-backend `Backend` → `WorkingTree`) + full-loop e2e test: **search → checkout → exec → commit-back → reindex** over S3 + a real `LocalFilesystemBackend`, using real fixtures (CSV `wc -l` = use case A; PNG byte-fidelity). **Surfaced & fixed a real seam:** agent-backend `read()` defaults to a UTF-8 *string*, which would corrupt binaries in checkout/commit — the adapter forces byte reads. 2 integration + 3 unit tests green. Adapter kept out of agent-backend (no breaking spec change) and out of versioned-store (structural, no dependency).
-4. **`room` app** (5.5) — ✅ **service core** (`RoomService`/`RoomSession` + `LocalWorkspaceProvider`) + ✅ **MCP server** (primary delivery: `search`/`list_documents`/`read_document`/`run_command`/`put_document` over stdio, in-process-client tested). ☐ Remaining: streamable-HTTP transport + config/bin entry, per-connection sessions, room-level auth, UI example app. **← next: HTTP transport + a runnable configured server (bin).**
-5. **`ingestion`** (5.4) — multimodal, added as the corpus demands it. (Also unblocks real search over binaries via derived text.)
+4. ✅ **`room` app** (5.5) — **service core** (`RoomService`/`RoomSession` + `LocalWorkspaceProvider`) + **MCP server** over **stdio and streamable-HTTP**, warm sessions with idle reaping, bearer auth, a runnable bin, and a demo server verified end to end over real HTTP. ☐ Remaining: principal identity + room membership, UI example app.
+5. ✅ **`ingestion`** (5.4) — PDF text + CLIP image embedding landed; OCR/transcription/tables still open.
+6. **← next: the vending decision.** Impl is demo-complete but not product-complete. The gating items are, in order: **(a) a sandboxed `WorkspaceProvider`** (agent code currently runs unsandboxed on the host — see 5.6), **(b) principal identity + room membership** (one room, one shared token, forgeable `author` today — see 5.5), **(c) HEAD CAS → DynamoDB** before real multiplayer (§7).
 
 ## 7. Open questions / deferred
 
-- **Granular (per-document) ACL** — needs the index to filter by identity; lives in the store. Deferred.
+- **Org multi-tenancy — decided against (2026-07-27).** Org is *not* a data-plane partition; the **room is the tenant**, and the code already assumes it (every `RoomService` method is room-parameterized; the store is `rooms/<room>/HEAD` + `rooms/<room>/manifests/`; the index is room-scoped). A room may legitimately span organizations — two parties in a deal, per-individual access — so org-partitioned identity would *block* the motivating case rather than serve it; cross-org rooms require globally-addressable principals (OIDC subject / email), not org-namespaced user ids. Org survives only in the control plane: billing/ownership, SSO federation, admin and audit queries. The enterprise "we need tenant isolation" ask is answered by **deployment** (a dedicated instance / self-host — already the consumption model in §4), not by org rows in a schema, since customers making that ask want physical isolation anyway.
+
+- **Granular (per-document) ACL** — deferred, and the cost is larger than "the index filters by identity":
+  - **It forces scoped commits.** An ACL-filtered checkout *is* a partial checkout, and `commit` reflects the FULL working tree (see the footgun below). Today `openSession` therefore forces any `paths`-scoped session read-only (`canCommit: false`). So under granular ACL, *any* principal who can't see every document becomes read-only until scoped commits exist. **Granular ACL and scoped commits are one project, not two.**
+  - It also breaks the symmetry the merge model leans on: room-level membership means every member's manifest view is identical, which is why per-file LWW works.
+  - **Rooms substitute for it only up to a point.** Blobs are content-addressed and *not* room-namespaced (`${prefix}blobs/<hash>`), so a second room with overlapping contents is nearly free in **storage** — the standard VDR pattern (a room per audience) is cheap. But dedupe does not extend to **maintenance**: rooms have independent manifests and HEADs, so a document in N rooms is one blob but N manifests, and updating it is N commits with N chances to conflict. Rooms handle **cohort-shaped** permissions (a few stable audiences); they do *not* handle per-individual exclusions shifting over time inside one shared working set.
+  - If it does become required, scope it **read-only-first**: filtered search/read for restricted principals, with sandbox and commit still gated on full-room membership. That serves the common ask ("this analyst may look, but not at everything") without touching the write path.
+  - Keep blob reads **mediated by the room manifest** — never expose a hash-addressed read across rooms, or the shared blob namespace becomes a confused deputy. Relatedly, cross-room blob sharing makes GC refcount-based and complicates "prove our data is deleted" when a counterparty's room shares the blob.
 - **Long-lived / personal workspaces** — coherence of N durable checkouts. Deferred behind ephemeral.
 - **Real 3-way merge** — when multiplayer heats up; grow from retained manifests.
 - **Case A as a separate store** — the GB-scale read-only binary catalog may want a distinct read-only manifest-over-S3 surface rather than sharing the read-write room store. The seam between "git-/manifest-backed read-write rooms" and "read-only catalogs" may be the real product boundary. Revisit.
