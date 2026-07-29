@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-local demo demo-test nextjs tsbasic pybasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
+.PHONY: help install dev dev-local demo demo-test k8s-up k8s-test k8s-forward k8s-down dev-down nextjs tsbasic pybasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -78,6 +78,28 @@ rooms: build-typescript ## Run a multi-room deploy locally (one process per room
 
 rooms-test: build-typescript ## Verify multi-room isolation: cross-room credentials, content, sandboxes (S3=1 for the S3 tier)
 	@node room/examples/multi-room/check.mjs --reset $(if $(filter 1,$(S3)),--s3,)
+
+k8s-up: ## Provision the local k8s room environment (kind + Calico + agent-sandbox + rooms)
+	@bash room/examples/k8s/up.sh $(if $(filter 1,$(SKIP_IMAGES)),--skip-images,)
+
+k8s-test: ## Verify the k8s deploy: room isolation, sandbox-per-session, cleanup
+	@node room/examples/k8s/check.mjs
+
+k8s-forward: ## Supervised port-forwards to the k8s rooms (mprocs; acme :18861, globex :18862)
+	@command -v mprocs >/dev/null 2>&1 || { echo "mprocs not installed. Run 'make install'."; exit 1; }
+	@K8S=1 mprocs
+
+k8s-down: ## Delete the local k8s cluster
+	@kind delete cluster --name agentbe
+
+dev-down: ## Stop all local dev infrastructure (k8s cluster + LocalStack + pgvector)
+	@echo "Deleting kind cluster (if present)..."
+	@kind delete cluster --name agentbe 2>/dev/null || true
+	@echo "Removing helper containers..."
+	@docker rm -f agentbe-localstack agentbe-pgvector 2>/dev/null || true
+	@echo "Removing any stray room sandboxes..."
+	@docker ps -aq --filter label=agentbe.room.sandbox | xargs -r docker rm -f >/dev/null 2>&1 || true
+	@echo "✓ Local dev infrastructure stopped"
 
 nextjs: sync-assets build-typescript ## Run NextJS demo app
 	@command -v mprocs >/dev/null 2>&1 || { \

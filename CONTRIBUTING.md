@@ -87,6 +87,29 @@ Both commands launch [mprocs](https://github.com/pvolok/mprocs), a terminal UI f
 
 Language-specific commands use the pattern `make <command>-<language>`, for example `make build-typescript` or `make test-python`.
 
+### Agent Document Room
+
+| Command             | Description                                                        |
+|----------------------|--------------------------------------------------------------------|
+| `make demo`          | Run the demo document-room MCP server over HTTP :8848 (`PG=1` for a persistent pgvector index) |
+| `make demo-test`     | Verify the demo room end-to-end over a real MCP connection (`PG=1` for pgvector) |
+| `make rooms`         | Run a multi-room deploy locally, one process per room (`S3=1` for the S3 storage tier) |
+| `make k8s-up`     | Provision the local k8s room environment (kind + Calico + agent-sandbox) |
+| `make k8s-test`   | Verify the k8s deploy end to end                      |
+| `make k8s-forward`| Supervised port-forwards to the k8s rooms (mprocs)     |
+| `make k8s-down`   | Delete the local k8s cluster                          |
+| `make dev-down`   | Stop all local dev infra (cluster + LocalStack + pgvector) |
+| `make rooms-test`    | Verify multi-room isolation: cross-room credentials, content, sandboxes (`S3=1` for the S3 tier) |
+
+See [room/README.md](room/README.md) for the tool surface and
+[room/examples/](room/examples/) for the runnable walkthroughs behind these
+targets.
+
+The room's tests (`room/test/`) are split by cost: `pnpm --filter @agentbe/room test:unit`
+runs the fast default suite (in-memory stores, hashing embedder); `test:integration`
+adds suites gated on real infrastructure -- Docker (sandbox containers), LocalStack
+(S3), and a live Kubernetes cluster -- and is not part of `make test`/`make ci`.
+
 ### Language-Specific Docs
 
 - [TypeScript](./packages/agent-backend/typescript/README.md) -- package info, testing, code style, workflows, troubleshooting

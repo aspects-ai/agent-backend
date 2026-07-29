@@ -21,45 +21,29 @@ production cluster.
 ## Run it
 
 ```bash
-# kindnet does NOT enforce NetworkPolicy, so create the cluster without it and
-# install Calico — otherwise the sandbox policies apply cleanly and do nothing.
-cat > kind.yaml <<'YAML'
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-networking:
-  disableDefaultCNI: true
-  podSubnet: "192.168.0.0/16"
-YAML
-kind create cluster --name agentbe --config kind.yaml
-kubectl --context kind-agentbe apply -f \
-  https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml
-kubectl --context kind-agentbe -n kube-system rollout status deploy/calico-kube-controllers
-
-# agent-sandbox provides the warm pool (used by the acme room).
-kubectl --context kind-agentbe apply --server-side -f \
-  https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v0.5.3/sandbox-with-extensions.yaml
-kubectl --context kind-agentbe -n agent-sandbox-system rollout status deploy/agent-sandbox-controller
-
-# Build both images and load them into the cluster (no registry needed).
-docker build -f room/Dockerfile -t agentbe-room:dev .
-docker build -f agentbe-daemon/docker/Dockerfile --build-arg AGENTBE_VERSION=local \
-  -t agentbe-daemon:arm64-dev .
-kind load docker-image agentbe-room:dev agentbe-daemon:arm64-dev --name agentbe
-
-# Seed corpora (one per room), then the rooms themselves.
-kubectl --context kind-agentbe create ns agentbe
-kubectl --context kind-agentbe -n agentbe create configmap acme-seed --from-file=<dir>
-kubectl --context kind-agentbe -n agentbe create configmap globex-seed --from-file=<dir>
-kubectl --context kind-agentbe apply -f room/examples/k8s/sandbox-pool.yaml
-kubectl --context kind-agentbe apply -f room/examples/k8s/rooms.yaml
-
-node room/examples/k8s/check.mjs
+make k8s-up      # empty machine -> two rooms serving (~5 min; re-runs take ~7s)
+make k8s-test    # verify isolation end to end
+make k8s-forward # supervised port-forwards, acme :18861 / globex :18862
+make k8s-down    # delete the cluster
 ```
 
-**On the image tag:** the published `ghcr.io/aspects-ai/agentbe-daemon:latest` is
-**amd64-only**, and a kind node on Apple Silicon is arm64 — pods would fail to
-start. Building the daemon locally sidesteps that. A multi-arch published image
-is the real fix.
+`make k8s-up` is idempotent: it creates the cluster, installs Calico and
+agent-sandbox, builds and side-loads both images, and applies the pool and rooms
+— skipping whatever is already in place. Images are always rebuilt, since a stale
+image is the most confusing failure here; pass `SKIP_IMAGES=1` to skip that too.
+
+`make dev-down` tears down everything local, including the LocalStack and
+pgvector containers the other examples start.
+
+Two things it handles that are easy to get wrong by hand: kind's default CNI
+(kindnet) does **not** enforce NetworkPolicy, so the cluster is created with
+`disableDefaultCNI` and Calico installed — otherwise the sandbox policies apply
+cleanly and do nothing. And the published daemon image is amd64-only, so the
+daemon is built natively rather than pulled.
+
+Port-forwards are supervised via mprocs rather than backgrounded because they die
+whenever a room pod restarts — silently, which makes a redeploy look like a room
+failure. In mprocs the process shows as stopped and `r` restarts it.
 
 ## What `check.mjs` proves
 

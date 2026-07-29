@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Agent document room** (`@agentbe/room`): a multiplayer, versioned,
+  content-addressed document store with semantic + cross-modal (text/image)
+  search and sandboxed command execution, exposed to agents over MCP
+  (`search`, `read_document`, `run_command`, `open_session`/`write_file`/
+  `commit_session`, `put_document`). See `docs/room-architecture.md` and
+  `docs/room-deployment.md`.
+- Per-principal commit attribution derived from the transport credential
+  (never a caller-suppliable argument), with per-person bearer tokens via
+  `AGENTBE_PRINCIPALS`.
+- Docker and Kubernetes sandbox providers (`AGENTBE_SANDBOX=docker|k8s|agent-sandbox`),
+  giving each session its own container or pod; `k8s` needs no extra install,
+  `agent-sandbox` adds a warm pool for lower session start latency.
+- S3-backed canonical store and a persistent pgvector-backed search index for
+  production deployments.
+
+
 The filesystem toolset is repositioned to target parity with Claude Code's
 in-CLI file tools rather than the reference MCP Filesystem Server. See
 `opensdd/daemon.md` for the updated contract.

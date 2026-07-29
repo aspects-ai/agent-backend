@@ -112,6 +112,7 @@ flowchart LR
   - [Security & Isolation](#security--isolation)
   - [Resource Cleanup](#resource-cleanup)
 - [Integration with Agent SDKs](#integration-with-agent-sdks)
+- [Agent Document Room](#agent-document-room)
 - [Examples](#examples)
 - [Deploying the Agent Backend Daemon](#deploying-the-agent-backend-daemon)
 - [Documentation](#documentation)
@@ -663,6 +664,19 @@ backend.track_closeable(my_custom_resource)  # will be closed on destroy()
 Agent Backend integrates with leading AI agent frameworks via adapters that expose backend tools in the format each SDK expects.
 
 - **[Vercel AI SDK](docs/ai-sdk.md)** -- `VercelAIAdapter` wraps any backend and provides AI SDK-compatible MCP tools
+
+---
+
+## Agent Document Room
+
+A multiplayer, versioned, semantically-searchable, multimodal document store with a sandbox attached, built on top of Agent Backend. Agents search a shared corpus, check out a working subset into a POSIX sandbox, run shell/code against it, and commit changes back as a new version -- all over MCP.
+
+```bash
+make demo       # boot a sample room's MCP server over HTTP :8848
+make demo-test  # verify it end to end over a real MCP connection
+```
+
+See [room/README.md](room/README.md) for the tool surface, [docs/room-architecture.md](docs/room-architecture.md) for the concepts, and [docs/room-deployment.md](docs/room-deployment.md) for deploying one.
 
 ---
 
