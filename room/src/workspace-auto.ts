@@ -5,10 +5,15 @@ import {
   isDockerAvailable,
   type DockerWorkspaceOptions,
 } from "./workspace-docker.js";
+import {
+  K8sWorkspaceProvider,
+  isInCluster,
+  type K8sWorkspaceOptions,
+} from "./workspace-k8s.js";
 
-export type WorkspaceMode = "docker" | "local";
+export type WorkspaceMode = "k8s" | "docker" | "local";
 
-export interface AutoWorkspaceOptions extends DockerWorkspaceOptions {
+export interface AutoWorkspaceOptions extends DockerWorkspaceOptions, K8sWorkspaceOptions {
   /** Override detection (e.g. `AGENTBE_SANDBOX=local`). Omit to auto-detect. */
   mode?: WorkspaceMode;
   /** Where the fallback warning goes. Defaults to stderr. */
@@ -54,6 +59,12 @@ export class AutoWorkspaceProvider implements WorkspaceProvider {
       warn(FALLBACK_WARNING);
       return { mode: "local", provider: new LocalWorkspaceProvider() };
     }
+    // In a pod, prefer sandbox-per-session pods. Checked BEFORE docker: a pod
+    // has no docker socket, so without this the room would silently fall back
+    // to running every session in one shared filesystem.
+    if (forced === "k8s" || (!forced && isInCluster())) {
+      return { mode: "k8s", provider: new K8sWorkspaceProvider(this.options) };
+    }
     if (forced === "docker" || (await isDockerAvailable())) {
       return { mode: "docker", provider: new DockerWorkspaceProvider(this.options) };
     }
@@ -64,5 +75,11 @@ export class AutoWorkspaceProvider implements WorkspaceProvider {
   async create(): Promise<ProvisionedBackend> {
     await this.preflight();
     return this.resolved!.provider.create();
+  }
+
+  /** Delegate to the resolved provider; local temp dirs have nothing to sweep. */
+  async reclaimOrphans(): Promise<number> {
+    await this.preflight();
+    return (await this.resolved!.provider.reclaimOrphans?.()) ?? 0;
   }
 }

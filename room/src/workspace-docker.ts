@@ -17,6 +17,8 @@ const WORKSPACE_ROOT = "/var/workspace";
 
 /** Label stamped on every container so orphans are findable/cleanable. */
 const LABEL = "agentbe.room.sandbox";
+/** Owner label — scopes orphan reclamation to one room's sandboxes. */
+const OWNER_LABEL = "agentbe.room.owner";
 
 export interface DockerWorkspaceOptions {
   image?: string;
@@ -38,6 +40,12 @@ export interface DockerWorkspaceOptions {
   network?: string;
   /** How long to wait for `/health` before giving up. Default 60s. */
   startupTimeoutMs?: number;
+  /**
+   * Identifies which room owns these sandboxes. Required for
+   * {@link DockerWorkspaceProvider.reclaimOrphans} to be safe — without it a
+   * sweep would delete sandboxes belonging to other rooms on the same host.
+   */
+  owner?: string;
   /**
    * `--platform`, e.g. `"linux/amd64"`. The published image is currently
    * **amd64-only**, so Apple Silicon / arm64 hosts must either set this (running
@@ -79,6 +87,7 @@ export class DockerWorkspaceProvider implements WorkspaceProvider {
   private readonly network?: string;
   private readonly startupTimeoutMs: number;
   private readonly platform?: string;
+  private readonly owner?: string;
 
   constructor(options: DockerWorkspaceOptions = {}) {
     this.image = options.image ?? DEFAULT_DAEMON_IMAGE;
@@ -88,6 +97,7 @@ export class DockerWorkspaceProvider implements WorkspaceProvider {
     this.network = options.network;
     this.startupTimeoutMs = options.startupTimeoutMs ?? 60_000;
     this.platform = options.platform;
+    this.owner = options.owner;
   }
 
   async create(): Promise<ProvisionedBackend> {
@@ -100,6 +110,7 @@ export class DockerWorkspaceProvider implements WorkspaceProvider {
       "--rm",
       "--label",
       LABEL,
+      ...(this.owner ? ["--label", `${OWNER_LABEL}=${this.owner}`] : []),
       // Bind to loopback and let Docker choose the host port (no racy scan).
       "-p",
       `127.0.0.1::${DAEMON_PORT}`,
@@ -156,6 +167,12 @@ export class DockerWorkspaceProvider implements WorkspaceProvider {
     }
   }
 
+  async reclaimOrphans(): Promise<number> {
+    // Without an owner a sweep would be indiscriminate; do nothing instead.
+    if (!this.owner) return 0;
+    return reclaimDockerOrphans(this.owner);
+  }
+
   /** Resolve the ephemeral host port Docker bound to the daemon's port. */
   private async hostPort(containerId: string): Promise<number> {
     const mapping = await docker(["port", containerId, `${DAEMON_PORT}/tcp`]);
@@ -193,6 +210,16 @@ export class DockerWorkspaceProvider implements WorkspaceProvider {
         `${this.startupTimeoutMs}ms (last error: ${lastError})\n--- container logs ---\n${logs}`,
     );
   }
+}
+
+/** Delete this room's sandbox containers — startup sweep after a restart. */
+export async function reclaimDockerOrphans(owner: string): Promise<number> {
+  const out = await docker([
+    "ps", "-aq", "--filter", `label=${LABEL}`, "--filter", `label=${OWNER_LABEL}=${owner}`,
+  ]).catch(() => "");
+  const ids = out.split("\n").filter(Boolean);
+  for (const id of ids) await removeContainer(id);
+  return ids.length;
 }
 
 async function removeContainer(containerId: string): Promise<void> {

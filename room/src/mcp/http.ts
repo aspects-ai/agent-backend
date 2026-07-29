@@ -6,6 +6,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { RoomService } from "../room-service.js";
 import { ANONYMOUS_PRINCIPAL, createRoomMcpServer } from "./server.js";
 import type { RoomMcpOptions } from "./server.js";
+import { SessionRegistry } from "../session-registry.js";
 
 export interface RoomHttpOptions extends RoomMcpOptions {
   /** Port to listen on (0 = ephemeral, useful for tests). Default 0. */
@@ -41,6 +42,8 @@ export interface RoomHttpOptions extends RoomMcpOptions {
 export interface RoomHttpHandle {
   server: http.Server;
   port: number;
+  /** Warm sessions; survives individual connections. */
+  sessions: SessionRegistry;
   close(): Promise<void>;
 }
 
@@ -79,6 +82,9 @@ export async function serveRoomHttp(
   options: RoomHttpOptions = {},
 ): Promise<RoomHttpHandle> {
   const endpoint = options.path ?? "/mcp";
+  // ONE registry for the whole server, not one per connection — this is what
+  // lets a warm session outlive the MCP connection that opened it.
+  const sessions = options.sessions ?? new SessionRegistry({ idleMs: options.sessionIdleMs });
   // Each session remembers who opened it, so a leaked session id can't be
   // driven by a different principal and have the commits land under the first.
   const transports = new Map<string, { transport: StreamableHTTPServerTransport; principal: string }>();
@@ -141,10 +147,7 @@ export async function serveRoomHttp(
           transport.onclose = () => {
             if (transport.sessionId) transports.delete(transport.sessionId);
           };
-          await createRoomMcpServer(service, room, {
-            sessionIdleMs: options.sessionIdleMs,
-            principal,
-          }).connect(transport);
+          await createRoomMcpServer(service, room, { sessions, principal }).connect(transport);
           await transport.handleRequest(req, res, body);
           return;
         }
@@ -165,9 +168,12 @@ export async function serveRoomHttp(
   return {
     server,
     port,
+    sessions,
     close: () =>
       new Promise<void>((resolve, reject) => {
         for (const { transport } of transports.values()) void transport.close();
+        sessions.stop();
+        void sessions.closeAll();
         server.close((err) => (err ? reject(err) : resolve()));
       }),
   };

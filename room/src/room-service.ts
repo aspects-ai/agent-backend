@@ -34,6 +34,13 @@ export interface ProvisionedBackend {
  * implementation for a Docker/daemon one in production. */
 export interface WorkspaceProvider {
   create(): Promise<ProvisionedBackend>;
+  /**
+   * Delete sandboxes this room owns but no longer tracks — call at startup.
+   * The session registry is in-memory, so a restart forgets every live session
+   * while its sandbox keeps running: a stray container locally, a pod holding
+   * node capacity in k8s. Optional; providers with nothing to reclaim omit it.
+   */
+  reclaimOrphans?(): Promise<number>;
 }
 
 export interface RoomServiceDeps {

@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import type { RoomService, RoomSession } from "../room-service.js";
+import { SessionRegistry } from "../session-registry.js";
 
 function textResult(text: string) {
   return { content: [{ type: "text" as const, text }] };
@@ -13,9 +14,6 @@ function textResult(text: string) {
 function decode(output: string | Uint8Array): string {
   return typeof output === "string" ? output : new TextDecoder().decode(output);
 }
-
-/** Warm sessions idle longer than this are reaped. 15 minutes. */
-const DEFAULT_SESSION_IDLE_MS = 15 * 60_000;
 
 /** Attribution used when no principal could be established. */
 export const ANONYMOUS_PRINCIPAL = "anonymous";
@@ -30,6 +28,13 @@ export interface RoomMcpOptions {
    */
   sessionIdleMs?: number;
   /**
+   * Shared warm-session registry. Pass one so sessions **outlive this
+   * connection** — an agent work session runs for tens of minutes, and a
+   * reconnect must be able to re-attach to its live sandbox. Omit and each
+   * server gets its own private registry (fine for stdio and tests).
+   */
+  sessions?: SessionRegistry;
+  /**
    * Who this connection acts as — the identity recorded on every commit. It is
    * **derived from the credential** by the transport, never accepted as a tool
    * argument, so attribution cannot be forged by the caller.
@@ -42,13 +47,6 @@ export interface RoomMcpOptions {
   principal?: string;
 }
 
-/** A warm session plus the bookkeeping the reaper needs. */
-interface HeldSession {
-  session: RoomSession;
-  lastUsed: number;
-  /** Tool calls currently running against this session; never reap while > 0. */
-  inFlight: number;
-}
 
 /**
  * Build an MCP server exposing a single data room to an agent: semantic search,
@@ -63,53 +61,13 @@ export function createRoomMcpServer(
   options: RoomMcpOptions = {},
 ): McpServer {
   const server = new McpServer({ name: `agentbe-room:${room}`, version: "0.0.0" });
-  const idleMs = options.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS;
   // Fixed for the life of the connection, established from the credential.
   const principal = options.principal ?? ANONYMOUS_PRINCIPAL;
-
-  // Warm sessions held for the life of this connection (or until close_session
-  // / the idle reaper below).
-  const sessions = new Map<string, HeldSession>();
-
-  const releaseSession = async (id: string): Promise<void> => {
-    const held = sessions.get(id);
-    if (!held) return;
-    sessions.delete(id);
-    await held.session.close();
-  };
-
-  /**
-   * Run `fn` against a warm session, keeping it alive for the duration. The
-   * in-flight count is what stops the reaper from pulling a sandbox out from
-   * under a command that runs longer than the idle window.
-   */
-  const withSession = async <T>(id: string, fn: (session: RoomSession) => Promise<T>): Promise<T> => {
-    const held = sessions.get(id);
-    if (!held) throw new Error(`unknown or closed session: ${id}`);
-    held.inFlight++;
-    try {
-      return await fn(held.session);
-    } finally {
-      held.inFlight--;
-      held.lastUsed = Date.now();
-    }
-  };
-
-  // Sweep often enough that a short idle window is honored, but never hot-loop.
-  let reaper: ReturnType<typeof setInterval> | undefined;
-  if (idleMs > 0) {
-    const everyMs = Math.max(50, Math.min(idleMs / 2, 60_000));
-    reaper = setInterval(() => {
-      const now = Date.now();
-      for (const [id, held] of sessions) {
-        if (held.inFlight === 0 && now - held.lastUsed >= idleMs) {
-          void releaseSession(id);
-        }
-      }
-    }, everyMs);
-    // Don't hold the process open just to run the sweep.
-    reaper.unref?.();
-  }
+  // Shared when the transport supplies one, so sessions survive reconnects.
+  const sessions =
+    options.sessions ?? new SessionRegistry({ idleMs: options.sessionIdleMs });
+  const withSession = <T>(id: string, fn: (session: RoomSession) => Promise<T>): Promise<T> =>
+    sessions.withSession(id, principal, fn);
 
   server.registerTool(
     "search",
@@ -189,8 +147,7 @@ export function createRoomMcpServer(
     },
     async ({ paths }) => {
       const session = await service.openSession(room, paths ? { paths } : {});
-      const id = randomUUID();
-      sessions.set(id, { session, lastUsed: Date.now(), inFlight: 0 });
+      const id = sessions.open(room, principal, session);
       return textResult(JSON.stringify({ session: id, canCommit: session.canCommit }));
     },
   );
@@ -235,7 +192,7 @@ export function createRoomMcpServer(
       inputSchema: { session: z.string().describe("Warm session id.") },
     },
     async ({ session }) => {
-      await releaseSession(session);
+      await sessions.close(session, principal);
       return textResult("closed");
     },
   );
@@ -256,15 +213,11 @@ export function createRoomMcpServer(
     },
   );
 
-  // Best-effort cleanup: release any warm sandboxes when the connection closes.
-  // The reaper is the backstop for clients that never get here (HTTP hangups).
-  const priorOnClose = server.server.onclose?.bind(server.server);
-  server.server.onclose = () => {
-    if (reaper) clearInterval(reaper);
-    for (const held of sessions.values()) void held.session.close();
-    sessions.clear();
-    priorOnClose?.();
-  };
+  // NOTE: connection close deliberately does NOT release sessions. An agent work
+  // session runs for tens of minutes; a network blip or client restart must not
+  // destroy a live sandbox and its uncommitted working tree. The idle reaper in
+  // SessionRegistry is the sole reclaimer, so a reconnecting client can
+  // re-attach to its sandbox by id (authorized by principal).
 
   return server;
 }

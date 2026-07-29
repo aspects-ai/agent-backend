@@ -1,3 +1,5 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,5 +26,26 @@ describe("bootstrap seed", () => {
 
     const hits = await service.search("demo", "vendor payment terms net-30 invoice", 3);
     expect(hits.some((h) => h.path.startsWith("contracts/"))).toBe(true);
+  });
+});
+
+describe("seedRoomFromDir ignores dot-entries", () => {
+  it("does not walk into hidden directories like a ConfigMap symlink farm", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "seed-hidden-"));
+    // Mirror how kubelet projects a ConfigMap: real files plus a timestamped
+    // directory and a `..data` alias, both of which must be skipped.
+    writeFileSync(path.join(dir, "real.md"), "the only document");
+    const stamped = path.join(dir, "..2026_01_01_00_00_00.123");
+    mkdirSync(stamped);
+    writeFileSync(path.join(stamped, "real.md"), "duplicate");
+    const alias = path.join(dir, "..data");
+    mkdirSync(alias);
+    writeFileSync(path.join(alias, "real.md"), "duplicate");
+    writeFileSync(path.join(dir, ".DS_Store"), "junk");
+
+    const service = buildRoomService({ workspaces: new LocalWorkspaceProvider() });
+    const n = await seedRoomFromDir(service, "room", dir);
+    expect(n).toBe(1);
+    expect(await service.listDocuments("room")).toEqual(["real.md"]);
   });
 });

@@ -62,11 +62,23 @@ const workspaces = new AutoWorkspaceProvider({
   mode: process.env.AGENTBE_SANDBOX as WorkspaceMode | undefined,
   image: process.env.AGENTBE_DAEMON_IMAGE,
   network: process.env.AGENTBE_SANDBOX_NETWORK,
+  namespace: process.env.AGENTBE_SANDBOX_NAMESPACE,
+  // Scopes orphan reclamation to this room's sandboxes; rooms share a host or
+  // namespace, so an unscoped sweep would delete a sibling room's live work.
+  owner: room,
   platform: process.env.AGENTBE_SANDBOX_PLATFORM,
 });
 // Resolve now so the mode (and any warning) is visible at boot, not at the
 // first run_command minutes later.
 console.error(`[agentbe-room] sandbox: ${await workspaces.preflight()}`);
+// The session registry is in-memory, so a restart forgets every live session
+// while its sandbox keeps running. Sweep this room's strays before serving.
+try {
+  const reclaimed = await workspaces.reclaimOrphans();
+  if (reclaimed > 0) console.error(`[agentbe-room] reclaimed ${reclaimed} orphaned sandbox(es)`);
+} catch (err) {
+  console.error(`[agentbe-room] orphan sweep failed: ${(err as Error).message}`);
+}
 
 // Canonical store: S3 when AGENTBE_S3_BUCKET is set (durable, multi-node — the
 // production tier), otherwise the filesystem store under AGENTBE_STORE_DIR,

@@ -85,6 +85,11 @@ export function buildRoomService(options: BuildRoomServiceOptions = {}): RoomSer
 function collectFiles(dir: string, base: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
+    // Skip dot-entries. Beyond the obvious (.git, .DS_Store), a Kubernetes
+    // ConfigMap volume is a symlink farm — `..data` points at a timestamped
+    // `..2026_..._123/` directory holding the real files — so walking into them
+    // seeds every document three times over.
+    if (name.startsWith(".")) continue;
     const full = path.join(dir, name);
     if (statSync(full).isDirectory()) out.push(...collectFiles(full, base));
     else out.push(full);

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { AutoWorkspaceProvider, DockerWorkspaceProvider, LocalWorkspaceProvider } from "../src/index.js";
+import {
+  AutoWorkspaceProvider,
+  DockerWorkspaceProvider,
+  K8sWorkspaceProvider,
+  LocalWorkspaceProvider,
+} from "../src/index.js";
 
 /**
  * Selection logic only — no Docker required. `mode` short-circuits detection,
@@ -35,5 +40,28 @@ describe("AutoWorkspaceProvider", () => {
   it("exposes both concrete providers for explicit wiring", () => {
     expect(new LocalWorkspaceProvider()).toBeInstanceOf(LocalWorkspaceProvider);
     expect(new DockerWorkspaceProvider()).toBeInstanceOf(DockerWorkspaceProvider);
+  });
+});
+
+describe("AutoWorkspaceProvider in-cluster selection", () => {
+  it("prefers k8s over docker when forced, without warning", async () => {
+    const warnings: string[] = [];
+    // In a pod there is no docker socket. If docker were checked first, the
+    // room would silently fall back to one shared filesystem for every session.
+    const provider = new AutoWorkspaceProvider({
+      mode: "k8s",
+      warn: (m) => warnings.push(m),
+      token: "fake-token",
+      apiServer: "https://example.invalid",
+      namespace: "agentbe",
+    });
+    expect(await provider.preflight()).toBe("k8s");
+    expect(warnings).toEqual([]);
+  });
+
+  it("K8sWorkspaceProvider refuses to construct without a token", () => {
+    expect(() => new K8sWorkspaceProvider({ apiServer: "https://example.invalid" })).toThrow(
+      /service-account token/,
+    );
   });
 });

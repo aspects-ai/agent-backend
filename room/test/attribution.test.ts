@@ -166,3 +166,81 @@ describe("commit attribution", () => {
     expect(await committedBy(rooms, ref)).toBe("anonymous");
   });
 });
+
+describe("session lifetime is decoupled from the connection", () => {
+  let handle: RoomHttpHandle | undefined;
+  const clients: Client[] = [];
+
+  afterEach(async () => {
+    await Promise.all(clients.map((c) => c.close().catch(() => {})));
+    clients.length = 0;
+    await handle?.close().catch(() => {});
+    handle = undefined;
+  });
+
+  async function start(options: Parameters<typeof serveRoomHttp>[2] = {}) {
+    const service = new RoomService({
+      blobs: new InMemoryBlobStore(),
+      rooms: new InMemoryRoomStore(),
+      embedder: new HashingEmbeddingProvider(),
+      vectors: new InMemoryVectorStore(),
+      workspaces: new LocalWorkspaceProvider(),
+    });
+    await service.putDocuments(ROOM, { "seed.md": "seed" }, "seed");
+    handle = await serveRoomHttp(service, ROOM, options);
+  }
+
+  async function connect(token?: string): Promise<Client> {
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://127.0.0.1:${handle!.port}/mcp`),
+      token ? { requestInit: { headers: { Authorization: `Bearer ${token}` } } } : undefined,
+    );
+    const client = new Client({ name: "reconnect-test", version: "0.0.0" });
+    await client.connect(transport);
+    clients.push(client);
+    return client;
+  }
+
+  it("a warm session survives the client disconnecting and reconnecting", async () => {
+    await start({ principals: PRINCIPALS });
+    const first = await connect(ALICE_TOKEN);
+    const { session } = JSON.parse(
+      textOf(await first.callTool({ name: "open_session", arguments: {} })),
+    ) as { session: string };
+    await first.callTool({
+      name: "run_command",
+      arguments: { session, command: "echo survives-reconnect > state.txt" },
+    });
+
+    // The client goes away entirely — a network blip or a restart. Previously
+    // this destroyed the sandbox and any uncommitted work with it.
+    await first.close();
+
+    const second = await connect(ALICE_TOKEN);
+    const back = await second.callTool({
+      name: "run_command",
+      arguments: { session, command: "cat state.txt" },
+    });
+    expect(textOf(back)).toContain("survives-reconnect");
+    expect(handle!.sessions.size).toBe(1);
+    await second.callTool({ name: "close_session", arguments: { session } });
+  });
+
+  it("another principal cannot attach to someone else's session", async () => {
+    await start({ principals: PRINCIPALS });
+    const alice = await connect(ALICE_TOKEN);
+    const { session } = JSON.parse(
+      textOf(await alice.callTool({ name: "open_session", arguments: {} })),
+    ) as { session: string };
+
+    // Sessions are no longer connection-scoped, so the principal check is the
+    // isolation boundary. Bob knows the id but must still be refused.
+    const bob = await connect(BOB_TOKEN);
+    const stolen = await bob.callTool({
+      name: "run_command",
+      arguments: { session, command: "echo pwned" },
+    });
+    expect(JSON.stringify(stolen)).toMatch(/unknown or closed session/);
+    await alice.callTool({ name: "close_session", arguments: { session } });
+  });
+});
