@@ -20,6 +20,8 @@ export { DockerWorkspaceProvider, isDockerAvailable, DEFAULT_DAEMON_IMAGE } from
 export type { DockerWorkspaceOptions } from "./workspace-docker.js";
 export { K8sWorkspaceProvider, isInCluster } from "./workspace-k8s.js";
 export type { K8sWorkspaceOptions } from "./workspace-k8s.js";
+export { AgentSandboxWorkspaceProvider } from "./workspace-agent-sandbox.js";
+export type { AgentSandboxWorkspaceOptions } from "./workspace-agent-sandbox.js";
 export { AutoWorkspaceProvider } from "./workspace-auto.js";
 export type { AutoWorkspaceOptions, WorkspaceMode } from "./workspace-auto.js";
 export { BackendWorkingTree } from "./lib/backend-working-tree.js";

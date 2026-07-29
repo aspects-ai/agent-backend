@@ -30,6 +30,11 @@ rules:
     resources: ["pods"]
     # `list` is needed only for the startup orphan sweep, scoped by owner label.
     verbs: ["create", "get", "list", "delete"]
+  # The agent-sandbox provider claims pre-warmed sandboxes instead of creating
+  # pods directly. Claims only — it never touches Sandboxes or the pool.
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
+    verbs: ["create", "get", "list", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -77,7 +82,7 @@ spec:
     matchLabels: { app: room-acme }
   template:
     metadata:
-      labels: { app: room-acme }
+      labels: { app: room-acme, agentbe.room/component: room }
     spec:
       serviceAccountName: room
       containers:
@@ -95,7 +100,8 @@ spec:
             # Sandbox: one pod per session. Auto-detection picks k8s in-cluster,
             # but pin it so a misconfiguration fails loudly instead of silently
             # degrading to an unsandboxed shared filesystem.
-            - { name: AGENTBE_SANDBOX, value: k8s }
+            - { name: AGENTBE_SANDBOX, value: agent-sandbox }
+            - { name: AGENTBE_WARM_POOL, value: agentbe-pool }
             - { name: AGENTBE_DAEMON_IMAGE, value: "agentbe-daemon:arm64-dev" }
             - { name: AGENTBE_SANDBOX_NAMESPACE, value: agentbe }
           envFrom:
@@ -136,7 +142,7 @@ spec:
     matchLabels: { app: room-globex }
   template:
     metadata:
-      labels: { app: room-globex }
+      labels: { app: room-globex, agentbe.room/component: room }
     spec:
       serviceAccountName: room
       containers:
@@ -151,6 +157,8 @@ spec:
             - { name: AGENTBE_EMBEDDER, value: hash }
             - { name: AGENTBE_IMAGE_EMBEDDER, value: none }
             - { name: AGENTBE_SEED_DIR, value: /seed }
+            # Deliberately the raw-pod provider: keeps K8sWorkspaceProvider
+            # exercised end-to-end alongside acme's agent-sandbox path.
             - { name: AGENTBE_SANDBOX, value: k8s }
             - { name: AGENTBE_DAEMON_IMAGE, value: "agentbe-daemon:arm64-dev" }
             - { name: AGENTBE_SANDBOX_NAMESPACE, value: agentbe }

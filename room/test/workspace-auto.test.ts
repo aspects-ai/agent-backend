@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AutoWorkspaceProvider,
   DockerWorkspaceProvider,
+  AgentSandboxWorkspaceProvider,
   K8sWorkspaceProvider,
   LocalWorkspaceProvider,
 } from "../src/index.js";
@@ -63,5 +64,30 @@ describe("AutoWorkspaceProvider in-cluster selection", () => {
     expect(() => new K8sWorkspaceProvider({ apiServer: "https://example.invalid" })).toThrow(
       /service-account token/,
     );
+  });
+});
+
+describe("agent-sandbox provider selection", () => {
+  it("is opt-in only — never auto-detected", async () => {
+    // It needs agent-sandbox's CRDs and a warm pool installed, so auto-detection
+    // must not assume them; in-cluster still resolves to the raw-pod provider.
+    const provider = new AutoWorkspaceProvider({
+      mode: "agent-sandbox",
+      token: "fake",
+      apiServer: "https://example.invalid",
+      namespace: "agentbe",
+    });
+    expect(await provider.preflight()).toBe("agent-sandbox");
+  });
+
+  it("defaults to destroying sandboxes rather than recycling them", () => {
+    // A recycled sandbox carries the previous session's files AND its still
+    // valid token into the next session, so reuse must be explicit.
+    const p = new AgentSandboxWorkspaceProvider({
+      token: "fake",
+      apiServer: "https://example.invalid",
+      namespace: "agentbe",
+    });
+    expect((p as unknown as { reuse: boolean }).reuse).toBe(false);
   });
 });

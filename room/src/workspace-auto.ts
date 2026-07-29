@@ -10,10 +10,17 @@ import {
   isInCluster,
   type K8sWorkspaceOptions,
 } from "./workspace-k8s.js";
+import {
+  AgentSandboxWorkspaceProvider,
+  type AgentSandboxWorkspaceOptions,
+} from "./workspace-agent-sandbox.js";
 
-export type WorkspaceMode = "k8s" | "docker" | "local";
+export type WorkspaceMode = "agent-sandbox" | "k8s" | "docker" | "local";
 
-export interface AutoWorkspaceOptions extends DockerWorkspaceOptions, K8sWorkspaceOptions {
+export interface AutoWorkspaceOptions
+  extends DockerWorkspaceOptions,
+    K8sWorkspaceOptions,
+    AgentSandboxWorkspaceOptions {
   /** Override detection (e.g. `AGENTBE_SANDBOX=local`). Omit to auto-detect. */
   mode?: WorkspaceMode;
   /** Where the fallback warning goes. Defaults to stderr. */
@@ -62,6 +69,11 @@ export class AutoWorkspaceProvider implements WorkspaceProvider {
     // In a pod, prefer sandbox-per-session pods. Checked BEFORE docker: a pod
     // has no docker socket, so without this the room would silently fall back
     // to running every session in one shared filesystem.
+    // Opt-in only: it needs agent-sandbox's CRDs and a warm pool installed, so
+    // auto-detection must not assume them.
+    if (forced === "agent-sandbox") {
+      return { mode: "agent-sandbox", provider: new AgentSandboxWorkspaceProvider(this.options) };
+    }
     if (forced === "k8s" || (!forced && isInCluster())) {
       return { mode: "k8s", provider: new K8sWorkspaceProvider(this.options) };
     }

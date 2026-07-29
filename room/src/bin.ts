@@ -67,6 +67,10 @@ const workspaces = new AutoWorkspaceProvider({
   // namespace, so an unscoped sweep would delete a sibling room's live work.
   owner: room,
   platform: process.env.AGENTBE_SANDBOX_PLATFORM,
+  warmPool: process.env.AGENTBE_WARM_POOL,
+  // Off unless explicitly enabled: a recycled sandbox carries the previous
+  // session's files and token into the next one.
+  reuseSandboxes: process.env.AGENTBE_SANDBOX_REUSE === "1",
 });
 // Resolve now so the mode (and any warning) is visible at boot, not at the
 // first run_command minutes later.

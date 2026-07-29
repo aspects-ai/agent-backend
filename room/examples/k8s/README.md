@@ -21,7 +21,24 @@ production cluster.
 ## Run it
 
 ```bash
-kind create cluster --name agentbe
+# kindnet does NOT enforce NetworkPolicy, so create the cluster without it and
+# install Calico — otherwise the sandbox policies apply cleanly and do nothing.
+cat > kind.yaml <<'YAML'
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  disableDefaultCNI: true
+  podSubnet: "192.168.0.0/16"
+YAML
+kind create cluster --name agentbe --config kind.yaml
+kubectl --context kind-agentbe apply -f \
+  https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml
+kubectl --context kind-agentbe -n kube-system rollout status deploy/calico-kube-controllers
+
+# agent-sandbox provides the warm pool (used by the acme room).
+kubectl --context kind-agentbe apply --server-side -f \
+  https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v0.5.3/sandbox-with-extensions.yaml
+kubectl --context kind-agentbe -n agent-sandbox-system rollout status deploy/agent-sandbox-controller
 
 # Build both images and load them into the cluster (no registry needed).
 docker build -f room/Dockerfile -t agentbe-room:dev .
@@ -33,6 +50,7 @@ kind load docker-image agentbe-room:dev agentbe-daemon:arm64-dev --name agentbe
 kubectl --context kind-agentbe create ns agentbe
 kubectl --context kind-agentbe -n agentbe create configmap acme-seed --from-file=<dir>
 kubectl --context kind-agentbe -n agentbe create configmap globex-seed --from-file=<dir>
+kubectl --context kind-agentbe apply -f room/examples/k8s/sandbox-pool.yaml
 kubectl --context kind-agentbe apply -f room/examples/k8s/rooms.yaml
 
 node room/examples/k8s/check.mjs
@@ -115,11 +133,21 @@ namespace. The alternative was leaking a pod per restart, indefinitely.
 - **Storage is `emptyDir`** — a room's documents die with its pod. Set
   `AGENTBE_S3_BUCKET` (see the multi-room README) for durable, reschedulable
   rooms. This example uses `emptyDir` only to stay self-contained.
-- **No NetworkPolicy.** Sandbox pods can currently reach the cluster network,
-  including the API server and the other rooms. A default-deny egress policy for
-  `agentbe.room/sandbox=true` pods is the obvious next hardening step — the
-  sandbox needs no egress at all, since the room streams checkout/commit bytes
-  to it.
-- **No warm pool.** Every session pays full pod startup. `kubernetes-sigs/agent-sandbox`
-  (spec §5.6) offers warm pools, pause/resume, and reaping if that cost matters.
+- **NetworkPolicy is applied and verified** (`sandbox-pool.yaml`): ingress to
+  sandboxes only from room pods on 3001/3002; egress to DNS and the public
+  internet with every private range denied, including `169.254.0.0/16` (cloud
+  metadata). Proven from inside a live sandbox — reaching another sandbox's token
+  endpoint and the kube-apiserver both **BLOCKED**.
+  **This needs an enforcing CNI.** kind's default kindnet ignores NetworkPolicy
+  entirely, so the cluster must be created with `disableDefaultCNI: true` and
+  Calico installed, or the policy applies cleanly and does nothing.
+- **Warm pool available** via agent-sandbox (`room/examples/k8s/sandbox-pool.yaml`,
+  `AGENTBE_SANDBOX=agent-sandbox`). Measured `open_session` at ~0.4s against ~1.6s
+  for the raw-pod provider on an already-warm local node — the gap widens sharply
+  on a real cluster, where cold start includes scheduling and image pull.
+  The example runs **one room on each provider** so both stay exercised:
+  `acme` uses agent-sandbox, `globex` uses raw pods.
+- **Pause/resume is not wired up.** Sessions hold a live ssh-ws connection that a
+  pod pause would drop; `service: true` on the SandboxTemplate gives each sandbox
+  a stable address, which is the prerequisite.
 - **No Ingress/TLS** — `check.mjs` uses `kubectl port-forward`.

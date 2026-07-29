@@ -1,27 +1,18 @@
-import https from "node:https";
-import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 
 import { RemoteFilesystemBackend } from "agent-backend";
 
 import type { ProvisionedBackend, RoomBackend, WorkspaceProvider } from "./room-service.js";
+import { K8sApi, isInCluster, type K8sApiOptions } from "./lib/k8s-api.js";
 
-/** Where kubelet projects the pod's service-account credentials. */
-const SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount";
+export { isInCluster };
+
 const DAEMON_PORT = 3001;
 const WORKSPACE_ROOT = "/var/workspace";
 
-export interface K8sWorkspaceOptions {
+export interface K8sWorkspaceOptions extends K8sApiOptions {
   /** Daemon image for sandbox pods. */
   image?: string;
-  /** Namespace to create pods in. Defaults to the room pod's own namespace. */
-  namespace?: string;
-  /** API server base URL. Defaults to the in-cluster endpoint. */
-  apiServer?: string;
-  /** Bearer token. Defaults to the projected service-account token. */
-  token?: string;
-  /** CA bundle path for the API server. Defaults to the projected CA. */
-  caPath?: string;
   /** Resource requests/limits applied to each sandbox pod. */
   cpuLimit?: string;
   memoryLimit?: string;
@@ -38,19 +29,6 @@ export interface K8sWorkspaceOptions {
   owner?: string;
 }
 
-function readIfPresent(path: string): string | undefined {
-  try {
-    return readFileSync(path, "utf-8").trim();
-  } catch {
-    return undefined;
-  }
-}
-
-/** True when running inside a pod with a projected service account. */
-export function isInCluster(): boolean {
-  return readIfPresent(`${SA_DIR}/token`) !== undefined;
-}
-
 /**
  * Provisions each workspace as its **own Kubernetes pod** running
  * `agentbe-daemon`, reached over {@link RemoteFilesystemBackend} at the pod IP.
@@ -65,10 +43,8 @@ export function isInCluster(): boolean {
  * rule intact). Requires RBAC allowing create/get/delete on pods.
  */
 export class K8sWorkspaceProvider implements WorkspaceProvider {
+  private readonly api: K8sApi;
   private readonly image: string;
-  private readonly namespace: string;
-  private readonly apiServer: string;
-  private readonly token: string;
   private readonly cpuLimit: string;
   private readonly memoryLimit: string;
   private readonly startupTimeoutMs: number;
@@ -76,22 +52,8 @@ export class K8sWorkspaceProvider implements WorkspaceProvider {
   private readonly owner?: string;
 
   constructor(options: K8sWorkspaceOptions = {}) {
+    this.api = new K8sApi(options);
     this.image = options.image ?? "agentbe-daemon:latest";
-    this.namespace =
-      options.namespace ?? readIfPresent(`${SA_DIR}/namespace`) ?? "default";
-    this.apiServer =
-      options.apiServer ??
-      (process.env.KUBERNETES_SERVICE_HOST
-        ? `https://${process.env.KUBERNETES_SERVICE_HOST}:${process.env.KUBERNETES_SERVICE_PORT ?? "443"}`
-        : "https://kubernetes.default.svc");
-    const token = options.token ?? readIfPresent(`${SA_DIR}/token`);
-    if (!token) {
-      throw new Error(
-        "K8sWorkspaceProvider: no service-account token found. This provider must run " +
-          "inside a pod (or be given an explicit `token` + `apiServer`).",
-      );
-    }
-    this.token = token;
     this.cpuLimit = options.cpuLimit ?? "1";
     this.memoryLimit = options.memoryLimit ?? "1Gi";
     this.startupTimeoutMs = options.startupTimeoutMs ?? 120_000;
@@ -101,55 +63,6 @@ export class K8sWorkspaceProvider implements WorkspaceProvider {
       ...(this.owner ? { "agentbe.room/owner": this.owner } : {}),
       ...options.labels,
     };
-
-    // The cluster CA is not a system root, so TLS to the API server fails
-    // without it ("unable to verify the first certificate"). It is passed
-    // per-request below rather than via NODE_EXTRA_CA_CERTS, which Node only
-    // reads at process start — setting that at runtime silently does nothing.
-    this.ca = readIfPresent(options.caPath ?? `${SA_DIR}/ca.crt`);
-  }
-
-  private readonly ca?: string;
-
-  private api<T>(path: string, init: { method?: string; body?: string } = {}): Promise<T> {
-    const url = new URL(path, this.apiServer);
-    const method = init.method ?? "GET";
-    return new Promise<T>((resolve, reject) => {
-      const req = https.request(
-        {
-          hostname: url.hostname,
-          port: url.port || 443,
-          path: url.pathname + url.search,
-          method,
-          ca: this.ca,
-          headers: {
-            Authorization: `Bearer ${this.token}`,
-            "Content-Type": "application/json",
-            ...(init.body ? { "Content-Length": Buffer.byteLength(init.body) } : {}),
-          },
-        },
-        (res) => {
-          const chunks: Buffer[] = [];
-          res.on("data", (c: Buffer) => chunks.push(c));
-          res.on("end", () => {
-            const text = Buffer.concat(chunks).toString("utf-8");
-            const status = res.statusCode ?? 0;
-            if (status >= 400) {
-              reject(new Error(`k8s ${method} ${url.pathname} → ${status}: ${text}`));
-              return;
-            }
-            try {
-              resolve(JSON.parse(text) as T);
-            } catch {
-              reject(new Error(`k8s ${method} ${url.pathname}: unparseable response: ${text}`));
-            }
-          });
-        },
-      );
-      req.on("error", reject);
-      if (init.body) req.write(init.body);
-      req.end();
-    });
   }
 
   async create(): Promise<ProvisionedBackend> {
@@ -193,7 +106,7 @@ export class K8sWorkspaceProvider implements WorkspaceProvider {
       },
     };
 
-    await this.api(`/api/v1/namespaces/${this.namespace}/pods`, {
+    await this.api.request(`/api/v1/namespaces/${this.api.namespace}/pods`, {
       method: "POST",
       body: JSON.stringify(manifest),
     });
@@ -227,8 +140,8 @@ export class K8sWorkspaceProvider implements WorkspaceProvider {
   async reclaimOrphans(): Promise<number> {
     if (!this.owner) return 0; // unscoped sweep would hit other rooms
     const selector = encodeURIComponent(`agentbe.room/owner=${this.owner}`);
-    const list = await this.api<{ items?: Array<{ metadata?: { name?: string } }> }>(
-      `/api/v1/namespaces/${this.namespace}/pods?labelSelector=${selector}`,
+    const list = await this.api.request<{ items?: Array<{ metadata?: { name?: string } }> }>(
+      `/api/v1/namespaces/${this.api.namespace}/pods?labelSelector=${selector}`,
     );
     const names = (list.items ?? []).map((i) => i.metadata?.name).filter(Boolean) as string[];
     for (const name of names) await this.deletePod(name);
@@ -240,14 +153,14 @@ export class K8sWorkspaceProvider implements WorkspaceProvider {
     const deadline = Date.now() + this.startupTimeoutMs;
     let last = "";
     while (Date.now() < deadline) {
-      const pod = await this.api<{
+      const pod = await this.api.request<{
         status?: {
           podIP?: string;
           phase?: string;
           conditions?: Array<{ type: string; status: string }>;
           containerStatuses?: Array<{ state?: Record<string, { reason?: string }> }>;
         };
-      }>(`/api/v1/namespaces/${this.namespace}/pods/${name}`);
+      }>(`/api/v1/namespaces/${this.api.namespace}/pods/${name}`);
 
       const ready = pod.status?.conditions?.some(
         (c) => c.type === "Ready" && c.status === "True",
@@ -269,7 +182,7 @@ export class K8sWorkspaceProvider implements WorkspaceProvider {
   }
 
   private async deletePod(name: string): Promise<void> {
-    await this.api(`/api/v1/namespaces/${this.namespace}/pods/${name}`, {
+    await this.api.request(`/api/v1/namespaces/${this.api.namespace}/pods/${name}`, {
       method: "DELETE",
       // Don't block the caller on graceful shutdown; the sandbox is disposable.
       body: JSON.stringify({ gracePeriodSeconds: 0 }),
