@@ -6,6 +6,19 @@ shared **room**; agents search across it, check out a working subset into a
 POSIX sandbox, run shell/code against it, and commit changes back as a new
 version. Exposed to agents as an MCP server.
 
+`RoomService` depends on a `RoomCatalog`, not on manifests. The bundled
+`ManifestRoomCatalog` is the zero-database default for bounded, writable
+personal/team workspaces. Organization-scale deployments can supply a
+database-backed catalog with paginated listing, change-log/outbox indexing,
+and selective or lazy sandbox materialization; such catalogs are read-only in
+the sandbox unless they explicitly implement workspace commits. In both
+constructor forms, `RoomService` always operates through a catalog; when the
+legacy `blobs`/`rooms`/`embedder` dependencies are supplied, it constructs the
+manifest adapter internally. See
+[Room Catalog Adapters](../docs/room-catalogs.md) for wiring examples, the
+adapter contract, Postgres responsibilities, access control, and migration
+guidance.
+
 For the concepts (seams, manifest model, isolation) see
 [docs/room-architecture.md](../docs/room-architecture.md). For running it in
 production (storage tiers, sandbox providers, the full env var reference) see
@@ -29,14 +42,14 @@ for Kubernetes with sandbox-per-session pods, see
 | Tool | Purpose |
 |---|---|
 | `search` | Semantic search over the room. `modality: "text" \| "image" \| "all"` — text queries match images via CLIP. |
-| `list_documents` | List all document paths in the room. |
+| `list_documents` | List a bounded page of document paths in the room (`cursor`/`limit`). |
 | `read_document` | Read a document's text contents by path. |
 | `run_command` | Run a shell command over a sandbox checkout. One-shot (optionally scoped to `paths`) or against a warm `session`. |
-| `open_session` | Open a warm sandbox session. Full checkout (no `paths`) is read-write; scoped (`paths`) is read-only. Returns a session id. |
+| `open_session` | Open a warm sandbox session. Scoped (`paths`) sessions are read-only; full sessions are writable only when the catalog supports workspace commits. |
 | `write_file` | Write a file into a warm session's workspace. |
-| `commit_session` | Commit a warm session's working tree as a new room version. |
+| `commit_session` | Commit a warm session when its catalog supports workspace commits. |
 | `close_session` | Close a warm session and release its sandbox. |
-| `put_document` | Add or update a document directly, creating a new room version. |
+| `put_document` | Add or update a document when its catalog supports direct ingestion. |
 
 Attribution (`put_document`, `commit_session`) is derived from the
 authenticated identity, never a caller-supplied argument — see

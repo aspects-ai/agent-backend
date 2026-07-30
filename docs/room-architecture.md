@@ -15,8 +15,10 @@ Driving use cases:
   from the laptop: working tree and shell live server-side, shared.
 
 For environment variables, deployment topology, and operational constraints,
-see [room-deployment.md](room-deployment.md). For the decision history and
-open questions, see [specs/agent-document-room.md](../specs/agent-document-room.md).
+see [room-deployment.md](room-deployment.md). For catalog adapter wiring and
+the scalable database-backed shape, see [room-catalogs.md](room-catalogs.md).
+For the decision history and open questions, see
+[specs/agent-document-room.md](../specs/agent-document-room.md).
 
 ## The six seams
 
@@ -58,14 +60,34 @@ provider) without the others noticing.
 - **Identity** — who is acting, derived from the transport credential and
   attached to every commit.
 
-Each seam is a narrow interface (`BlobStore`/`RoomStore`, `EmbeddingProvider`/
-`VectorStore`, `PdfExtractionProvider`, `WorkspaceProvider`) so a production
-swap — S3 in place of the filesystem, a Docker container in place of a temp
-dir — touches one adapter, not `RoomService`.
+Each seam is a narrow interface. `RoomService` consumes `RoomCatalog` and
+`WorkspaceProvider`; the bundled manifest adapter composes `BlobStore`/
+`RoomStore`, `EmbeddingProvider`/`VectorStore`, and `PdfExtractionProvider`.
+A production swap — a database catalog in place of manifests, S3 in place of
+the filesystem, or a Docker container in place of a temp dir — touches an
+adapter rather than the service API.
 
-## Manifest-on-S3 version model
+At the service boundary, storage and indexing compose behind a `RoomCatalog`.
+There are two intended catalog shapes:
 
-Each room version is a **manifest**: a snapshot mapping path → content hash,
+- **Workspace catalog** — the manifest-on-S3 adapter below. It is the
+  zero-database default for bounded personal/team rooms and supports full
+  checkout and commit-back.
+- **Database catalog** — document/document-version rows, paginated listing, a
+  change log or outbox for index synchronization, and selective or lazy
+  sandbox materialization. It does not require a complete room snapshot and is
+  the intended shape for continuously-ingested organization-scale corpora.
+
+Both expose the same room operations (ingest, search, read, materialize, and
+optionally commit). A catalog that does not implement workspace commits vends
+read-only sessions; agents publish outputs through a separate controlled path.
+The authenticated principal is passed into catalog reads, search, listing, and
+materialization so a database adapter can apply its Postgres-owned access
+policy inside the query rather than filtering unauthorized results afterward.
+
+## Manifest-on-S3 workspace model
+
+For the workspace adapter, each room version is a **manifest**: a snapshot mapping path → content hash,
 content-addressed itself (its own hash becomes a commit ref). Raw blobs live
 under a content-hash key, shared across paths, rooms, and versions — the same
 bytes are stored once no matter how many places reference them.
@@ -77,6 +99,12 @@ resolved by policy rather than by hand, while Git's binary/file-count
 liabilities remain. A manifest snapshot plus **per-file last-writer-wins**
 merge keeps the model simple without closing the door on real three-way merge
 later (retained manifests make that an additive change, not a rewrite).
+
+Manifests are not required by the room abstraction. A database catalog can use
+a transaction/revision as its current version and an event stream for changed
+documents. This avoids rewriting an O(total documents) snapshot for every
+catalog update while preserving rebuildable search indexes and reproducible
+document versions.
 
 HEAD is advanced by **compare-and-swap**: a commit reads the current HEAD,
 computes a new manifest against that base, and writes it back conditionally

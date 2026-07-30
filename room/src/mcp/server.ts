@@ -84,7 +84,13 @@ export function createRoomMcpServer(
       },
     },
     async ({ query, limit, modality }) => {
-      const hits = await service.search(room, query, limit ?? 5, modality ?? "all");
+      const hits = await service.search(
+        room,
+        query,
+        limit ?? 5,
+        modality ?? "all",
+        { principal },
+      );
       return textResult(
         hits.length
           ? hits.map((h) => `${h.path}\t(score ${h.score.toFixed(3)})`).join("\n")
@@ -95,10 +101,19 @@ export function createRoomMcpServer(
 
   server.registerTool(
     "list_documents",
-    { description: "List all document paths currently in the room.", inputSchema: {} },
-    async () => {
-      const docs = await service.listDocuments(room);
-      return textResult(docs.length ? docs.join("\n") : "(empty room)");
+    {
+      description:
+        "List one bounded page of document paths currently in the room. Pass the returned next_cursor to continue.",
+      inputSchema: {
+        cursor: z.string().optional().describe("Continuation cursor from a previous page."),
+        limit: z.number().int().positive().max(1000).optional().describe("Page size (default 100)."),
+      },
+    },
+    async ({ cursor, limit }) => {
+      const page = await service.listDocumentPage(room, { cursor, limit }, { principal });
+      if (page.paths.length === 0) return textResult("(empty room)");
+      const continuation = page.nextCursor ? `\n\nnext_cursor\t${page.nextCursor}` : "";
+      return textResult(page.paths.join("\n") + continuation);
     },
   );
 
@@ -108,7 +123,7 @@ export function createRoomMcpServer(
       description: "Read a document's text contents by path.",
       inputSchema: { path: z.string().describe("Document path within the room.") },
     },
-    async ({ path }) => textResult(await service.readDocument(room, path)),
+    async ({ path }) => textResult(await service.readDocument(room, path, { principal })),
   );
 
   server.registerTool(
@@ -129,7 +144,7 @@ export function createRoomMcpServer(
       if (session) {
         return withSession(session, async (s) => textResult(decode(await s.exec(command))));
       }
-      return textResult(await service.runCommand(room, command, paths));
+      return textResult(await service.runCommand(room, command, paths, { principal }));
     },
   );
 
@@ -137,7 +152,7 @@ export function createRoomMcpServer(
     "open_session",
     {
       description:
-        "Open a warm sandbox session over the room. Without `paths` it's a full read-write checkout that can commit; with `paths` it's a read-only scoped checkout. Returns a session id; close it with close_session.",
+        "Open a warm sandbox session over the room. A full session can commit only when the catalog supports workspace commits; a paths-scoped session is always read-only. Returns a session id; close it with close_session.",
       inputSchema: {
         paths: z
           .array(z.string())
@@ -146,7 +161,7 @@ export function createRoomMcpServer(
       },
     },
     async ({ paths }) => {
-      const session = await service.openSession(room, paths ? { paths } : {});
+      const session = await service.openSession(room, paths ? { paths } : {}, { principal });
       const id = sessions.open(room, principal, session);
       return textResult(JSON.stringify({ session: id, canCommit: session.canCommit }));
     },

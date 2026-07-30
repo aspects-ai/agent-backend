@@ -6,10 +6,14 @@ constraints an operator needs to know before deploying. For the concepts
 behind these knobs (seams, manifest model, isolation), see
 [room-architecture.md](room-architecture.md).
 
-Deployment today is **one process per room** — room isolation comes from
-process and credential separation (see room-architecture.md's isolation
-model), not from multi-tenant routing inside one process. Each room gets its
-own port and token set.
+The bundled executable and all deployment examples currently use
+`ManifestRoomCatalog`. Deployment today is **one process per room** — room
+isolation comes from process and credential separation (see
+room-architecture.md's isolation model), not from multi-tenant routing inside
+one process. Each room gets its own port and token set. This topology is not
+imposed by `RoomService`: a database-backed `RoomCatalog` can be hosted behind
+a separately designed multi-tenant routing/control plane. See
+[room-catalogs.md](room-catalogs.md).
 
 For runnable walkthroughs, see:
 - [room/examples/multi-room/README.md](../room/examples/multi-room/README.md) —

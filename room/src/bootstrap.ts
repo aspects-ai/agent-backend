@@ -62,8 +62,10 @@ export interface BuildRoomServiceOptions {
  * lexical embedder, an in-memory (derived) index, and a **sandboxed-by-default**
  * workspace provider (Docker when available, unsandboxed temp dir with a warning
  * when not). With `storeDir` the canonical store persists to disk; without, it's
- * ephemeral in-memory. For a real deployment, construct `new RoomService({...})`
- * with S3 + a real vector DB directly.
+ * ephemeral in-memory. This helper always selects the manifest catalog. For a
+ * database-backed organizational catalog, construct
+ * `new RoomService({ catalog, workspaces })` directly; see
+ * `docs/room-catalogs.md`.
  */
 export function buildRoomService(options: BuildRoomServiceOptions = {}): RoomService {
   return new RoomService({

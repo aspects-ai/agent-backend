@@ -1,23 +1,17 @@
-import {
-  DefaultVersionedStore,
-  InMemoryWorkingTree,
-  type BlobStore,
-  type RoomStore,
-  type WorkingTree,
-} from "@agentbe/versioned-store";
-import {
-  ImageIndexSync,
-  IndexSync,
-  InMemoryVectorStore,
-  type EmbeddingProvider,
-  type ImageEmbeddingProvider,
-  type QueryHit,
-  type VectorStore,
-} from "@agentbe/index-sync";
-
-import type { PdfExtractionProvider } from "@agentbe/ingestion";
+import type { QueryHit } from "@agentbe/index-sync";
 
 import { BackendWorkingTree, type BackendLike } from "./lib/backend-working-tree.js";
+import {
+  ManifestRoomCatalog,
+  type ManifestRoomCatalogDeps,
+} from "./manifest-room-catalog.js";
+import type {
+  DocumentPage,
+  ListDocumentsOptions,
+  RoomAccessContext,
+  RoomCatalog,
+  SearchModality,
+} from "./room-catalog.js";
 
 /** An agent-backend backend with shell execution — what a room workspace is. */
 export interface RoomBackend extends BackendLike {
@@ -43,124 +37,115 @@ export interface WorkspaceProvider {
   reclaimOrphans?(): Promise<number>;
 }
 
-export interface RoomServiceDeps {
-  blobs: BlobStore;
-  rooms: RoomStore;
-  embedder: EmbeddingProvider;
-  vectors: VectorStore;
+/** Backwards-compatible dependencies for the bundled manifest workspace adapter. */
+export interface ManifestRoomServiceDeps extends ManifestRoomCatalogDeps {
   /** Provisions sandboxes for `openSession`/`runCommand`. Optional — a
    * retrieval/ingestion-only room needs no sandbox at all. */
   workspaces?: WorkspaceProvider;
-  /** Extracts text from uploaded PDFs into a searchable sibling document.
-   * Optional — omit to store PDFs as opaque blobs. */
-  pdfExtractor?: PdfExtractionProvider;
-  /** Embeds images (CLIP-style) into a separate image index for text→image
-   * search. Optional — omit to skip image indexing entirely. */
-  imageEmbedder?: ImageEmbeddingProvider;
-  /** Vector store for the image index (defaults to a fresh in-memory one). */
-  imageVectors?: VectorStore;
 }
 
-/** Which index(es) a search covers. */
-export type SearchModality = "text" | "image" | "all";
+/** Dependencies for a manifest-independent catalog room. */
+export interface CatalogRoomServiceDeps {
+  catalog: RoomCatalog;
+  workspaces?: WorkspaceProvider;
+}
+
+export type RoomServiceDeps = ManifestRoomServiceDeps | CatalogRoomServiceDeps;
 
 export interface OpenSessionOptions {
   /** Materialize only these paths (e.g. semantic-search hits). A paths-scoped
-   * session is READ-ONLY — committing it would delete unchecked files. */
+   * session is READ-ONLY. Full sessions are writable only when the selected
+   * catalog implements workspace commits. */
   paths?: string[];
 }
 
 /**
- * The room engine. Composes the versioned store, the search index, and an
- * ephemeral-workspace provider into the high-level operations an API or agent
- * loop needs: add documents, search, and open a sandbox session to run code and
- * optionally commit changes back. Each version is reindexed automatically.
+ * The room engine. Composes a catalog and an ephemeral-workspace provider into
+ * the operations an API or agent loop needs: ingest, search, read, materialize,
+ * execute, and optionally commit. Storage, revision, and indexing mechanics
+ * belong to the selected catalog adapter.
  */
 export class RoomService {
-  private readonly store: DefaultVersionedStore;
-  private readonly index: IndexSync;
-  private readonly imageIndex?: ImageIndexSync;
+  private readonly catalog: RoomCatalog;
+  private readonly workspaces?: WorkspaceProvider;
 
-  constructor(private readonly deps: RoomServiceDeps) {
-    this.store = new DefaultVersionedStore(deps.blobs, deps.rooms);
-    this.index = new IndexSync(deps.blobs, deps.rooms, deps.embedder, deps.vectors);
-    if (deps.imageEmbedder) {
-      this.imageIndex = new ImageIndexSync(
-        deps.blobs,
-        deps.rooms,
-        deps.imageEmbedder,
-        deps.imageVectors ?? new InMemoryVectorStore(),
-      );
-    }
+  constructor(deps: RoomServiceDeps) {
+    this.catalog = "catalog" in deps ? deps.catalog : new ManifestRoomCatalog(deps);
+    this.workspaces = deps.workspaces;
   }
 
-  head(room: string): Promise<string | null> {
-    return this.deps.rooms.head(room);
+  head(room: string, context?: RoomAccessContext): Promise<string | null> {
+    return this.catalog.revision(room, context);
   }
 
-  /**
-   * Add or update documents, producing a new room version. Existing documents
-   * are preserved (a full checkout of HEAD precedes the writes), so this never
-   * accidentally drops files.
-   */
+  /** Add or update documents when the catalog supports direct ingestion. */
   async putDocuments(
     room: string,
     files: Record<string, string | Uint8Array>,
     author: string,
   ): Promise<string> {
-    // Ingestion needs no sandbox — just write + commit against an in-memory tree.
-    const tree = new InMemoryWorkingTree();
-    const base = await this.deps.rooms.head(room);
-    if (base) await this.store.checkout(room, base, tree);
-    for (const [path, content] of Object.entries(files)) {
-      await tree.write(path, content);
-      await this.preprocess(tree, path, content);
+    if (!this.catalog.putDocuments) {
+      throw new Error("catalog does not support direct ingestion");
     }
-    const result = await this.store.commit(room, base, tree, author);
-    if (result.status !== "committed") throw new Error(`commit failed: ${result.status}`);
-    await this.reindex(room, base, result.ref);
-    return result.ref;
+    return this.catalog.putDocuments(room, files, author);
   }
 
-  /** Semantic search over a room. `modality` selects the text index, the image
-   * index, or both (default). Combined results are merged by score (cosine
-   * across the two spaces is heuristic). */
+  /** Semantic search over a room, delegated to the selected catalog. */
   async search(
     room: string,
     query: string,
     k = 5,
     modality: SearchModality = "all",
+    context?: RoomAccessContext,
   ): Promise<QueryHit[]> {
-    const hits: QueryHit[] = [];
-    if (modality !== "image") hits.push(...(await this.index.query(room, query, k)));
-    if (modality !== "text" && this.imageIndex) {
-      hits.push(...(await this.imageIndex.query(room, query, k)));
-    }
-    hits.sort((a, b) => b.score - a.score);
-    return hits.slice(0, k);
+    return this.catalog.search(room, query, k, modality, context);
   }
 
-  /** All document paths in the room's current version (empty if the room is new). */
-  async listDocuments(room: string): Promise<string[]> {
-    const head = await this.deps.rooms.head(room);
-    if (!head) return [];
-    const manifest = await this.deps.rooms.getManifest(room, head);
-    return Object.keys(manifest.entries).sort();
+  /** One bounded page of document paths. Prefer this for catalog-scale rooms. */
+  listDocumentPage(
+    room: string,
+    options: ListDocumentsOptions = {},
+    context?: RoomAccessContext,
+  ): Promise<DocumentPage> {
+    return this.catalog.listDocuments(room, options, context);
+  }
+
+  /**
+   * All document paths in the room. Retained for backwards compatibility;
+   * catalog-scale callers should use {@link listDocumentPage}.
+   */
+  async listDocuments(room: string, context?: RoomAccessContext): Promise<string[]> {
+    const paths: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.catalog.listDocuments(room, { cursor, limit: 1_000 }, context);
+      paths.push(...page.paths);
+      if (page.nextCursor !== undefined && page.nextCursor === cursor) {
+        throw new Error("catalog returned a non-advancing pagination cursor");
+      }
+      cursor = page.nextCursor;
+    } while (cursor);
+    return paths;
   }
 
   /** Read a single document's text contents. Needs no sandbox. */
-  async readDocument(room: string, path: string): Promise<string> {
-    const base = await this.deps.rooms.head(room);
-    if (!base) throw new Error(`document not found: ${path}`);
-    const tree = new InMemoryWorkingTree();
-    await this.store.checkout(room, base, tree, { paths: [path] });
-    return (await tree.read(path, { encoding: "utf-8" })) as string;
+  async readDocument(
+    room: string,
+    path: string,
+    context?: RoomAccessContext,
+  ): Promise<string> {
+    return this.catalog.readDocument(room, path, context);
   }
 
   /** Run a shell command over a checkout of the room (one-shot, read-only — no
    * commit). Restrict the checkout with `paths` (e.g. search hits). */
-  async runCommand(room: string, command: string, paths?: string[]): Promise<string> {
-    const session = await this.openSession(room, paths ? { paths } : {});
+  async runCommand(
+    room: string,
+    command: string,
+    paths?: string[],
+    context?: RoomAccessContext,
+  ): Promise<string> {
+    const session = await this.openSession(room, paths ? { paths } : {}, context);
     try {
       const output = await session.exec(command);
       return typeof output === "string" ? output : new TextDecoder().decode(output);
@@ -170,80 +155,65 @@ export class RoomService {
   }
 
   /**
-   * Open an ephemeral sandbox session over a room's current HEAD. With `paths`
-   * it materializes only that subset and the session is read-only; without,
-   * it's a full checkout that can commit changes back.
+   * Open an ephemeral sandbox over a stable catalog revision. A paths-scoped
+   * session is read-only; a full session is writable only when the catalog
+   * implements workspace commits.
    */
-  async openSession(room: string, options: OpenSessionOptions = {}): Promise<RoomSession> {
-    if (!this.deps.workspaces) {
+  async openSession(
+    room: string,
+    options: OpenSessionOptions = {},
+    context?: RoomAccessContext,
+  ): Promise<RoomSession> {
+    if (!this.workspaces) {
       throw new Error(
         "no WorkspaceProvider configured — sessions and run_command require a sandbox provider",
       );
     }
-    const provisioned = await this.deps.workspaces.create();
+    const provisioned = await this.workspaces.create();
     const tree = new BackendWorkingTree(provisioned.backend);
-    const base = await this.deps.rooms.head(room);
+    const base = await this.catalog.revision(room, context);
     const partial = Array.isArray(options.paths);
-    if (base) {
-      await this.store.checkout(room, base, tree, partial ? { paths: options.paths } : undefined);
+    try {
+      if (base) {
+        await this.catalog.materialize(
+          room,
+          base,
+          tree,
+          partial ? { paths: options.paths } : undefined,
+          context,
+        );
+      }
+    } catch (error) {
+      await provisioned.dispose().catch(() => undefined);
+      throw error;
     }
     return new RoomSession({
-      store: this.store,
-      reindex: (from, to) => this.reindex(room, from, to),
+      catalog: this.catalog,
       room,
       base,
       provisioned,
       tree,
-      commitAllowed: !partial,
+      commitDeniedReason: partial
+        ? "paths-scoped"
+        : this.catalog.commitWorkspace
+          ? undefined
+          : "catalog-read-only",
     });
   }
 
-  /** Rebuild the search index from the room's current HEAD. Use on startup with
-   * a persistent store + an in-memory (derived) index. No-op for an empty room. */
+  /** Ask a catalog that owns indexing to rebuild its derived index. */
   async reindexHead(room: string): Promise<void> {
-    const head = await this.deps.rooms.head(room);
-    if (!head) return;
-    await this.index.sync(room, head);
-    if (this.imageIndex) await this.imageIndex.sync(room, head);
-  }
-
-  /** Ingest-time preprocessing: extract a searchable text sibling from PDFs
-   * (`report.pdf` → `report.pdf.txt`). The raw PDF is kept as a blob; the text
-   * sibling is what the index picks up. Failures (scanned/corrupt PDFs) are
-   * swallowed — the PDF simply stays opaque. */
-  private async preprocess(
-    tree: WorkingTree,
-    path: string,
-    content: string | Uint8Array,
-  ): Promise<void> {
-    if (!this.deps.pdfExtractor || !path.toLowerCase().endsWith(".pdf")) return;
-    const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
-    try {
-      const text = await this.deps.pdfExtractor.extractText(bytes);
-      if (text.trim().length > 0) await tree.write(`${path}.txt`, text);
-    } catch {
-      // No text layer or extraction error — leave the PDF as an opaque blob.
-    }
-  }
-
-  private async reindex(room: string, from: string | null, to: string): Promise<void> {
-    if (from) await this.index.syncDiff(room, from, to);
-    else await this.index.sync(room, to);
-    if (this.imageIndex) {
-      if (from) await this.imageIndex.syncDiff(room, from, to);
-      else await this.imageIndex.sync(room, to);
-    }
+    await this.catalog.reindex?.(room);
   }
 }
 
 interface RoomSessionInit {
-  store: DefaultVersionedStore;
-  reindex: (from: string | null, to: string) => Promise<void>;
+  catalog: RoomCatalog;
   room: string;
   base: string | null;
   provisioned: ProvisionedBackend;
   tree: BackendWorkingTree;
-  commitAllowed: boolean;
+  commitDeniedReason?: "paths-scoped" | "catalog-read-only";
 }
 
 /** A live sandbox over a room: run shell commands, read/write the working tree,
@@ -261,9 +231,9 @@ export class RoomSession {
     return this.init.tree;
   }
 
-  /** Whether this session may commit (false for paths-scoped read-only sessions). */
+  /** Whether this session may commit through its catalog. */
   get canCommit(): boolean {
-    return this.init.commitAllowed;
+    return this.init.commitDeniedReason === undefined;
   }
 
   /** Run a shell command in the workspace. */
@@ -275,17 +245,25 @@ export class RoomSession {
   /** Commit the working tree as a new room version and reindex. Returns the ref. */
   async commit(author: string): Promise<string> {
     this.assertOpen();
-    if (!this.init.commitAllowed) {
+    if (this.init.commitDeniedReason === "paths-scoped") {
       throw new Error(
         "cannot commit a paths-scoped session: it would delete unchecked files. " +
           "Open a full session (no `paths`) for read-write work.",
       );
     }
-    const result = await this.init.store.commit(this.init.room, this.base, this.init.tree, author);
-    if (result.status !== "committed") throw new Error(`commit failed: ${result.status}`);
-    await this.init.reindex(this.base, result.ref);
-    this.base = result.ref;
-    return result.ref;
+    if (!this.init.catalog.commitWorkspace) {
+      throw new Error(
+        "cannot commit this session: the catalog is read-only and does not support workspace commits",
+      );
+    }
+    const ref = await this.init.catalog.commitWorkspace(
+      this.init.room,
+      this.base,
+      this.init.tree,
+      author,
+    );
+    this.base = ref;
+    return ref;
   }
 
   async close(): Promise<void> {

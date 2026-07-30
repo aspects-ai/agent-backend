@@ -1,20 +1,32 @@
 /**
  * @agentbe/room
  *
- * The agent document room: a service layer composing agent-backend (sandbox),
- * versioned-store (S3 content-addressed versioning), and index-sync (semantic
- * search) into the search → checkout → exec → commit-back loop. This package is
- * the service core; the HTTP API / UI / auth wrap it.
+ * The agent document room: a service layer composing a catalog, semantic
+ * search, and agent-backend sandboxes. The bundled manifest catalog provides
+ * the original search → checkout → exec → commit-back workspace loop; large
+ * organizational catalogs can provide a database-backed adapter instead.
  */
 
 export { RoomService, RoomSession } from "./room-service.js";
 export type {
   RoomServiceDeps,
+  ManifestRoomServiceDeps,
+  CatalogRoomServiceDeps,
   RoomBackend,
   ProvisionedBackend,
   WorkspaceProvider,
   OpenSessionOptions,
 } from "./room-service.js";
+export { ManifestRoomCatalog } from "./manifest-room-catalog.js";
+export type { ManifestRoomCatalogDeps } from "./manifest-room-catalog.js";
+export type {
+  RoomCatalog,
+  RoomAccessContext,
+  SearchModality,
+  DocumentPage,
+  ListDocumentsOptions,
+  MaterializeOptions,
+} from "./room-catalog.js";
 export { LocalWorkspaceProvider } from "./workspace-local.js";
 export { DockerWorkspaceProvider, isDockerAvailable, DEFAULT_DAEMON_IMAGE } from "./workspace-docker.js";
 export type { DockerWorkspaceOptions } from "./workspace-docker.js";

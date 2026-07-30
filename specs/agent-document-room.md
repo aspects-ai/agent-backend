@@ -27,10 +27,10 @@ per-session sandbox, principal-derived attribution).
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Store | **S3, content-addressed** | Multimodal-native, dedupe-for-free, ceiling is file *count* not bytes |
-| Version model | **Manifest-on-S3** (path→hash snapshot), not Git | LWW + per-task commits deleted Git's main value (3-way merge) while keeping its binary/file-count liabilities |
+| Store | **Corpus-dependent:** S3 content-addressed blobs for workspace rooms; a database catalog + object storage for catalog rooms | Writable workspaces and continuously-ingested organizational catalogs have different scaling and consistency needs |
+| Version model | **Manifest snapshots are the workspace adapter, not the universal room model.** Catalog rooms use document/version rows plus a monotonic revision or change log | Full path→hash snapshots are useful for bounded collaborative workspaces but scale with total file count on every version; catalog revisions scale with the changed documents |
 | Sandbox | **Checkout model** (materialize subset → agent-backend) | POSIX-on-object-storage not yet mature enough; Git-style working tree is the proven primitive |
-| CAS primitive | **S3 + small DB** (Dynamo/Postgres) holds HEAD + manifest history; S3 conditional-write is the DB-free fallback | Atomic HEAD advance without a lock service |
+| Workspace CAS primitive | **S3 + small DB** (Dynamo/Postgres) holds HEAD + manifest history; S3 conditional-write is the DB-free fallback | Atomic HEAD advance without a lock service for manifest-backed workspaces |
 | Workspace lifetime | **Ephemeral per task** now; long-lived later | Minimizes conflict window; commit-back is the only way state becomes real |
 | Commits | **Per task** | Each manifest is a revert target |
 | Merge | **Per-file last-writer-wins** now; grow into 3-way merge later from retained manifests | Multiplayer isn't hot yet; not a one-way door |
@@ -111,6 +111,18 @@ Implementation is substantially complete. Current state, package by package:
   **deployment** (a dedicated instance / self-host), not by org rows in a
   schema — customers making that ask usually want physical isolation anyway.
 
+- **Manifests are a workspace backend, not the room abstraction (2026-07-29).**
+  The first implementation made every room version a complete `path → hash`
+  snapshot. That remains a good zero-database model for bounded personal/team
+  workspaces that need checkout, commit, and rollback. It is not the right
+  source of truth for an organization-scale, continuously-ingested catalog:
+  adding one document must not require reconstructing or rewriting the entire
+  corpus. `RoomService` therefore depends on a catalog seam. The manifest
+  implementation is one adapter; a database-backed adapter can use document
+  and document-version rows, paginated enumeration, a change log/outbox for
+  indexing, and lazy materialization into sandboxes. Search, retrieval, and
+  sandbox vending remain one logical room product in both modes.
+
 - **Granular per-document ACL is coupled to scoped commits — one project, not
   two.** An ACL-filtered checkout is a partial checkout, and `commit` reflects
   the *full* working tree — so `openSession` already forces any `paths`-scoped
@@ -166,7 +178,7 @@ of the production gap.
     the blob.
 - **Long-lived / personal workspaces** — coherence of N durable checkouts. Deferred behind ephemeral.
 - **Real 3-way merge** — when multiplayer heats up; grow from retained manifests.
-- **Case A as a separate store** — the GB-scale read-only binary catalog may want a distinct read-only manifest-over-S3 surface rather than sharing the read-write room store. The seam between "git-/manifest-backed read-write rooms" and "read-only catalogs" may be the real product boundary. Revisit.
+- **Catalog adapter implementation** — the service seam now permits a database-backed catalog without manifests. The production Postgres schema, change-log/outbox worker, authorization filters, and lazy filesystem mount remain deployment-specific work. Manifest-backed rooms remain the local/workspace default.
 - **`versioned-store` published name** — `@agentbe/versioned-store` is a placeholder (`private: true`).
 - **Pre-existing `ty` type backlog** (13 diagnostics in `agent-backend` python) — tracked separately from the room work.
 - **HEAD CAS atomicity → DynamoDB before real multiplayer/prod.** Our `S3RoomStore` CAS is correct only if the backend's conditional writes are atomic. Real AWS S3 guarantees this; **LocalStack does not** (two concurrent `casHead` on the same expected ref both won in testing — lost updates). Single-writer paths are unaffected. Decision: **defer** — correct on real AWS today; before real multiplayer or non-atomic S3-compatible stores, move HEAD ref + `casHead` to DynamoDB conditional updates. The skipped test in `packages/versioned-store/test/concurrency.integration.test.ts` re-enables against real AWS S3 or DynamoDB.

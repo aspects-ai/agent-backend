@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { InMemoryBlobStore, InMemoryRoomStore } from "@agentbe/versioned-store";
+import {
+  InMemoryBlobStore,
+  InMemoryRoomStore,
+  type BlobStore,
+} from "@agentbe/versioned-store";
 import { HashingEmbeddingProvider, InMemoryVectorStore } from "@agentbe/index-sync";
 
 import { LocalWorkspaceProvider, RoomService } from "../src/index.js";
@@ -39,6 +43,39 @@ describe("RoomService", () => {
     expect(r1).not.toBe(r0);
     expect((await svc.search(ROOM, "alpha content", 5)).some((h) => h.path === "a.md")).toBe(true);
     expect((await svc.search(ROOM, "beta content", 5)).some((h) => h.path === "b.md")).toBe(true);
+  });
+
+  it("adds a document without downloading the existing corpus", async () => {
+    class ObservedBlobs implements BlobStore {
+      readonly inner = new InMemoryBlobStore();
+      readonly reads: string[] = [];
+      putBlob(bytes: Uint8Array): Promise<string> {
+        return this.inner.putBlob(bytes);
+      }
+      async getBlob(hash: string): Promise<Uint8Array> {
+        const bytes = await this.inner.getBlob(hash);
+        this.reads.push(new TextDecoder().decode(bytes));
+        return bytes;
+      }
+      hasBlob(hash: string): Promise<boolean> {
+        return this.inner.hasBlob(hash);
+      }
+    }
+
+    const blobs = new ObservedBlobs();
+    const svc = new RoomService({
+      blobs,
+      rooms: new InMemoryRoomStore(),
+      embedder: new HashingEmbeddingProvider(),
+      vectors: new InMemoryVectorStore(),
+    });
+    await svc.putDocuments(ROOM, { "a.md": "alpha existing corpus" }, "alice");
+    blobs.reads.length = 0;
+
+    await svc.putDocuments(ROOM, { "b.md": "beta incremental document" }, "alice");
+
+    expect(blobs.reads).not.toContain("alpha existing corpus");
+    expect(await svc.listDocuments(ROOM)).toEqual(["a.md", "b.md"]);
   });
 
   it("full session runs a command, edits, and commits back", async () => {
