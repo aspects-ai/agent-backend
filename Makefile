@@ -212,9 +212,9 @@ publish-python: build-python ## Publish Python package to PyPI
 start-deploy-ui: ## Cloud VM deployment UI
 	./manage.sh start-deploy-ui
 
-ci: install typecheck lint test ## Full CI pipeline
+ci: install build typecheck lint test ## Full CI pipeline
 
-ci-fast: typecheck test-unit ## Fast CI (typecheck + unit tests)
+ci-fast: build-typescript typecheck test-unit ## Fast CI (build + typecheck + unit tests)
 
 # --- Internal targets (not shown in help) ---
 
