@@ -145,7 +145,7 @@ All file-based backends (local, remote, and memory) MUST support the following o
 
 ### Path Resolution
 
-Path handling follows the three-case resolution logic and escape prevention rules defined in [docs/filepaths.md](../docs/filepaths.md), which is the source of truth for path behavior. In summary:
+Path handling follows the three-case resolution logic and escape prevention rules defined in [docs/filepaths.md](../../../docs/filepaths.md), which is the source of truth for path behavior. In summary:
 
 - Relative paths MUST be resolved against the workspace root.
 - Absolute paths that match the workspace root MUST be used directly.
@@ -153,7 +153,7 @@ Path handling follows the three-case resolution logic and escape prevention rule
 - Paths containing `..` that would escape the workspace MUST be rejected with a path escape error.
 - These rules apply at every scope level for scoped backends.
 
-See [docs/filepaths.md](../docs/filepaths.md) for detailed examples, backend-specific path module conventions, and scoped workspace behavior.
+See [docs/filepaths.md](../../../docs/filepaths.md) for detailed examples, backend-specific path module conventions, and scoped workspace behavior.
 
 ### read(path)
 

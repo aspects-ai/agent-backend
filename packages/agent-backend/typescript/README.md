@@ -1,6 +1,6 @@
 # TypeScript Client Library
 
-TypeScript implementation of the `agent-backend` package. See the [main README](../README.md) for an overview, quick start, and core usage.
+TypeScript implementation of the `agent-backend` package. See the [main README](../../../README.md) for an overview, quick start, and core usage.
 
 ## Package Info
 
@@ -67,7 +67,7 @@ const backend = new RemoteFilesystemBackend({
 
 ## Backend Connection Pooling
 
-See [docs/connection-pooling.md](../docs/connection-pooling.md) for `BackendPoolManager` usage, key-based pooling, idle cleanup, and graceful shutdown.
+See [docs/connection-pooling.md](../../../docs/connection-pooling.md) for `BackendPoolManager` usage, key-based pooling, idle cleanup, and graceful shutdown.
 
 ## Examples
 
@@ -218,7 +218,7 @@ pnpm test --coverage         # With coverage report
 make dev
 ```
 
-This starts the mprocs TUI with TypeScript watch mode. Edit files under `packages/agent-backend/typescript/src/` and watch the build output in the mprocs pane. The watcher rebuilds on every change.
+This starts the mprocs TUI running the `agentbe-daemon` in Docker with `packages/agent-backend/typescript/src/` mounted into the container. Edit files under `src/` and `tsx --watch` reloads the daemon in place; watch the `agentbe-daemon` pane for errors. Use `make dev-local` to run the daemon directly on the host instead.
 
 ### Docker
 
@@ -246,9 +246,9 @@ lsof -ti:3000 | xargs kill -9    # NextJS
 
 #### TypeScript Changes Not Appearing
 
-1. Check the typescript-watch pane in mprocs for compilation errors.
-2. Verify the build succeeded (no red output).
-3. Restart the dependent process by selecting it in mprocs and pressing `r`.
+1. Check the `agentbe-daemon` (or `agentbe-local`) pane in mprocs for compilation errors -- `tsx --watch` reloads the daemon in place on every source change.
+2. Verify the reload succeeded (no red output).
+3. Restart the process by selecting it in mprocs and pressing `r`.
 
 #### Remote Mode Issues
 

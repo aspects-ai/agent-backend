@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The filesystem toolset is repositioned to target parity with Claude Code's
+in-CLI file tools rather than the reference MCP Filesystem Server. See
+[packages/agent-backend/opensdd/daemon.md](packages/agent-backend/opensdd/daemon.md)
+for the updated contract.
+
 ### Added
 
 - **Agent document room** (`@agentbe/room`): a multiplayer, versioned,
@@ -23,14 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `agent-sandbox` adds a warm pool for lower session start latency.
 - S3-backed canonical store and a persistent pgvector-backed search index for
   production deployments.
-
-
-The filesystem toolset is repositioned to target parity with Claude Code's
-in-CLI file tools rather than the reference MCP Filesystem Server. See
-`opensdd/daemon.md` for the updated contract.
-
-### Added
-
 - `grep` tool: content search backed by ripgrep. Registered for backends that
   support `exec` (i.e. not the memory backend). Parameters mirror Claude Code's
   Grep tool: `pattern`, `path`, `glob`, `type`, `outputMode`, `caseInsensitive`,

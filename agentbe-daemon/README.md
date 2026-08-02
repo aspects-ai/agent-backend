@@ -187,7 +187,7 @@ services:
     restart: unless-stopped
 ```
 
-See `daemon/docker/docker-compose.yml` for a full example with all options.
+See `agentbe-daemon/docker/docker-compose.yml` for a full example with all options.
 
 ## Cloud Deployment
 
@@ -351,19 +351,23 @@ If you are developing agent-backend itself, use the Makefile and mprocs for a be
 ```bash
 # From monorepo root
 make install          # install all dependencies
-make dev              # local development (TypeScript watch + NextJS)
-make dev-remote       # development with Docker-based remote testing
-make docker-build     # build the Docker image
-make docker-clean     # clean up Docker resources
+make dev              # daemon in Docker, simulating a remote deployment
+make dev-local        # daemon directly on the host, no Docker
+make docker-build     # build the agentbe-daemon Docker image
+make dev-down         # tear down local dev infrastructure
 ```
 
-`make dev-remote` starts `REMOTE=1 mprocs`, which runs TypeScript watch, the Docker daemon, and the NextJS dev server side by side.
+`make dev` launches the [mprocs](https://github.com/pvolok/mprocs) TUI running the
+daemon inside `agentbe-daemon:latest`, with `packages/agent-backend/typescript/src`
+mounted into the container and `tsx --watch` handling hot-reload. `make dev-local`
+(`LOCAL=1 mprocs`) runs the same daemon directly on the host instead. Add
+`NEXTJS=1` or use `make nextjs` to bring up the NextJS example alongside it.
 
 ### Manual Docker Testing
 
 ```bash
 # Build image (from monorepo root)
-docker build -f daemon/docker/Dockerfile -t agentbe-daemon:latest .
+docker build -f agentbe-daemon/docker/Dockerfile -t agentbe-daemon:latest .
 
 # Run container
 docker run -d \

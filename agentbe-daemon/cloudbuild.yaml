@@ -5,7 +5,7 @@ steps:
       - '-t'
       - '$_IMAGE_URL'
       - '-f'
-      - 'daemon/docker/Dockerfile'
+      - 'agentbe-daemon/docker/Dockerfile'
       - '.'
 
 images:

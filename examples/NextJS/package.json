@@ -8,7 +8,7 @@
     "dev:debug": "next dev --webpack --inspect",
     "build": "next build --webpack",
     "start": "next start",
-    "type-check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run"
   },

@@ -9,7 +9,8 @@
 # Usage:
 #   make dev                 - Docker daemon (default)
 #   make dev-local           - Local daemon (no Docker)
-#   make example-nextjs      - Docker daemon + NextJS
+#   make nextjs              - Docker daemon + NextJS
+#   make k8s-forward         - port-forwards to the k8s rooms
 #
 # Or directly:
 #   mprocs                           - agentbe-daemon (Docker)

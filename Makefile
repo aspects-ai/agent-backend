@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-local demo demo-test k8s-up k8s-test k8s-forward k8s-down dev-down nextjs tsbasic pybasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
+.PHONY: help install dev dev-local demo demo-test rooms rooms-test k8s-up k8s-test k8s-forward k8s-down dev-down nextjs tsbasic pybasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -40,7 +40,7 @@ install: ## Install all dependencies
 	}
 	@echo "✓ All dependencies installed"
 
-dev: sync-assets ## Start dev environment (TS watch + NextJS + Docker daemon)
+dev: sync-assets ## Start dev environment (daemon in Docker; NEXTJS=1 adds the NextJS example)
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \
 		exit 1; \
@@ -58,7 +58,7 @@ dev: sync-assets ## Start dev environment (TS watch + NextJS + Docker daemon)
 		mprocs; \
 	fi
 
-dev-local: ## Start dev environment (local only, no Docker)
+dev-local: ## Start dev environment (daemon on the host, no Docker)
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \
 		exit 1; \

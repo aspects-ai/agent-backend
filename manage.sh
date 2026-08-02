@@ -25,9 +25,9 @@ EOF
 }
 
 publish_package() {
-  local TS_DIR="$SCRIPT_DIR/typescript"
+  local TS_DIR="$SCRIPT_DIR/packages/agent-backend/typescript"
   local TS_PKG="$TS_DIR/package.json"
-  local PY_TOML="$SCRIPT_DIR/python/pyproject.toml"
+  local PY_TOML="$SCRIPT_DIR/packages/agent-backend/python/pyproject.toml"
 
   # Check prerequisites
   if ! command -v jq >/dev/null 2>&1; then
@@ -91,12 +91,12 @@ publish_package() {
   echo "Syncing Python version..."
   cd "$SCRIPT_DIR"
   sed -i '' "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$PY_TOML"
-  local PY_INIT="$SCRIPT_DIR/python/agent_backend/__init__.py"
+  local PY_INIT="$SCRIPT_DIR/packages/agent-backend/python/agent_backend/__init__.py"
   sed -i '' "s/^__version__ = \".*\"/__version__ = \"$NEW_VERSION\"/" "$PY_INIT"
   echo "Updated $PY_TOML and $PY_INIT to $NEW_VERSION"
 
   # 2b. Sync OpenSDD spec version
-  local OPENSDD_JSON="$SCRIPT_DIR/opensdd.json"
+  local OPENSDD_JSON="$SCRIPT_DIR/packages/agent-backend/opensdd.json"
   if [[ -f "$OPENSDD_JSON" ]]; then
     echo "Syncing OpenSDD spec version..."
     jq --arg v "$NEW_VERSION" '.publish.version = $v' "$OPENSDD_JSON" > "$OPENSDD_JSON.tmp" && mv "$OPENSDD_JSON.tmp" "$OPENSDD_JSON"
@@ -153,7 +153,7 @@ EOF
 }
 
 start_deploy_ui() {
-  local DEPLOY_DIR="$SCRIPT_DIR/daemon/deploy-tool"
+  local DEPLOY_DIR="$SCRIPT_DIR/agentbe-daemon/deploy-tool"
 
   if [[ ! -d "$DEPLOY_DIR" ]]; then
     echo "Error: Deploy tool directory not found at $DEPLOY_DIR" >&2

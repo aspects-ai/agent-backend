@@ -1,6 +1,6 @@
 # Python Client Library
 
-Python implementation of the `agent-backend` package. See the [main README](../README.md) for an overview, quick start, and core usage.
+Python implementation of the `agent-backend` package. See the [main README](../../../README.md) for an overview, quick start, and core usage.
 
 ## Package Info
 
@@ -10,9 +10,9 @@ Python implementation of the `agent-backend` package. See the [main README](../R
 | Registry     | PyPI                        |
 | Manager      | uv / pip                    |
 | Test runner  | pytest                      |
-| Build        | python -m build             |
+| Build        | uv build                    |
 | Linter       | ruff                        |
-| Type checker | mypy                        |
+| Type checker | ty                          |
 | Source        | `packages/agent-backend/python/agent_backend/` |
 | Tests         | `packages/agent-backend/python/tests/` |
 
@@ -74,7 +74,7 @@ backend = RemoteFilesystemBackend(RemoteFilesystemBackendConfig(
 
 ## Backend Connection Pooling
 
-See [docs/connection-pooling.md](../docs/connection-pooling.md) for `BackendPoolManager` usage, key-based pooling, idle cleanup, and graceful shutdown.
+See [docs/connection-pooling.md](../../../docs/connection-pooling.md) for `BackendPoolManager` usage, key-based pooling, idle cleanup, and graceful shutdown.
 
 ## Examples
 
