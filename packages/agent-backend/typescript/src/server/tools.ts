@@ -232,93 +232,50 @@ export function registerFilesystemTools(server: McpServer, getBackend: BackendGe
   server.registerTool(
     'read_text_file',
     {
-      description: `Read file contents as text. Paginates by default: with no paging parameters, returns the first ${DEFAULT_LIMIT} lines and appends a footer indicating how much of the file was shown. Use offset and limit for explicit paging, or head/tail for first/last-N-line reads (the three modes are mutually exclusive). Lines longer than ${LINE_TRUNCATION_THRESHOLD} chars are truncated with an inline marker.`,
+      description: `Read file contents as text. Paginates by default: with no paging parameters, returns the first ${DEFAULT_LIMIT} lines and appends a footer indicating how much of the file was shown. Use offset and limit to read a later page of a large file. Lines longer than ${LINE_TRUNCATION_THRESHOLD} chars are truncated with an inline marker.`,
       inputSchema: {
         path: z.string().describe('Path to the file'),
         offset: z.number().int().positive().optional()
-          .describe('1-based line number to start at. Defaults to 1.'),
+          .describe('The 1-based line number to start reading from. Only provide if the file is too large to read at once.'),
         limit: z.number().int().positive().optional()
-          .describe(`Max lines to return. Defaults to ${DEFAULT_LIMIT}. Values over ${MAX_LIMIT} are clamped.`),
-        head: z.number().int().positive().optional()
-          .describe('Return only the first N lines. Mutually exclusive with offset/limit and tail.'),
-        tail: z.number().int().positive().optional()
-          .describe('Return only the last N lines. Mutually exclusive with offset/limit and head.'),
+          .describe('The number of lines to read. Only provide if the file is too large to read at once.'),
       },
     },
-    async ({ path: filePath, offset, limit, head, tail }, { sessionId }) => {
-      // Exactly one of { head, tail, offset/limit } may be active. We already know
-      // head and tail are mutually exclusive today; the same applies to offset/limit
-      // versus head/tail now that paging is a first-class mode.
-      const pageMode = offset != null || limit != null
-      const activeModes = (head != null ? 1 : 0) + (tail != null ? 1 : 0) + (pageMode ? 1 : 0)
-      if (activeModes > 1) {
-        if (head != null && tail != null) {
-          throw new Error('cannot specify both `head` and `tail` — pick one paging mode')
-        }
-        if (head != null) {
-          throw new Error('cannot specify both `head` and `offset`/`limit` — pick one paging mode')
-        }
-        throw new Error('cannot specify both `tail` and `offset`/`limit` — pick one paging mode')
-      }
-
+    async ({ path: filePath, offset, limit }, { sessionId }) => {
       const backend = await getBackend(sessionId) as FileBasedBackend
       const content = await backend.read(filePath, { encoding: 'utf8' }) as string
       const allLines = content.split('\n')
       const totalLines = allLines.length
 
-      let slice: string[]
-      let mode: 'head' | 'tail' | 'page'
-      let pageStart = 1 // 1-based line of the first line in the slice (page mode)
-      const implicit = !pageMode && head == null && tail == null
-
-      if (head != null) {
-        mode = 'head'
-        slice = allLines.slice(0, head)
-      } else if (tail != null) {
-        mode = 'tail'
-        slice = allLines.slice(Math.max(0, totalLines - tail))
-      } else {
-        mode = 'page'
-        const rawLimit = limit ?? DEFAULT_LIMIT
-        const effectiveLimit = Math.min(rawLimit, MAX_LIMIT)
-        pageStart = offset ?? 1
-        const startIdx = pageStart - 1
-        slice = startIdx >= totalLines
-          ? []
-          : allLines.slice(startIdx, startIdx + effectiveLimit)
-      }
+      // Single paging mode: offset/limit. There is no invalid combination of
+      // paging parameters, so nothing to reject here.
+      const implicit = offset == null && limit == null
+      const effectiveLimit = Math.min(limit ?? DEFAULT_LIMIT, MAX_LIMIT)
+      const pageStart = offset ?? 1 // 1-based line of the first line in the slice
+      const startIdx = pageStart - 1
+      const slice = startIdx >= totalLines
+        ? []
+        : allLines.slice(startIdx, startIdx + effectiveLimit)
 
       const hadLineTruncation = slice.some(l => l.length > LINE_TRUNCATION_THRESHOLD)
       const truncated = slice.map(truncateLine)
       const body = truncated.join('\n')
 
-      // Footer decision. For head/tail, footer appears whenever the slice doesn't
-      // cover the whole file. For page mode, same — plus for implicit paging we
-      // also emit the footer if any line was truncated, so a pathological
+      // Footer decision: emit whenever the slice doesn't cover the whole file —
+      // plus, for implicit paging, if any line was truncated, so a pathological
       // single-line file still surfaces file size and the "call again" hint.
       let footer = ''
-      if (mode === 'head') {
-        if (slice.length < totalLines) {
-          footer = `[showing first ${formatCount(slice.length)} lines of ${formatCount(totalLines)}.]`
-        }
-      } else if (mode === 'tail') {
-        if (slice.length < totalLines) {
-          footer = `[showing last ${formatCount(slice.length)} lines of ${formatCount(totalLines)}.]`
-        }
-      } else {
-        const sliceEndLine = pageStart + slice.length - 1 // inclusive
-        const coversWholeFile = pageStart === 1 && slice.length >= totalLines
-        const needFooter = !coversWholeFile || (implicit && hadLineTruncation)
-        if (needFooter) {
-          if (slice.length === 0) {
-            footer = `[offset ${formatCount(pageStart)} is beyond end of file (${formatCount(totalLines)} lines).]`
-          } else if (implicit) {
-            const stats = await backend.stat(filePath)
-            const size = formatTextFileSize(stats.size)
-            footer = `[showing lines ${formatCount(pageStart)}-${formatCount(sliceEndLine)} of ${formatCount(totalLines)}; file is ~${size}. Call again with offset and limit to read more.]`
-          } else {
-            footer = `[showing lines ${formatCount(pageStart)}-${formatCount(sliceEndLine)} of ${formatCount(totalLines)}.]`
-          }
+      const sliceEndLine = pageStart + slice.length - 1 // inclusive
+      const coversWholeFile = pageStart === 1 && slice.length >= totalLines
+      if (!coversWholeFile || (implicit && hadLineTruncation)) {
+        if (slice.length === 0) {
+          footer = `[offset ${formatCount(pageStart)} is beyond end of file (${formatCount(totalLines)} lines).]`
+        } else if (implicit) {
+          const stats = await backend.stat(filePath)
+          const size = formatTextFileSize(stats.size)
+          footer = `[showing lines ${formatCount(pageStart)}-${formatCount(sliceEndLine)} of ${formatCount(totalLines)}; file is ~${size}. Call again with offset and limit to read more.]`
+        } else {
+          footer = `[showing lines ${formatCount(pageStart)}-${formatCount(sliceEndLine)} of ${formatCount(totalLines)}.]`
         }
       }
 
