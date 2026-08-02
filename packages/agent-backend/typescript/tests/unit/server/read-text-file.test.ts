@@ -153,30 +153,33 @@ describe('read_text_file — paging and truncation', () => {
     })
   })
 
-  describe('head / tail modes', () => {
-    it('head mode appends a head-specific footer when the slice does not cover the file', async () => {
+  describe('single paging mode', () => {
+    it('exposes only path/offset/limit — no head or tail parameter', async () => {
+      const tool = getReadTool(makeBackend('a\nb'))
+      const schema = tool.inputSchema as Record<string, unknown>
+      expect(Object.keys(schema)).toEqual(expect.arrayContaining(['path', 'offset', 'limit']))
+      expect(Object.keys(schema)).not.toContain('head')
+      expect(Object.keys(schema)).not.toContain('tail')
+    })
+
+    it('does not advertise MAX_LIMIT in model-visible text', async () => {
+      const tool = getReadTool(makeBackend('a\nb'))
+      expect(tool.description).not.toContain(String(MAX_LIMIT))
+    })
+
+    it('serves a first-N-lines read via offset 1 + limit', async () => {
       const content = Array.from({ length: 4512 }, (_, i) => `l${i}`).join('\n')
       const tool = getReadTool(makeBackend(content))
-      const text = await call(tool, { path: 'big.log', head: 100 })
+      const text = await call(tool, { path: 'big.log', offset: 1, limit: 100 })
       const body = text.split(/\n(?=\[showing)/)[0]
       expect(body.split('\n')).toHaveLength(100)
-      expect(text).toMatch(/\[showing first 100 lines of 4,512\.\]$/)
+      expect(text).toMatch(/\[showing lines 1-100 of 4,512\.\]$/)
     })
 
-    it('tail mode appends a tail-specific footer when the slice does not cover the file', async () => {
-      const content = Array.from({ length: 4512 }, (_, i) => `line ${i}`).join('\n')
-      const tool = getReadTool(makeBackend(content))
-      const text = await call(tool, { path: 'big.log', tail: 100 })
-      const body = text.split(/\n(?=\[showing)/)[0]
-      expect(body.split('\n')).toHaveLength(100)
-      expect(body.split('\n')[99]).toBe('line 4511')
-      expect(text).toMatch(/\[showing last 100 lines of 4,512\.\]$/)
-    })
-
-    it('head with N >= totalLines omits the footer', async () => {
+    it('omits the footer when an explicit page covers the whole file', async () => {
       const content = Array.from({ length: 10 }, (_, i) => `l${i}`).join('\n')
       const tool = getReadTool(makeBackend(content))
-      const text = await call(tool, { path: 'x', head: 100 })
+      const text = await call(tool, { path: 'x', offset: 1, limit: 100 })
       expect(text).toBe(content)
     })
   })
@@ -213,20 +216,19 @@ describe('read_text_file — paging and truncation', () => {
     })
   })
 
-  describe('mutually exclusive paging modes', () => {
-    it('rejects head + tail', async () => {
-      const tool = getReadTool(makeBackend('a\nb'))
-      await expect(call(tool, { path: 'x', head: 1, tail: 1 })).rejects.toThrow(/head.*tail/i)
-    })
-
-    it('rejects head + offset', async () => {
-      const tool = getReadTool(makeBackend('a\nb'))
-      await expect(call(tool, { path: 'x', head: 10, offset: 5 })).rejects.toThrow(/head.*offset/i)
-    })
-
-    it('rejects tail + limit', async () => {
-      const tool = getReadTool(makeBackend('a\nb'))
-      await expect(call(tool, { path: 'x', tail: 10, limit: 5 })).rejects.toThrow(/tail.*offset/i)
+  describe('no mode-conflict rejection', () => {
+    it('serves a read that also carries the removed head/tail keys instead of throwing', async () => {
+      const content = Array.from({ length: 200 }, (_, i) => `l${i}`).join('\n')
+      const tool = getReadTool(makeBackend(content))
+      // The exact shape models were sending against the old four-parameter schema.
+      const text = await call(tool, {
+        path: 'x',
+        offset: 1,
+        limit: MAX_LIMIT,
+        head: MAX_LIMIT,
+        tail: MAX_LIMIT,
+      })
+      expect(text).toBe(content)
     })
   })
 

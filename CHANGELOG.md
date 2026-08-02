@@ -46,6 +46,16 @@ for the updated contract.
   Full-file reads without paging will see a trailing footer indicating more
   content is available. This is a minor-version breaking change for callers
   that relied on unparameterised full-file reads.
+- `read_text_file` paging is now a single mode: `offset`/`limit`. The `head` and
+  `tail` parameters are removed, and with only one mode left there is no
+  mode-conflict error to throw. `head: N` was byte-identical to
+  `offset: 1, limit: N`; `tail` is reachable via `exec` (`tail -n 100 <file>`).
+  The `offset`/`limit` descriptions now say to supply them only if the file is
+  too large to read at once, and no longer advertise the clamp ceiling.
+  Rationale: the four-parameter surface encoded three mutually-exclusive modes,
+  and models routinely filled every field and got an error on a read the tool
+  had enough information to serve. Minor-version breaking for callers whose
+  prompts explicitly instruct agents to use `head`/`tail`.
 - `edit_file` now throws if an edit's `oldText` appears multiple times in the
   current file state and `replaceAll` is not set. Previously, only the first
   occurrence was silently replaced — which could edit the wrong instance. To
