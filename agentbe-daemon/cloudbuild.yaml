@@ -1,0 +1,15 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '$_IMAGE_URL'
+      - '-f'
+      - 'agentbe-daemon/docker/Dockerfile'
+      - '.'
+
+images:
+  - '$_IMAGE_URL'
+
+substitutions:
+  _IMAGE_URL: 'gcr.io/${PROJECT_ID}/agent-backend-remote:latest'

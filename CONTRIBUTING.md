@@ -25,8 +25,12 @@ Use the feature request template. Explain the use case, the expected benefit, an
 
 - Node.js 18+
 - pnpm
+- Python 3.12+ and [uv](https://docs.astral.sh/uv/) (required by `make install` and `make test`)
 - Git
-- Docker (recommended, for remote backend testing)
+- Docker (recommended, for remote backend testing and the document-room sandbox providers)
+
+The Kubernetes room targets (`make k8s-*`) additionally need `kind` and `kubectl` --
+see [room/examples/k8s/README.md](room/examples/k8s/README.md).
 
 ### Initial Setup
 
@@ -87,18 +91,41 @@ Both commands launch [mprocs](https://github.com/pvolok/mprocs), a terminal UI f
 
 Language-specific commands use the pattern `make <command>-<language>`, for example `make build-typescript` or `make test-python`.
 
+### Agent Document Room
+
+| Command             | Description                                                        |
+|----------------------|--------------------------------------------------------------------|
+| `make demo`          | Run the demo document-room MCP server over HTTP :8848 (`PG=1` for a persistent pgvector index) |
+| `make demo-test`     | Verify the demo room end-to-end over a real MCP connection (`PG=1` for pgvector) |
+| `make rooms`         | Run a multi-room deploy locally, one process per room (`S3=1` for the S3 storage tier) |
+| `make rooms-test`    | Verify multi-room isolation: cross-room credentials, content, sandboxes (`S3=1` for the S3 tier) |
+| `make k8s-up`        | Provision the local k8s room environment (kind + Calico + agent-sandbox) |
+| `make k8s-test`      | Verify the k8s deploy end to end                      |
+| `make k8s-forward`   | Supervised port-forwards to the k8s rooms (mprocs)     |
+| `make k8s-down`      | Delete the local k8s cluster                          |
+| `make dev-down`      | Stop all local dev infra (cluster + LocalStack + pgvector) |
+
+See [room/README.md](room/README.md) for the tool surface and
+[room/examples/](room/examples/) for the runnable walkthroughs behind these
+targets.
+
+The room's tests (`room/test/`) are split by cost: `pnpm --filter @agentbe/room test:unit`
+runs the fast default suite (in-memory stores, hashing embedder); `test:integration`
+adds suites gated on real infrastructure -- Docker (sandbox containers), LocalStack
+(S3), and a live Kubernetes cluster -- and is not part of `make test`/`make ci`.
+
 ### Language-Specific Docs
 
-- [TypeScript](./typescript/README.md) -- package info, testing, code style, workflows, troubleshooting
-- [Python](./python/README.md) -- build, test, lint commands
+- [TypeScript](./packages/agent-backend/typescript/README.md) -- package info, testing, code style, workflows, troubleshooting
+- [Python](./packages/agent-backend/python/README.md) -- build, test, lint commands
 
 ## Spec-First Development
 
-[opensdd/spec.md](opensdd/spec.md) is the entry point for all behavioral specs, organized as an [OpenSDD](https://github.com/deepagents-ai/opensdd)-compliant spec with three components:
+[opensdd/spec.md](packages/agent-backend/opensdd/spec.md) is the entry point for all behavioral specs, organized as an [OpenSDD](https://github.com/deepagents-ai/opensdd)-compliant spec with three components:
 
-- [opensdd/clients.md](opensdd/clients.md) -- source of truth for all client library behavior. A developer should be able to reimplement a client library in any language by following the spec alone.
-- [opensdd/daemon.md](opensdd/daemon.md) -- source of truth for the agentbe-daemon process — its endpoints, authentication, transports, scoping, shutdown, and Docker packaging.
-- [opensdd/safety.md](opensdd/safety.md) -- source of truth for command safety validation patterns.
+- [opensdd/clients.md](packages/agent-backend/opensdd/clients.md) -- source of truth for all client library behavior. A developer should be able to reimplement a client library in any language by following the spec alone.
+- [opensdd/daemon.md](packages/agent-backend/opensdd/daemon.md) -- source of truth for the agentbe-daemon process — its endpoints, authentication, transports, scoping, shutdown, and Docker packaging.
+- [opensdd/safety.md](packages/agent-backend/opensdd/safety.md) -- source of truth for command safety validation patterns.
 
 **All changes to code that impacts client library or daemon functionality must start with an update to the relevant spec.** Update the spec first, then update the implementation to match. The only exceptions are small bug fixes or negligible tweaks that don't affect the documented API or behavioral contract.
 
@@ -137,7 +164,7 @@ make publish
 This command:
 
 1. Prompts for version bump type (patch/minor/major)
-2. Bumps versions in both `typescript/package.json` and `python/pyproject.toml` in sync
+2. Bumps the version in sync across `packages/agent-backend/typescript/package.json`, `packages/agent-backend/python/pyproject.toml`, `packages/agent-backend/python/agent_backend/__init__.py`, and the `publish.version` field of `packages/agent-backend/opensdd.json`
 3. Builds TypeScript to verify compilation
 4. Creates a `release/v<VERSION>` branch
 5. Commits the version changes and pushes the branch

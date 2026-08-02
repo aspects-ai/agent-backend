@@ -1,0 +1,31 @@
+{
+  "name": "@agentbe/vector-pg",
+  "version": "0.0.0",
+  "private": true,
+  "description": "pgvector-backed VectorStore for @agentbe/index-sync (persistent, ANN-indexed vector search)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@agentbe/index-sync": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "pg": "^8.13.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
+  }
+}

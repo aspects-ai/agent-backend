@@ -1,2 +1,2 @@
 [tool.uv.workspace]
-members = ["python", "examples/PyBasic"]
+members = ["packages/agent-backend/python", "examples/PyBasic"]

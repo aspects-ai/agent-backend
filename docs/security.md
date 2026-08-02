@@ -115,7 +115,7 @@ graph LR
 
 `preventDangerous` is a footgun sanity check, **not a security boundary**. It catches a small set of obvious mistakes — typos and hallucinations like wiping the root filesystem or piping a remote script into a shell — before they reach the host. For real isolation, use Bubblewrap, Docker, or an already-isolated host (Kubernetes pod, VM).
 
-When `preventDangerous: true` (default), commands are checked against a narrow set of patterns covering destructive operations, pipe-to-shell downloads, and fork bombs. The complete list is defined in [opensdd/safety.md](../opensdd/safety.md), which is the source of truth for command safety rules.
+When `preventDangerous: true` (default), commands are checked against a narrow set of patterns covering destructive operations, pipe-to-shell downloads, and fork bombs. The complete list is defined in [opensdd/safety.md](../packages/agent-backend/opensdd/safety.md), which is the source of truth for command safety rules.
 
 Examples of blocked commands:
 

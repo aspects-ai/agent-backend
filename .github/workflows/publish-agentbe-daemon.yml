@@ -25,7 +25,7 @@ jobs:
       - name: Get version
         id: version-check
         run: |
-          VERSION=$(node -p "require('./typescript/package.json').version")
+          VERSION=$(node -p "require('./packages/agent-backend/typescript/package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
@@ -57,7 +57,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./daemon/docker/Dockerfile
+          file: ./agentbe-daemon/docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

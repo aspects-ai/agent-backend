@@ -206,6 +206,6 @@ describe('Cookie serialization', () => {
     const serialized = JSON.stringify(config)
     const deserialized = JSON.parse(serialized) as BackendConfig
 
-    expect(deserialized.remote?.sshAuth.credentials.password).toBe('p@ss"word\'with<special>chars&stuff')
+    expect(deserialized.remote?.sshAuth?.credentials.password).toBe('p@ss"word\'with<special>chars&stuff')
   })
 })

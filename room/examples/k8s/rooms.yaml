@@ -1,0 +1,187 @@
+# A multi-room deploy on Kubernetes: one Deployment + Service per room, each
+# with its own principal tokens. The room is the tenant (spec §7), so isolation
+# is per-room credentials + per-session sandbox pods.
+#
+# Apply with an EXPLICIT local context — never rely on the current one:
+#   kubectl --context kind-agentbe apply -f room/examples/k8s/rooms.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentbe
+---
+# The room creates and deletes sandbox pods, so it needs a service account with
+# exactly that and nothing more.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: room
+  namespace: agentbe
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sandbox-manager
+  namespace: agentbe
+rules:
+  # Deliberately minimal: no list/watch, no exec, no secrets. The room only ever
+  # addresses pods it created by name.
+  - apiGroups: [""]
+    resources: ["pods"]
+    # `list` is needed only for the startup orphan sweep, scoped by owner label.
+    verbs: ["create", "get", "list", "delete"]
+  # The agent-sandbox provider claims pre-warmed sandboxes instead of creating
+  # pods directly. Claims only — it never touches Sandboxes or the pool.
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
+    verbs: ["create", "get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: room-sandbox-manager
+  namespace: agentbe
+subjects:
+  - kind: ServiceAccount
+    name: room
+    namespace: agentbe
+roleRef:
+  kind: Role
+  name: sandbox-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: acme-principals
+  namespace: agentbe
+stringData:
+  # token -> principal id. Per-person tokens give real attribution AND
+  # per-person revocation (drop one entry, don't rotate a shared secret).
+  AGENTBE_PRINCIPALS: '{"tok-acme-ada":"ada@acme.com","tok-acme-grace":"grace@acme.com"}'
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: globex-principals
+  namespace: agentbe
+stringData:
+  AGENTBE_PRINCIPALS: '{"tok-globex-bob":"bob@globex.com"}'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: room-acme
+  namespace: agentbe
+spec:
+  # MUST stay 1: the session registry is in-process, so a second replica would
+  # serve requests for sessions it does not hold. Scaling needs sticky routing
+  # or an externalized registry first (spec 5.6).
+  replicas: 1
+  selector:
+    matchLabels: { app: room-acme }
+  template:
+    metadata:
+      labels: { app: room-acme, agentbe.room/component: room }
+    spec:
+      serviceAccountName: room
+      containers:
+        - name: room
+          image: agentbe-room:dev
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8080 }]
+          env:
+            - { name: AGENTBE_ROOM, value: acme }
+            - { name: AGENTBE_HTTP_PORT, value: "8080" }
+            - { name: AGENTBE_HTTP_HOST, value: 0.0.0.0 }
+            - { name: AGENTBE_EMBEDDER, value: hash }
+            - { name: AGENTBE_IMAGE_EMBEDDER, value: none }
+            - { name: AGENTBE_SEED_DIR, value: /seed }
+            # Sandbox: one pod per session. Auto-detection picks k8s in-cluster,
+            # but pin it so a misconfiguration fails loudly instead of silently
+            # degrading to an unsandboxed shared filesystem.
+            - { name: AGENTBE_SANDBOX, value: agent-sandbox }
+            - { name: AGENTBE_WARM_POOL, value: agentbe-pool }
+            - { name: AGENTBE_DAEMON_IMAGE, value: "agentbe-daemon:arm64-dev" }
+            - { name: AGENTBE_SANDBOX_NAMESPACE, value: agentbe }
+          envFrom:
+            - secretRef: { name: acme-principals }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: seed, mountPath: /seed }
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            initialDelaySeconds: 3
+            periodSeconds: 3
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: seed
+          configMap: { name: acme-seed }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: room-acme
+  namespace: agentbe
+spec:
+  selector: { app: room-acme }
+  ports: [{ port: 8080, targetPort: 8080 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: room-globex
+  namespace: agentbe
+spec:
+  # MUST stay 1: the session registry is in-process, so a second replica would
+  # serve requests for sessions it does not hold. Scaling needs sticky routing
+  # or an externalized registry first (spec 5.6).
+  replicas: 1
+  selector:
+    matchLabels: { app: room-globex }
+  template:
+    metadata:
+      labels: { app: room-globex, agentbe.room/component: room }
+    spec:
+      serviceAccountName: room
+      containers:
+        - name: room
+          image: agentbe-room:dev
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8080 }]
+          env:
+            - { name: AGENTBE_ROOM, value: globex }
+            - { name: AGENTBE_HTTP_PORT, value: "8080" }
+            - { name: AGENTBE_HTTP_HOST, value: 0.0.0.0 }
+            - { name: AGENTBE_EMBEDDER, value: hash }
+            - { name: AGENTBE_IMAGE_EMBEDDER, value: none }
+            - { name: AGENTBE_SEED_DIR, value: /seed }
+            # Deliberately the raw-pod provider: keeps K8sWorkspaceProvider
+            # exercised end-to-end alongside acme's agent-sandbox path.
+            - { name: AGENTBE_SANDBOX, value: k8s }
+            - { name: AGENTBE_DAEMON_IMAGE, value: "agentbe-daemon:arm64-dev" }
+            - { name: AGENTBE_SANDBOX_NAMESPACE, value: agentbe }
+          envFrom:
+            - secretRef: { name: globex-principals }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: seed, mountPath: /seed }
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            initialDelaySeconds: 3
+            periodSeconds: 3
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: seed
+          configMap: { name: globex-seed }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: room-globex
+  namespace: agentbe
+spec:
+  selector: { app: room-globex }
+  ports: [{ port: 8080, targetPort: 8080 }]

@@ -9,7 +9,8 @@
 # Usage:
 #   make dev                 - Docker daemon (default)
 #   make dev-local           - Local daemon (no Docker)
-#   make example-nextjs      - Docker daemon + NextJS
+#   make nextjs              - Docker daemon + NextJS
+#   make k8s-forward         - port-forwards to the k8s rooms
 #
 # Or directly:
 #   mprocs                           - agentbe-daemon (Docker)
@@ -17,6 +18,7 @@
 #   NEXTJS=1 mprocs                  - agentbe-daemon + NextJS
 #   PYBASIC=1 mprocs                 - agentbe-daemon + PyBasic
 #   LOCAL=1 NEXTJS=1 mprocs          - agentbe-local + NextJS
+#   K8S=1 mprocs                     - port-forwards to the k8s rooms (make k8s-forward)
 #
 # TUI shortcuts:
 #   Tab/Shift+Tab - cycle processes
@@ -26,13 +28,36 @@
 #   q - quit
 
 procs:
+  # Port-forwards to the k8s document rooms (see room/examples/k8s/).
+  # Enable with K8S=1, or `make k8s-forward`.
+  #
+  # These are supervised rather than backgrounded because a port-forward dies
+  # whenever its room pod restarts — silently, which makes a redeploy look like
+  # a room failure. Here the process shows as stopped and `r` restarts it.
+  room-acme-forward:
+    shell: |
+      [ -z "$K8S" ] && echo "Skipped (set K8S=1 to enable)" && exit 0
+      exec kubectl --context kind-agentbe -n agentbe port-forward svc/room-acme 18861:8080
+    stop: "SIGTERM"
+    env:
+      FORCE_COLOR: "1"
+
+  room-globex-forward:
+    shell: |
+      [ -z "$K8S" ] && echo "Skipped (set K8S=1 to enable)" && exit 0
+      exec kubectl --context kind-agentbe -n agentbe port-forward svc/room-globex 18862:8080
+    stop: "SIGTERM"
+    env:
+      FORCE_COLOR: "1"
+
   # Local daemon — runs directly on host, no Docker
   # Enable with LOCAL=1
   agentbe-local:
     shell: |
+      [ -n "$K8S" ] && echo "Skipped (K8S=1 session)" && exit 0
       [ -z "$LOCAL" ] && echo "Skipped (set LOCAL=1 to enable)" && exit 0
       echo "Starting agentbe-daemon locally (tsx --watch)..."
-      cd typescript
+      cd packages/agent-backend/typescript
       exec npx tsx --watch src/cli.ts daemon \
         --rootDir /tmp/agent-backend-workspace \
         --local-only
@@ -45,6 +70,7 @@ procs:
   # Mounts TypeScript source into container; tsx --watch handles hot-reload
   agentbe-daemon:
     shell: |
+      [ -n "$K8S" ] && echo "Skipped (K8S=1 session)" && exit 0
       [ "$LOCAL" = "1" ] && echo "Skipped (LOCAL=1, using agentbe-local)" && exit 0
 
       # Trap signals to properly stop container
@@ -73,7 +99,7 @@ procs:
         -p 3001:3001 \
         -p 2222:22 \
         -v "$(pwd)/tmp/deploy:/app/agent-backend:ro" \
-        -v "$(pwd)/typescript/src:/app/agent-backend/src:ro" \
+        -v "$(pwd)/packages/agent-backend/typescript/src:/app/agent-backend/src:ro" \
         -e USE_LOCAL_BUILD=1 \
         --env-file "$ENV_FILE" \
         agentbe-daemon:latest &

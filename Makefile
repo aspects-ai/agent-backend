@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-local nextjs tsbasic pybasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
+.PHONY: help install dev dev-local demo demo-test rooms rooms-test k8s-up k8s-test k8s-forward k8s-down dev-down nextjs tsbasic pybasic build test clean typecheck lint lint-fix build-typescript build-python test-typescript test-python test-unit typecheck-typescript typecheck-python lint-typescript lint-python publish publish-typescript publish-python start-deploy-ui ci ci-fast sync-assets docker-build
 
 # Default target - show help
 .DEFAULT_GOAL := help
@@ -40,7 +40,7 @@ install: ## Install all dependencies
 	}
 	@echo "✓ All dependencies installed"
 
-dev: sync-assets ## Start dev environment (TS watch + NextJS + Docker daemon)
+dev: sync-assets ## Start dev environment (daemon in Docker; NEXTJS=1 adds the NextJS example)
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \
 		exit 1; \
@@ -58,7 +58,7 @@ dev: sync-assets ## Start dev environment (TS watch + NextJS + Docker daemon)
 		mprocs; \
 	fi
 
-dev-local: ## Start dev environment (local only, no Docker)
+dev-local: ## Start dev environment (daemon on the host, no Docker)
 	@command -v mprocs >/dev/null 2>&1 || { \
 		echo "Error: mprocs not installed. Run 'make install' first."; \
 		exit 1; \
@@ -66,6 +66,40 @@ dev-local: ## Start dev environment (local only, no Docker)
 	LOCAL=1 mprocs
 
 ##@ Examples
+
+demo: build-typescript ## Run the demo document-room MCP server over HTTP :8848 (PG=1 for pgvector)
+	@bash room/examples/demo-room/run.sh --http $(if $(filter 1,$(PG)),--pg,)
+
+demo-test: build-typescript ## Verify the demo room end-to-end over a real MCP connection (PG=1 for pgvector)
+	@node room/examples/demo-room/smoke.mjs --reset $(if $(filter 1,$(PG)),--pg,)
+
+rooms: build-typescript ## Run a multi-room deploy locally (one process per room: acme :8861, globex :8862; S3=1 for the S3 tier)
+	@bash room/examples/multi-room/run.sh $(if $(filter 1,$(S3)),--s3,)
+
+rooms-test: build-typescript ## Verify multi-room isolation: cross-room credentials, content, sandboxes (S3=1 for the S3 tier)
+	@node room/examples/multi-room/check.mjs --reset $(if $(filter 1,$(S3)),--s3,)
+
+k8s-up: ## Provision the local k8s room environment (kind + Calico + agent-sandbox + rooms)
+	@bash room/examples/k8s/up.sh $(if $(filter 1,$(SKIP_IMAGES)),--skip-images,)
+
+k8s-test: ## Verify the k8s deploy: room isolation, sandbox-per-session, cleanup
+	@node room/examples/k8s/check.mjs
+
+k8s-forward: ## Supervised port-forwards to the k8s rooms (mprocs; acme :18861, globex :18862)
+	@command -v mprocs >/dev/null 2>&1 || { echo "mprocs not installed. Run 'make install'."; exit 1; }
+	@K8S=1 mprocs
+
+k8s-down: ## Delete the local k8s cluster
+	@kind delete cluster --name agentbe
+
+dev-down: ## Stop all local dev infrastructure (k8s cluster + LocalStack + pgvector)
+	@echo "Deleting kind cluster (if present)..."
+	@kind delete cluster --name agentbe 2>/dev/null || true
+	@echo "Removing helper containers..."
+	@docker rm -f agentbe-localstack agentbe-pgvector 2>/dev/null || true
+	@echo "Removing any stray room sandboxes..."
+	@docker ps -aq --filter label=agentbe.room.sandbox | xargs -r docker rm -f >/dev/null 2>&1 || true
+	@echo "✓ Local dev infrastructure stopped"
 
 nextjs: sync-assets build-typescript ## Run NextJS demo app
 	@command -v mprocs >/dev/null 2>&1 || { \
@@ -98,14 +132,14 @@ test: test-typescript test-python ## Run all tests
 
 clean: ## Remove build artifacts and dependencies
 	@echo "Cleaning TypeScript packages..."
-	rm -rf typescript/dist typescript/node_modules
+	rm -rf packages/agent-backend/typescript/dist packages/agent-backend/typescript/node_modules
 	rm -rf examples/NextJS/dist examples/NextJS/.next examples/NextJS/node_modules
 	rm -rf examples/TSBasic/node_modules
 	rm -rf node_modules
 	@echo "Cleaning Python packages..."
 	rm -rf .venv dist
-	@if [ -d "python" ]; then \
-		cd python && rm -rf build *.egg-info .pytest_cache .mypy_cache __pycache__; \
+	@if [ -d "packages/agent-backend/python" ]; then \
+		cd packages/agent-backend/python && rm -rf build *.egg-info .pytest_cache .mypy_cache __pycache__; \
 	fi
 	@echo "Cleaning development artifacts..."
 	rm -rf tmp/
@@ -122,7 +156,7 @@ lint-fix: ## Auto-fix lint issues
 	@echo "Auto-fixing TypeScript..."
 	pnpm -r lint:fix || true
 	@echo "Auto-fixing Python..."
-	cd python && uv run ruff check --fix . || true
+	cd packages/agent-backend/python && uv run ruff check --fix . || true
 
 ##@ Language-Specific
 
@@ -140,7 +174,7 @@ test-typescript: ## Run TypeScript tests
 
 test-python: ## Run Python tests
 	@echo "Running Python tests..."
-	cd python && uv run pytest -m "not integration" --cov=agent_backend --cov-report=term-missing --cov-fail-under=80
+	cd packages/agent-backend/python && uv run pytest -m "not integration" --cov=agent_backend --cov-report=term-missing --cov-fail-under=80
 
 test-unit: ## Run unit tests only
 	@echo "Running unit tests..."
@@ -152,7 +186,7 @@ typecheck-typescript: ## Type check TypeScript packages
 
 typecheck-python: ## Type check Python package
 	@echo "Type checking Python package..."
-	cd python && uv run ty check
+	cd packages/agent-backend/python && uv run ty check
 
 lint-typescript: ## Lint TypeScript packages
 	@echo "Linting TypeScript packages..."
@@ -160,7 +194,7 @@ lint-typescript: ## Lint TypeScript packages
 
 lint-python: ## Lint Python package
 	@echo "Linting Python package..."
-	cd python && uv run ruff check .
+	cd packages/agent-backend/python && uv run ruff check .
 
 ##@ Publishing & CI
 
@@ -178,9 +212,9 @@ publish-python: build-python ## Publish Python package to PyPI
 start-deploy-ui: ## Cloud VM deployment UI
 	./manage.sh start-deploy-ui
 
-ci: install typecheck lint test ## Full CI pipeline
+ci: install build typecheck lint test ## Full CI pipeline
 
-ci-fast: typecheck test-unit ## Fast CI (typecheck + unit tests)
+ci-fast: build-typescript typecheck test-unit ## Fast CI (build + typecheck + unit tests)
 
 # --- Internal targets (not shown in help) ---
 
@@ -194,5 +228,5 @@ docker-build: ## Build agentbe-daemon Docker image
 	@echo "Building agent-backend TypeScript package..."
 	@pnpm --filter=agent-backend build
 	@echo "Building agentbe-daemon Docker image..."
-	@cd daemon/docker && \
+	@cd agentbe-daemon/docker && \
 		docker build -f Dockerfile -t agentbe-daemon:latest ../..

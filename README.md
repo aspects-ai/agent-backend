@@ -112,9 +112,10 @@ flowchart LR
   - [Security & Isolation](#security--isolation)
   - [Resource Cleanup](#resource-cleanup)
 - [Integration with Agent SDKs](#integration-with-agent-sdks)
+- [Agent Document Room](#agent-document-room)
 - [Examples](#examples)
 - [Deploying the Agent Backend Daemon](#deploying-the-agent-backend-daemon)
-- [Documentation](#documentation)
+- [Additional Documentation](#additional-documentation)
 - [Development](#development)
 - [License](#license)
 
@@ -511,7 +512,7 @@ mcp = await backend.get_mcp_client("users/user1/projects/my-app")
 
 Agent Backend provides automatic isolation for safe multi-tenant operations.
 
-**Isolation Levels:**
+#### Isolation Levels
 
 By default, `isolation: 'auto'` detects and uses the best available method:
 
@@ -666,6 +667,19 @@ Agent Backend integrates with leading AI agent frameworks via adapters that expo
 
 ---
 
+## Agent Document Room
+
+A multiplayer, versioned, semantically-searchable, multimodal document store with a sandbox attached, built on top of Agent Backend. Agents search a shared corpus, check out a working subset into a POSIX sandbox, run shell/code against it, and commit changes back as a new version -- all over MCP.
+
+```bash
+make demo       # boot a sample room's MCP server over HTTP :8848
+make demo-test  # verify it end to end over a real MCP connection
+```
+
+See [room/README.md](room/README.md) for the tool surface, [docs/room-architecture.md](docs/room-architecture.md) for the concepts, and [docs/room-deployment.md](docs/room-deployment.md) for deploying one.
+
+---
+
 ## Examples
 
 - **[NextJS Demo](examples/NextJS/README.md)** -- Full-featured web app with AI chat, file management, and code editing
@@ -684,20 +698,49 @@ See [docs/agentbe-daemon.md](./docs/agentbe-daemon.md) for setup, configuration,
 
 ## Additional Documentation
 
+**Agent Backend**
+
 - [Architecture](docs/architecture.md)
 - [Agent Backend Daemon](docs/agentbe-daemon.md)
 - [AI SDK Integration](docs/ai-sdk.md)
 - [Connection Pooling](docs/connection-pooling.md)
 - [Security & Isolation](docs/security.md)
+- [Path Handling](docs/filepaths.md)
 - [Performance](docs/performance.md)
-- [TypeScript Client Library](typescript/README.md)
-- [Python Client Library](python/README.md)
+- [TypeScript Client Library](packages/agent-backend/typescript/README.md)
+- [Python Client Library](packages/agent-backend/python/README.md)
+
+**Agent Document Room**
+
+- [Room Overview & MCP Tool Surface](room/README.md)
+- [Room Architecture](docs/room-architecture.md)
+- [Room Deployment](docs/room-deployment.md)
+- [Room Catalog Adapters](docs/room-catalogs.md)
 
 ---
 
 ## Development
 
-This is a monorepo containing multiple packages and languages. We use **spec-based development** to enable rapid AI-based coding. The entirety of the functionality of each package should be described in the spec files in `spec/`, and changes should flow from there.
+This is a monorepo containing multiple packages and languages:
+
+| Path | Contents |
+|------|----------|
+| `packages/agent-backend/typescript` | `agent-backend` npm package -- client library + `agentbe-daemon` CLI |
+| `packages/agent-backend/python` | `agent-backend` PyPI package -- client library |
+| `packages/agent-backend/opensdd` | Behavioral specs for the client libraries and daemon |
+| `agentbe-daemon` | Docker image, cloud deploy tooling, and VM startup scripts for the daemon |
+| `room` | `@agentbe/room` -- the Agent Document Room service and its MCP server |
+| `packages/versioned-store` | Content-addressed, versioned document store |
+| `packages/index-sync` | Keeps the search index in step with the store |
+| `packages/embeddings` | Text and cross-modal (CLIP) embedding providers |
+| `packages/ingestion` | Document parsing and chunking |
+| `packages/vector-pg` | pgvector-backed search index |
+| `examples` | Runnable demo apps (NextJS, TSBasic, PyBasic) |
+
+We use **spec-based development** to enable rapid AI-based coding. The behavior of
+the client libraries and daemon is described in
+[packages/agent-backend/opensdd/spec.md](packages/agent-backend/opensdd/spec.md),
+and changes flow from there -- update the spec first, then the implementation.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development setup, workflows, Docker commands, and troubleshooting.
 

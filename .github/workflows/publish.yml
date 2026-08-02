@@ -16,7 +16,7 @@ jobs:
       - name: Check if versions are already published
         id: check
         run: |
-          VERSION=$(jq -r '.version' typescript/package.json)
+          VERSION=$(jq -r '.version' packages/agent-backend/typescript/package.json)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           if npm view "agent-backend@$VERSION" version 2>/dev/null; then
@@ -58,15 +58,15 @@ jobs:
         run: npm install -g npm@11.11.1
 
       - name: Install dependencies
-        working-directory: typescript
+        working-directory: packages/agent-backend/typescript
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        working-directory: typescript
+        working-directory: packages/agent-backend/typescript
         run: pnpm run build
 
       - name: Publish to npm
-        working-directory: typescript
+        working-directory: packages/agent-backend/typescript
         run: npm publish --provenance --access public
 
   publish-python:
@@ -119,6 +119,7 @@ jobs:
           gh auth setup-git
 
       - name: Publish OpenSDD spec
+        working-directory: packages/agent-backend
         env:
           GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
         run: opensdd publish --branch "agent-backend/${{ needs.check-version.outputs.version }}"
