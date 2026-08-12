@@ -35,7 +35,7 @@ export default defineConfig({
         '@modelcontextprotocol/sdk/client/stdio.js',
         '@modelcontextprotocol/sdk/client/streamableHttp.js',
         '@ai-sdk/mcp',
-        'express', 'zod', 'minimatch'
+        'express', 'zod', 'minimatch', 'diff'
       ],
       output: {
         exports: 'auto',

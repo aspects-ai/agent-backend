@@ -1,6 +1,7 @@
 import type { FileBasedBackend } from '../../../src/types.js'
 import { describe, expect, it, vi } from 'vitest'
 import { AgentBackendMCPServer } from '../../../src/server/AgentBackendMCPServer.js'
+import { createUnifiedDiff, DEFAULT_DIFF_BUDGET } from '../../../src/server/tools.js'
 
 interface ToolEntry {
   name: string
@@ -120,6 +121,127 @@ describe('edit_file — uniqueness + replaceAll', () => {
     expect(backend.write).not.toHaveBeenCalled()
     expect(result.content[0].text.startsWith('[DRY RUN]')).toBe(true)
   })
+})
+
+// ─────────────────────────────────────────────────────────────────
+// edit_file — diff rendering
+//
+// Regression coverage for a hang: the previous hand-rolled differ could leave
+// both cursors parked and spin forever at 100% CPU, blocking the daemon's only
+// thread for every session it served. Every test here is time-bounded so a
+// regression fails the suite instead of hanging it.
+// ─────────────────────────────────────────────────────────────────
+
+describe('edit_file — diff rendering terminates', () => {
+  const line = (n: number) => `  "field${n}": "value${n}",`
+
+  it('renders an adjacent transposition instead of spinning', () => {
+    // The minimal non-terminating input for the old differ: "B" reappears within
+    // 10 lines on the modified side and "C" within 10 on the original side, so
+    // neither of its lookahead heuristics would advance its cursor.
+    const result = createUnifiedDiff(
+      ['a', 'B', 'C', 'z'].join('\n'),
+      ['a', 'C', 'B', 'z'].join('\n'),
+      'f.txt',
+    )
+    expect(result.degraded).toBe(false)
+    expect(result.text).toContain('@@')
+    // The move is rendered as the minimal edit: B is lifted past C, which stays
+    // as context. The old differ produced no output at all here.
+    expect(result.text).toMatch(/^-B$/m)
+    expect(result.text).toMatch(/^\+B$/m)
+    expect(result.text).toMatch(/^ C$/m)
+  }, 5000)
+
+  it('renders a reorder inside repeated boilerplate', () => {
+    // Structured text with recurring lines ("},", '"type": "string"') is what
+    // made this fire readily in practice.
+    const block = (name: string) => [
+      '    {',
+      `      "name": "${name}",`,
+      '      "type": "string",',
+      '      "required": true',
+      '    },',
+    ]
+    const original = [...block('alpha'), ...block('beta'), ...block('gamma')].join('\n')
+    const modified = [...block('alpha'), ...block('gamma'), ...block('beta')].join('\n')
+
+    const result = createUnifiedDiff(original, modified, 'schema.json')
+    expect(result.degraded).toBe(false)
+    expect(result.text).toContain('--- schema.json')
+    expect(result.text).toContain('+++ schema.json')
+    expect(result.text).toContain('"name": "gamma"')
+  }, 5000)
+
+  it('diffs a 1300-line file well inside the budget', () => {
+    // The size that hung the daemon in the field. A correct differ is ~1ms here,
+    // so the budget should never come near being consulted.
+    const original = Array.from({ length: 1320 }, (_, n) => line(n)).join('\n')
+    const modified = original
+      .replace(line(3), '  "field3": "CHANGED",')
+      .replace(line(900), '  "field900": "ALSO CHANGED",')
+
+    const start = Date.now()
+    const result = createUnifiedDiff(original, modified, 'big.json')
+    const elapsed = Date.now() - start
+
+    expect(result.degraded).toBe(false)
+    expect(elapsed).toBeLessThan(DEFAULT_DIFF_BUDGET.timeoutMs)
+    expect(result.text).toContain('+  "field3": "CHANGED",')
+    expect(result.text).toContain('+  "field900": "ALSO CHANGED",')
+    // Two isolated changes 900 lines apart belong in separate hunks.
+    expect(result.text.match(/^@@/gm)?.length).toBe(2)
+  }, 5000)
+
+  it('emits no hunks when the content is unchanged', () => {
+    const result = createUnifiedDiff('a\nb\n', 'a\nb\n', 'f.txt')
+    expect(result.degraded).toBe(false)
+    expect(result.text).not.toContain('@@')
+  }, 5000)
+
+  it('reports every edit through the tool handler without hanging', async () => {
+    const backend = makeBackend({
+      read: vi.fn().mockResolvedValue('a\nB\nC\nz\n'),
+    })
+    const t = tool(backend, 'edit_file')
+    const result = await t.handler(
+      { path: 'a.txt', edits: [{ oldText: 'B\nC', newText: 'C\nB' }] },
+      {},
+    )
+    expect(backend.write).toHaveBeenCalledWith('a.txt', 'a\nC\nB\nz\n')
+    expect(result.content[0].text).toContain('@@')
+  }, 5000)
+})
+
+describe('edit_file — diff budget', () => {
+  it('degrades instead of throwing when the edit-length cap is hit', () => {
+    // maxEditLength 1 cannot cover a substitution (one delete + one insert).
+    const result = createUnifiedDiff('a\nb\nc\n', 'a\nCHANGED\nc\n', 'f.txt', {
+      timeoutMs: DEFAULT_DIFF_BUDGET.timeoutMs,
+      maxEditLength: 1,
+    })
+    expect(result.degraded).toBe(true)
+    expect(result.text).toContain('--- f.txt')
+    expect(result.text).toContain('+++ f.txt')
+    expect(result.text).toContain('[diff omitted:')
+    expect(result.text).toContain('1 line edits')
+    expect(result.text).toContain('4 to 4 lines')
+  }, 5000)
+
+  it('degrades instead of throwing when the deadline has passed', () => {
+    // A deadline already in the past — the budget is checked inside the diff
+    // loop, so it aborts on the first iteration rather than running to
+    // completion the way an external timeout would have to.
+    const result = createUnifiedDiff('a\nb\n', 'a\nc\n', 'f.txt', {
+      timeoutMs: -1,
+      maxEditLength: DEFAULT_DIFF_BUDGET.maxEditLength,
+    })
+    expect(result.degraded).toBe(true)
+    expect(result.text).toContain('[diff omitted:')
+  }, 5000)
+
+  // The handler's behaviour when the budget is breached is covered in
+  // edit-file-diff-budget.test.ts, which stubs the renderer to force it.
 })
 
 // ─────────────────────────────────────────────────────────────────

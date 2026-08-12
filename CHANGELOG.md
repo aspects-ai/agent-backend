@@ -39,8 +39,28 @@ for the updated contract.
 - `search_files` accepts an optional `sortBy: "path" | "mtime"` parameter.
   `mtime` sorts results newest-first, matching Claude Code's Glob behavior.
 
+### Fixed
+
+- `edit_file` could hang the daemon indefinitely at 100% CPU. Its hand-rolled
+  unified-diff renderer advanced its two cursors only inside a pair of 10-line
+  lookahead scans, and when both scans declined to advance — which any adjacent
+  transposition satisfies, and which repeated boilerplate lines in structured
+  text trigger readily — the loop re-ran identically forever. Because rendering
+  is synchronous, this blocked the daemon's only thread: every session it served
+  went unresponsive, and the process stayed pinned after the caller
+  disconnected. Diff rendering now delegates to the `diff` library, which
+  terminates for all inputs and also fixes silently wrong hunks on larger
+  reorderings.
+
 ### Changed
 
+- `edit_file` diffs now carry standard `@@` hunk headers with 3 lines of
+  context, and rendering is bounded by a budget enforced inside the diff loop
+  (15 s wall clock, 20,000 line-level edits). On breach the tool returns the
+  file headers plus a `[diff omitted: ...]` marker instead of blocking. The
+  write is now performed before the diff is rendered, so a degraded or failed
+  render can never discard an edit that has already been applied; in that case
+  the result leads with a line confirming the edit landed.
 - `read_text_file` now paginates by default (first 1,000 lines) and truncates
   lines longer than 2,000 chars. Use `offset` and `limit` to read further.
   Full-file reads without paging will see a trailing footer indicating more
