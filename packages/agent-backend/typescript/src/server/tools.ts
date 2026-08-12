@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Backend, FileBasedBackend } from '../types.js'
+import { createTwoFilesPatch, FILE_HEADERS_ONLY } from 'diff'
 import { minimatch } from 'minimatch'
 import * as path from 'path'
 import { z } from 'zod'
@@ -56,87 +57,83 @@ export const DEFAULT_EXCLUDE_PATTERNS = [
 ]
 
 /**
- * Create a simple unified diff between two strings
- * This is a lightweight implementation - the official server uses the 'diff' library
+ * Budget for rendering an `edit_file` diff. Rendering is synchronous and runs on
+ * the daemon's only thread, so the budget MUST be enforced *inside* the diff
+ * loop: an external timeout (`Promise.race`, `setTimeout`, an `AbortSignal`
+ * around the handler) cannot fire while the loop holds the thread, and an
+ * unbounded render takes down every session the daemon serves, not just the
+ * calling one. `diff` checks both of these once per iteration of its main
+ * edit-length loop. See opensdd/daemon.md for the behavioral contract.
  */
-function createUnifiedDiff(original: string, modified: string, filepath: string): string {
-  const originalLines = original.split('\n')
-  const modifiedLines = modified.split('\n')
+export const DIFF_TIMEOUT_MS = 15_000
+export const DIFF_MAX_EDIT_LENGTH = 20_000
+export const DIFF_CONTEXT_LINES = 3
 
-  const lines: string[] = [
-    `--- ${filepath}`,
-    `+++ ${filepath}`,
-  ]
+export interface DiffBudget {
+  /** Wall-clock deadline, in ms, checked once per iteration of the diff loop. */
+  timeoutMs: number
+  /** Cap on line-level edits, checked once per iteration of the diff loop. */
+  maxEditLength: number
+}
 
-  // Simple diff: show context around changes
-  let i = 0
-  let j = 0
+export const DEFAULT_DIFF_BUDGET: DiffBudget = {
+  timeoutMs: DIFF_TIMEOUT_MS,
+  maxEditLength: DIFF_MAX_EDIT_LENGTH,
+}
 
-  while (i < originalLines.length || j < modifiedLines.length) {
-    // Skip matching lines
-    while (i < originalLines.length && j < modifiedLines.length && originalLines[i] === modifiedLines[j]) {
-      i++
-      j++
-    }
+export interface UnifiedDiff {
+  text: string
+  /** True when the budget was exceeded and `text` carries the omission marker. */
+  degraded: boolean
+}
 
-    // If we're at the end, break
-    if (i >= originalLines.length && j >= modifiedLines.length) break
-
-    // Find extent of difference
-    const diffStartI = i
-    const diffStartJ = j
-
-    // Count removed lines (in original but changed)
-    let removedCount = 0
-    while (i < originalLines.length && (j >= modifiedLines.length || originalLines[i] !== modifiedLines[j])) {
-      // Check if this line appears later in modified
-      let found = false
-      for (let k = j; k < Math.min(j + 10, modifiedLines.length); k++) {
-        if (originalLines[i] === modifiedLines[k]) {
-          found = true
-          break
-        }
-      }
-      if (found) break
-      i++
-      removedCount++
-    }
-
-    // Count added lines (in modified but not original)
-    let addedCount = 0
-    const tempJ = j
-    while (j < modifiedLines.length && (diffStartI + removedCount >= originalLines.length || modifiedLines[j] !== originalLines[diffStartI + removedCount])) {
-      let found = false
-      for (let k = diffStartI + removedCount; k < Math.min(diffStartI + removedCount + 10, originalLines.length); k++) {
-        if (modifiedLines[j] === originalLines[k]) {
-          found = true
-          break
-        }
-      }
-      if (found) break
-      j++
-      addedCount++
-    }
-
-    if (removedCount > 0 || addedCount > 0) {
-      // Add hunk header
-      const origStart = diffStartI + 1
-      const modStart = diffStartJ + 1
-      lines.push(`@@ -${origStart},${removedCount} +${modStart},${addedCount} @@`)
-
-      // Add removed lines
-      for (let k = 0; k < removedCount; k++) {
-        lines.push(`-${originalLines[diffStartI + k]}`)
-      }
-
-      // Add added lines
-      for (let k = 0; k < addedCount; k++) {
-        lines.push(`+${modifiedLines[tempJ + k]}`)
-      }
-    }
+/**
+ * Render a unified diff between two strings.
+ *
+ * Delegates the line matching to the `diff` library, as the official filesystem
+ * server does. The previous hand-rolled version could leave both cursors parked
+ * — its two lookahead heuristics each declined to advance when the diverging
+ * line reappeared within 10 lines of the other side, which any adjacent
+ * transposition satisfies — and then spun forever at 100% CPU, hanging the
+ * daemon. It also mis-rendered larger reorderings when it did terminate.
+ */
+export function createUnifiedDiff(
+  original: string,
+  modified: string,
+  filepath: string,
+  budget: DiffBudget = DEFAULT_DIFF_BUDGET,
+): UnifiedDiff {
+  let patch: string | undefined
+  try {
+    patch = createTwoFilesPatch(filepath, filepath, original, modified, undefined, undefined, {
+      context: DIFF_CONTEXT_LINES,
+      timeout: budget.timeoutMs,
+      maxEditLength: budget.maxEditLength,
+      headerOptions: FILE_HEADERS_ONLY,
+    })
+  } catch {
+    // Rendering is best-effort: the caller's edit has already been applied, so a
+    // render that blows up must not take the tool result down with it.
+    patch = undefined
   }
 
-  return lines.join('\n')
+  if (patch !== undefined) {
+    return { text: patch, degraded: false }
+  }
+
+  // Budget exceeded (or render threw). Describe the change rather than block on
+  // it — a caller that gets no result at all is strictly worse off.
+  const before = formatCount(original.split('\n').length)
+  const after = formatCount(modified.split('\n').length)
+  return {
+    text: [
+      `--- ${filepath}`,
+      `+++ ${filepath}`,
+      `[diff omitted: rendering exceeded the diff budget (${budget.timeoutMs / 1000}s / `
+      + `${formatCount(budget.maxEditLength)} line edits); file went from ${before} to ${after} lines]`,
+    ].join('\n'),
+    degraded: true,
+  }
 }
 
 /**
@@ -432,7 +429,8 @@ export function registerFilesystemTools(server: McpServer, getBackend: BackendGe
         return haystack.split(needle).length - 1
       }
 
-      let modified = normalizeLineEndings(original)
+      const normalizedOriginal = normalizeLineEndings(original)
+      let modified = normalizedOriginal
 
       for (let i = 0; i < edits.length; i++) {
         const edit = edits[i]
@@ -453,17 +451,25 @@ export function registerFilesystemTools(server: McpServer, getBackend: BackendGe
           : modified.replace(normalizedOld, normalizedNew)
       }
 
-      // Generate unified diff
-      const diff = createUnifiedDiff(normalizeLineEndings(original), modified, filePath)
-
-      if (!dryRun && modified !== normalizeLineEndings(original)) {
+      // Write before rendering the diff. Rendering is bounded but can still
+      // degrade, and an edit that has already been computed must never be lost
+      // to the cost of describing it.
+      const changed = modified !== normalizedOriginal
+      if (!dryRun && changed) {
         await backend.write(filePath, modified)
       }
+
+      const { text: diff, degraded } = createUnifiedDiff(normalizedOriginal, modified, filePath)
+
+      // On a degraded render the diff no longer shows the edit landed, so say so.
+      const applied = degraded && !dryRun && changed
+        ? `Applied ${edits.length} edit${edits.length === 1 ? '' : 's'} to ${filePath}\n`
+        : ''
 
       return {
         content: [{
           type: 'text',
-          text: dryRun ? `[DRY RUN]\n${diff}` : diff
+          text: dryRun ? `[DRY RUN]\n${diff}` : `${applied}${diff}`
         }]
       }
     }

@@ -44,13 +44,14 @@
     "url": "git+https://github.com/deepagents-ai/agent-backend.git"
   },
   "bugs": {
-    "url": "https://github.com/agent-backend/agent-backend/issues"
+    "url": "https://github.com/deepagents-ai/agent-backend/issues"
   },
-  "homepage": "https://github.com/agent-backend/agent-backend#readme",
+  "homepage": "https://github.com/deepagents-ai/agent-backend#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.0",
     "@types/minimatch": "^5.1.2",
     "buffer": "^6.0.3",
+    "diff": "^8.0.2",
     "express": "^5.1.0",
     "hono": "^4.11.7",
     "minimatch": "^10.1.1",

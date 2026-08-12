@@ -136,6 +136,9 @@ importers:
       buffer:
         specifier: ^6.0.3
         version: 6.0.3
+      diff:
+        specifier: ^8.0.2
+        version: 8.0.4
       express:
         specifier: ^5.1.0
         version: 5.2.1
