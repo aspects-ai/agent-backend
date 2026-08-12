@@ -95,6 +95,12 @@ publish_package() {
   sed -i '' "s/^__version__ = \".*\"/__version__ = \"$NEW_VERSION\"/" "$PY_INIT"
   echo "Updated $PY_TOML and $PY_INIT to $NEW_VERSION"
 
+  # 2a. Refresh uv.lock so the bumped version lands in the lock. CI runs
+  # `uv sync --locked`, which fails if the lock is stale.
+  echo "Refreshing uv.lock..."
+  uv lock
+  echo ""
+
   # 2b. Sync OpenSDD spec version
   local OPENSDD_JSON="$SCRIPT_DIR/packages/agent-backend/opensdd.json"
   if [[ -f "$OPENSDD_JSON" ]]; then
@@ -117,7 +123,7 @@ publish_package() {
   echo "Creating release branch: $BRANCH"
   git checkout -b "$BRANCH"
 
-  git add "$TS_PKG" "$PY_TOML" "$PY_INIT" "$OPENSDD_JSON"
+  git add "$TS_PKG" "$PY_TOML" "$PY_INIT" "$OPENSDD_JSON" "$SCRIPT_DIR/uv.lock"
   git commit -m "chore: bump version to v$NEW_VERSION"
 
   echo "Pushing branch..."
