@@ -41,7 +41,6 @@ remote/deploy-tool/.env
 
 # Python
 .venv/
-uv.lock
 *__pycache__
 __pycache__/
 *.egg-info
