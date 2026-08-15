@@ -861,9 +861,9 @@ export function registerGrepTool(server: McpServer, getBackend: BackendGetter): 
           .describe('"files_with_matches" (default) returns matching paths; "count" returns per-file match counts; "content" returns matching lines.'),
         caseInsensitive: z.boolean().optional().describe('Case-insensitive matching (rg -i).'),
         multiline: z.boolean().optional().describe('Allow patterns to match across newlines (rg -U --multiline-dotall).'),
-        contextBefore: z.number().int().min(0).optional().describe('Lines of context before each match (rg -B). Content mode only.'),
-        contextAfter: z.number().int().min(0).optional().describe('Lines of context after each match (rg -A). Content mode only.'),
-        contextAround: z.number().int().min(0).optional().describe('Lines of context around each match (rg -C). Content mode only. Mutually exclusive with contextBefore/contextAfter.'),
+        contextBefore: z.number().int().min(0).optional().describe('Lines of context before each match (rg -B). Use 0 for none. Ignored outside content mode.'),
+        contextAfter: z.number().int().min(0).optional().describe('Lines of context after each match (rg -A). Use 0 for none. Ignored outside content mode.'),
+        contextAround: z.number().int().min(0).optional().describe('Lines of context on both sides of each match (rg -C). Use 0 for none. Ignored outside content mode. An explicit contextBefore/contextAfter overrides this for that side, exactly as rg does.'),
         lineNumbers: z.boolean().optional().describe('Prefix content-mode output with line numbers (rg -n). Ignored for other output modes.'),
         headLimit: z.number().int().positive().optional().describe('Cap result to the first N output lines (applied after search).'),
       },
@@ -879,12 +879,13 @@ export function registerGrepTool(server: McpServer, getBackend: BackendGetter): 
 
       const outputMode = outputModeParam ?? 'files_with_matches'
 
-      if (contextAround != null && (contextBefore != null || contextAfter != null)) {
-        throw new Error('contextAround is mutually exclusive with contextBefore/contextAfter')
-      }
-      if (outputMode !== 'content' && (contextBefore != null || contextAfter != null || contextAround != null)) {
-        throw new Error('context parameters are only valid with outputMode: "content"')
-      }
+      // Models fill every optional field in a schema with a neutral value, so the
+      // presence of a context parameter is not a request for context. Resolve the
+      // three the way rg itself does — an explicit -B/-A wins over -C for that
+      // side — instead of rejecting combinations, and ignore them outside content
+      // mode the same way lineNumbers is ignored.
+      const before = contextBefore ?? contextAround
+      const after = contextAfter ?? contextAround
 
       const rgArgs: string[] = ['--color=never', '--no-heading', '--with-filename']
       if (caseInsensitive) rgArgs.push('-i')
@@ -894,10 +895,9 @@ export function registerGrepTool(server: McpServer, getBackend: BackendGetter): 
       else if (outputMode === 'count') rgArgs.push('-c')
       else if (outputMode === 'content' && lineNumbers) rgArgs.push('-n')
 
-      if (contextAround != null) rgArgs.push('-C', String(contextAround))
-      else {
-        if (contextBefore != null) rgArgs.push('-B', String(contextBefore))
-        if (contextAfter != null) rgArgs.push('-A', String(contextAfter))
+      if (outputMode === 'content') {
+        if (before) rgArgs.push('-B', String(before))
+        if (after) rgArgs.push('-A', String(after))
       }
 
       if (glob) rgArgs.push('--glob', glob)

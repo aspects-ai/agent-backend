@@ -32,8 +32,11 @@ for the updated contract.
   support `exec` (i.e. not the memory backend). Parameters mirror Claude Code's
   Grep tool: `pattern`, `path`, `glob`, `type`, `outputMode`, `caseInsensitive`,
   `multiline`, `contextBefore`/`contextAfter`/`contextAround`, `lineNumbers`,
-  `headLimit`. Requires `rg` on the host; the `agentbe-daemon` Docker image
-  already includes it.
+  `headLimit`. The three context parameters may be combined freely and resolve
+  the way `rg` itself resolves them — an explicit `contextBefore`/`contextAfter`
+  wins over `contextAround` for that side — and are ignored outside
+  `outputMode: "content"` rather than rejected. Requires `rg` on the host; the
+  `agentbe-daemon` Docker image already includes it.
 - `edit_file` edits now accept an optional `replaceAll` per-edit flag for bulk
   renames.
 - `search_files` accepts an optional `sortBy: "path" | "mtime"` parameter.
