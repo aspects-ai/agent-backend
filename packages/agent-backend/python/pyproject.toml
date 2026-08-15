@@ -1,6 +1,6 @@
 [project]
 name = "agent-backend"
-version = "0.11.1"
+version = "0.11.2"
 description = "A distributed, scalable filesystem backend for deep AI agents, backed by blob storage"
 readme = "README.md"
 requires-python = ">=3.11"

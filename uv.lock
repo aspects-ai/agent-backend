@@ -16,7 +16,7 @@ members = [
 
 [[package]]
 name = "agent-backend"
-version = "0.11.1"
+version = "0.11.2"
 source = { editable = "packages/agent-backend/python" }
 dependencies = [
     { name = "asyncssh" },
