@@ -358,25 +358,61 @@ describe('grep — ripgrep shell-out', () => {
     expect(cmd).toContain("'-U'")
     expect(cmd).toContain("'--multiline-dotall'")
     expect(cmd).toContain("'-n'")
-    expect(cmd).toContain("'-C' '2'")
+    expect(cmd).toContain("'-B' '2'")
+    expect(cmd).toContain("'-A' '2'")
     expect(cmd).toContain("'--glob' '*.ts'")
     expect(cmd).toContain("'src'")
   })
 
-  it('rejects context params with non-content output mode', async () => {
-    const backend = makeBackend({ exec: vi.fn() })
+  it('ignores context params outside content output mode', async () => {
+    const exec = vi.fn().mockResolvedValue('')
+    const backend = makeBackend({ exec })
     const t = tool(backend, 'grep')
-    await expect(
-      t.handler({ pattern: 'x', contextBefore: 3 }, {}),
-    ).rejects.toThrow(/context parameters/)
+    await t.handler({ pattern: 'x', contextBefore: 3, contextAround: 2 }, {})
+
+    const cmd = exec.mock.calls[0][0] as string
+    expect(cmd).not.toContain("'-B'")
+    expect(cmd).not.toContain("'-A'")
+    expect(cmd).not.toContain("'-C'")
   })
 
-  it('rejects contextAround combined with contextBefore/contextAfter', async () => {
-    const backend = makeBackend({ exec: vi.fn() })
+  it('lets an explicit contextBefore/contextAfter win over contextAround', async () => {
+    const exec = vi.fn().mockResolvedValue('')
+    const backend = makeBackend({ exec })
     const t = tool(backend, 'grep')
-    await expect(
-      t.handler({ pattern: 'x', outputMode: 'content', contextAround: 2, contextBefore: 1 }, {}),
-    ).rejects.toThrow(/mutually exclusive/)
+    await t.handler({
+      pattern: 'x', outputMode: 'content', contextBefore: 4, contextAfter: 16, contextAround: 0,
+    }, {})
+
+    const cmd = exec.mock.calls[0][0] as string
+    expect(cmd).toContain("'-B' '4'")
+    expect(cmd).toContain("'-A' '16'")
+  })
+
+  it('falls back to contextAround for the side left unspecified', async () => {
+    const exec = vi.fn().mockResolvedValue('')
+    const backend = makeBackend({ exec })
+    const t = tool(backend, 'grep')
+    await t.handler({
+      pattern: 'x', outputMode: 'content', contextAround: 3, contextBefore: 0,
+    }, {})
+
+    const cmd = exec.mock.calls[0][0] as string
+    expect(cmd).not.toContain("'-B'")
+    expect(cmd).toContain("'-A' '3'")
+  })
+
+  it('treats an all-zero context request as no context', async () => {
+    const exec = vi.fn().mockResolvedValue('')
+    const backend = makeBackend({ exec })
+    const t = tool(backend, 'grep')
+    await t.handler({
+      pattern: 'x', outputMode: 'content', contextBefore: 0, contextAfter: 0, contextAround: 0,
+    }, {})
+
+    const cmd = exec.mock.calls[0][0] as string
+    expect(cmd).not.toContain("'-B'")
+    expect(cmd).not.toContain("'-A'")
   })
 
   it('returns "No matches found" on empty rg output', async () => {
