@@ -1,0 +1,81 @@
+version: 2
+
+updates:
+  # GitHub Actions used by the workflows in .github/workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "chore"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # pnpm workspace: root + packages/*, room, examples/*
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "typescript"]
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # Node typings track the engines floor (>=18), not the newest release
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  # Standalone npm project, outside the pnpm workspace
+  - package-ecosystem: "npm"
+    directory: "/agentbe-daemon/deploy-tool"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "typescript"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      deploy-tool-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # uv workspace: packages/agent-backend/python + examples/PyBasic (updates uv.lock)
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "python"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      uv-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Base images for the room sandbox and the agentbe-daemon image
+  - package-ecosystem: "docker"
+    directories:
+      - "/room"
+      - "/agentbe-daemon/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "chore"
