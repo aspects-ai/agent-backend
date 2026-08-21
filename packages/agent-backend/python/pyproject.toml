@@ -23,7 +23,7 @@ dependencies = [
     "asyncssh>=2.17.0",
     # mcp 2.x switched its HTTP stack from httpx to httpx2; the streamable-HTTP
     # transports here pass an httpx.AsyncClient, so stay on the 1.x line.
-    "mcp>=1.0.0,<2.0.0",
+    "mcp>=2.0.0,<3.0.0",
     "httpx>=0.27",
 ]
 
