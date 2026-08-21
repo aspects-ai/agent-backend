@@ -10,7 +10,7 @@
 #   - AGENTBE_VERSION: Package version or "local" for local build
 #   - INCLUDE_SSHD: Set to "true" to include openssh-server for conventional SSH
 
-FROM ubuntu:22.04
+FROM ubuntu:26.04
 
 # Build arg to include sshd (for conventional SSH support)
 ARG INCLUDE_SSHD=true
