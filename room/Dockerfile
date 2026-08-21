@@ -6,7 +6,7 @@
 # Runtime config is all environment (see room/src/bin.ts):
 #   AGENTBE_ROOM, AGENTBE_HTTP_PORT, AGENTBE_HTTP_HOST (0.0.0.0 in a container!),
 #   AGENTBE_PRINCIPALS, AGENTBE_S3_*, AGENTBE_VECTOR, AGENTBE_SANDBOX.
-FROM node:22-slim AS builder
+FROM node:26-slim AS builder
 
 # Pin pnpm: the repo has no packageManager field, and corepack would otherwise
 # pull whatever is latest (pnpm 11 needs Node 22+ and drifts from local builds).
@@ -32,7 +32,7 @@ COPY packages/ packages/
 COPY room/ room/
 RUN pnpm --filter "@agentbe/room..." build
 
-FROM node:22-slim AS runtime
+FROM node:26-slim AS runtime
 
 # The Docker sandbox provider shells out to `docker`, which does not exist in a
 # pod — see AGENTBE_SANDBOX below.
