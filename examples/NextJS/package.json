@@ -20,28 +20,28 @@
     "@openrouter/ai-sdk-provider": "^2.1.1",
     "agent-backend": "workspace:*",
     "ai": "^6.0.78",
+    "bufferutil": "^4.0.9",
     "lucide-react": "^0.469.0",
-    "next": "^16.0.10",
+    "next": "^16.3.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "ssh2": "^1.17.0",
+    "utf-8-validate": "^6.0.5",
     "uuid": "^9.0.1",
     "ws": "^8.18.3",
-    "bufferutil": "^4.0.9",
-    "utf-8-validate": "^6.0.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^20.17.10",
-    "vitest": "^3.2.6",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@types/uuid": "^9.0.8",
     "@types/ws": "^8.5.13",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.26",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.6"
   }
 }
