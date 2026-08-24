@@ -15,7 +15,7 @@
   "dependencies": {
     "@ai-sdk/mcp": "^1.0.18",
     "@ai-sdk/react": "^3.0.70",
-    "@modelcontextprotocol/sdk": "^1.25.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@monaco-editor/react": "^4.6.0",
     "@openrouter/ai-sdk-provider": "^2.1.1",
     "agent-backend": "workspace:*",
@@ -29,7 +29,7 @@
     "ssh2": "^1.17.0",
     "utf-8-validate": "^6.0.5",
     "uuid": "^9.0.1",
-    "ws": "^8.18.3",
+    "ws": "^8.21.3",
     "zod": "^3.24.1"
   },
   "devDependencies": {
