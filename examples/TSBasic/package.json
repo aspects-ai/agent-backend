@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "agent-backend": "workspace:*",
-    "@ai-sdk/mcp": "^1.0.18",
+    "@ai-sdk/mcp": "^2.0.34",
     "@openrouter/ai-sdk-provider": "latest",
     "ai": "latest"
   },

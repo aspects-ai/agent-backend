@@ -71,7 +71,7 @@
     }
   },
   "devDependencies": {
-    "@ai-sdk/mcp": "^1.0.18",
+    "@ai-sdk/mcp": "^2.0.34",
     "@eslint/js": "^9.39.2",
     "@types/express": "^5.0.2",
     "@types/node": "^22.10.0",
