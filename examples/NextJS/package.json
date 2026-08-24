@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@ai-sdk/mcp": "^1.0.18",
-    "@ai-sdk/react": "^3.0.70",
+    "@ai-sdk/react": "^4.0.76",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@monaco-editor/react": "^4.6.0",
     "@openrouter/ai-sdk-provider": "^2.1.1",
