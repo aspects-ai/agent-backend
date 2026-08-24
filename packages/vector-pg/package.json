@@ -25,7 +25,7 @@
     "@types/node": "^20.17.10",
     "pg": "^8.13.0",
     "@types/pg": "^8.11.0",
-    "typescript": "^5.7.2",
+    "typescript": "^7.0.2",
     "vitest": "^3.2.6"
   }
 }
