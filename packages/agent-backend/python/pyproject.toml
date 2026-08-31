@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "websockets>=17.0.1",
+    "websockets>=17.1",
     "asyncssh>=2.17.0",
     # mcp 2.x switched its HTTP stack from httpx to httpx2; the streamable-HTTP
     # transports here pass an httpx.AsyncClient, so stay on the 1.x line.

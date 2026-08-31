@@ -5,7 +5,7 @@ description = "PyBasic — minimal CLI chat example using agent-backend Python l
 requires-python = ">=3.11"
 dependencies = [
     "agent-backend",
-    "openai>=3.2.0",
+    "openai>=3.5.0",
 ]
 
 [tool.uv.sources]
